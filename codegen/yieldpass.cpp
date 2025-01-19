@@ -68,6 +68,12 @@ struct YieldInserter {
   }
 
   void InsertYields(Function &F, const FunIndex &index) {
+    auto name = F.getName();
+    if (visited.find(name) != visited.end()) {
+      return;
+    }
+    visited.insert(name);
+    
     Builder Builder(&*F.begin());
     for (auto &B : F) {
       for (auto it = B.begin(); std::next(it) != B.end(); ++it) {
@@ -75,6 +81,23 @@ struct YieldInserter {
           Builder.SetInsertPoint(&*std::next(it));
           Builder.CreateCall(CoroYieldF, {})->getIterator();
           ++it;
+        }
+      }
+    }
+
+    for (auto &B : F) {
+      for (auto &I : B) {
+        if (auto call = dyn_cast<CallInst>(&I)) {
+          auto fun = call->getCalledFunction();
+          if (fun && !fun->isDeclaration()) {
+            InsertYields(*fun, index);
+          }
+        }
+        if (auto invoke = dyn_cast<InvokeInst>(&I)) {
+          auto fun = invoke->getCalledFunction();
+          if (fun && !fun->isDeclaration()) {
+            InsertYields(*fun, index);
+          }
         }
       }
     }
@@ -94,6 +117,7 @@ struct YieldInserter {
 
   Module &M;
   FunctionCallee CoroYieldF;
+  std::set<StringRef> visited{};
 };
 
 namespace {

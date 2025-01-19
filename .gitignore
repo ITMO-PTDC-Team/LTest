@@ -4,3 +4,6 @@ venv
 .devcontainer/**
 .cache/**
 third_party/**
+folly
+boost
+net2

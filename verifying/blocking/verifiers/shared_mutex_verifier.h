@@ -2,6 +2,8 @@
 
 #include "runtime/include/scheduler.h"
 
+namespace spec {
+
 struct SharedMutexVerifier {
   enum : int32_t { READER = 4, WRITER = 1, FREE = 0 };
   /// Verify checks the state of a mutex on starting of `ctask`
@@ -49,3 +51,4 @@ struct SharedMutexVerifier {
 
   std::unordered_map<size_t, size_t> status;
 };
+}  // namespace spec

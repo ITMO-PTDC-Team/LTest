@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include "yield_guard.h"
 
 // See comments in the lib.h.
 Task this_coro{};
@@ -50,6 +51,9 @@ std::string_view CoroBase::GetName() const { return name; }
 bool CoroBase::IsReturned() const { return is_returned; }
 
 extern "C" void CoroYield() {
+  if (!__yield) {
+    return;
+  }
   assert(this_coro && sched_ctx);
   boost::context::fiber_context([](boost::context::fiber_context&& ctx) {
     this_coro->ctx = std::move(ctx);

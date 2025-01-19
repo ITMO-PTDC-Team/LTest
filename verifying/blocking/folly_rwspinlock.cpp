@@ -158,4 +158,4 @@ using spec_t =
     ltest::Spec<folly::RWSpinLock, spec::SharedLinearMutex,
                 spec::SharedLinearMutexHash, spec::SharedLinearMutexEquals>;
 
-LTEST_ENTRYPOINT_CONSTRAINT(spec_t, SharedMutexVerifier);
+LTEST_ENTRYPOINT_CONSTRAINT(spec_t, spec::SharedMutexVerifier);

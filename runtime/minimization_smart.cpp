@@ -20,7 +20,7 @@ SmartMinimizor::SmartMinimizor(int exploration_runs, int minimization_runs,
 
 void SmartMinimizor::Minimize(
     SchedulerWithReplay& sched,
-    Scheduler::BothHistories& nonlinear_histories) const {
+    Scheduler::NonLinearizableHistory& nonlinear_histories) const {
   // reset
   auto& strategy = sched.GetStrategy();
   total_tasks = strategy.GetTotalTasksCount();
@@ -59,7 +59,7 @@ void SmartMinimizor::Minimize(
   // replay the round with found nonlinearized interleaving, this put the round
   // in correct final state and builds a `BothHistories` object
   auto replayed_result = sched.ReplayRound(RoundMinimizor::GetTasksOrdering(
-      best_solution.nonlinear_histories.first, {}));
+      best_solution.nonlinear_histories.full, {}));
 
   // override nonlinear history with the best solution
   assert(replayed_result.has_value());
@@ -194,9 +194,9 @@ std::unordered_map<int, std::unordered_set<int>> SmartMinimizor::CrossProduct(
 }
 
 // smart minimizor solution
-SmartMinimizor::Solution::Solution(const Strategy& strategy,
-                                   const Scheduler::BothHistories& histories,
-                                   int total_tasks) {
+SmartMinimizor::Solution::Solution(
+    const Strategy& strategy,
+    const Scheduler::NonLinearizableHistory& histories, int total_tasks) {
   int total_threads = strategy.GetThreadsCount();
 
   // copy nonlinear history

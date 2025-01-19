@@ -1,7 +1,6 @@
 #pragma once
 #include <unordered_set>
 
-#include "lib.h"
 #include "scheduler_fwd.h"
 
 /**
@@ -11,8 +10,9 @@
 struct RoundMinimizor {
   // Minimizes the number of tasks in the nonlinearized history; modifies
   // argument `nonlinear_history`.
-  virtual void Minimize(SchedulerWithReplay& sched,
-                        Scheduler::BothHistories& nonlinear_history) const = 0;
+  virtual void Minimize(
+      SchedulerWithReplay& sched,
+      Scheduler::NonLinearizableHistory& nonlinear_history) const = 0;
 
   /**
    * Returns ids of tasks taken from `full_history`, excluding those ids, that
@@ -37,8 +37,9 @@ struct GreedyRoundMinimizor : public RoundMinimizor {
    * pairs of tasks and remove them together, this is done to account for
    * data-structures that have the `add/remove` semantics.
    */
-  void Minimize(SchedulerWithReplay& sched,
-                Scheduler::BothHistories& nonlinear_history) const override;
+  void Minimize(
+      SchedulerWithReplay& sched,
+      Scheduler::NonLinearizableHistory& nonlinear_history) const override;
 
  protected:
   /**
@@ -54,7 +55,7 @@ struct GreedyRoundMinimizor : public RoundMinimizor {
    */
   virtual Scheduler::Result OnTasksRemoved(
       SchedulerWithReplay& sched,
-      const Scheduler::BothHistories& nonlinear_history,
+      const Scheduler::NonLinearizableHistory& nonlinear_history,
       const std::unordered_set<int>& task_ids) const = 0;
 };
 
@@ -71,7 +72,7 @@ struct SameInterleavingMinimizor : public GreedyRoundMinimizor {
  protected:
   virtual Scheduler::Result OnTasksRemoved(
       SchedulerWithReplay& sched,
-      const Scheduler::BothHistories& nonlinear_history,
+      const Scheduler::NonLinearizableHistory& nonlinear_history,
       const std::unordered_set<int>& task_ids) const override;
 };
 
@@ -92,7 +93,7 @@ struct StrategyExplorationMinimizor : public GreedyRoundMinimizor {
  protected:
   virtual Scheduler::Result OnTasksRemoved(
       SchedulerWithReplay& sched,
-      const Scheduler::BothHistories& nonlinear_history,
+      const Scheduler::NonLinearizableHistory& nonlinear_history,
       const std::unordered_set<int>& task_ids) const override;
 
  private:

@@ -19,10 +19,10 @@ std::vector<int> RoundMinimizor::GetTasksOrdering(
 // greedy
 void GreedyRoundMinimizor::Minimize(
     SchedulerWithReplay& sched,
-    Scheduler::BothHistories& nonlinear_history) const {
+    Scheduler::NonLinearizableHistory& nonlinear_history) const {
   std::vector<std::reference_wrapper<const Task>> tasks;
 
-  for (const HistoryEvent& event : nonlinear_history.second) {
+  for (const HistoryEvent& event : nonlinear_history.seq) {
     if (std::holds_alternative<Invoke>(event)) {
       tasks.push_back(std::get<Invoke>(event).GetTask());
     }
@@ -38,8 +38,8 @@ void GreedyRoundMinimizor::Minimize(
         OnTasksRemoved(sched, nonlinear_history, {task.get()->GetId()});
 
     if (new_histories.has_value()) {
-      nonlinear_history.first.swap(new_histories.value().first);
-      nonlinear_history.second.swap(new_histories.value().second);
+      nonlinear_history.full.swap(new_histories.value().full);
+      nonlinear_history.seq.swap(new_histories.value().seq);
       strategy.SetTaskRemoved(task.get()->GetId(), true);
     }
   }
@@ -64,8 +64,8 @@ void GreedyRoundMinimizor::Minimize(
       if (new_histories.has_value()) {
         // sequential history (Invoke/Response events) could have odd number of
         // history events in case if some task are not completed which is allowed by linearizability checker
-        nonlinear_history.first.swap(new_histories.value().first);
-        nonlinear_history.second.swap(new_histories.value().second);
+        nonlinear_history.full.swap(new_histories.value().full);
+        nonlinear_history.seq.swap(new_histories.value().seq);
 
         strategy.SetTaskRemoved(task_i_id, true);
         strategy.SetTaskRemoved(task_j_id, true);
@@ -78,16 +78,16 @@ void GreedyRoundMinimizor::Minimize(
   // (because multiple failed attempts to minimize new scenarios could leave
   // tasks in invalid state)
   sched.ReplayRound(
-      RoundMinimizor::GetTasksOrdering(nonlinear_history.first, {}));
+      RoundMinimizor::GetTasksOrdering(nonlinear_history.full, {}));
 }
 
 // same interleaving
 Scheduler::Result SameInterleavingMinimizor::OnTasksRemoved(
     SchedulerWithReplay& sched,
-    const Scheduler::BothHistories& nonlinear_history,
+    const Scheduler::NonLinearizableHistory& nonlinear_history,
     const std::unordered_set<int>& task_ids) const {
   std::vector<int> new_ordering =
-      RoundMinimizor::GetTasksOrdering(nonlinear_history.first, task_ids);
+      RoundMinimizor::GetTasksOrdering(nonlinear_history.full, task_ids);
   return sched.ReplayRound(new_ordering);
 }
 
@@ -97,7 +97,7 @@ StrategyExplorationMinimizor::StrategyExplorationMinimizor(int runs_)
 
 Scheduler::Result StrategyExplorationMinimizor::OnTasksRemoved(
     SchedulerWithReplay& sched,
-    const Scheduler::BothHistories& nonlinear_history,
+    const Scheduler::NonLinearizableHistory& nonlinear_history,
     const std::unordered_set<int>& task_ids) const {
   auto mark_tasks_as_removed = [&](bool is_removed) {
     for (const auto& task_id : task_ids) {

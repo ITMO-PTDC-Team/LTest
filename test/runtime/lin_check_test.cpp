@@ -235,8 +235,8 @@ std::string draw_history(const std::vector<HistoryEvent>& history) {
       Response response = std::get<Response>(event);
       history_string << "[" << numeration[response.GetTask()]
                      << " res: " << response.GetTask()->GetName()
-                     << " returned: " << to_string(response.GetTask()->GetRetVal())
-                     << "]\n";
+                     << " returned: "
+                     << to_string(response.GetTask()->GetRetVal()) << "]\n";
     }
   }
 

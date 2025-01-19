@@ -3,7 +3,15 @@
 #include "../specs/stack.h"
 
 struct TreiberStack {
-  TreiberStack() : nodes(N), head(-1), free_list(0) { Reset(); }
+  TreiberStack() : nodes(N), head(-1), free_list(0) {
+    for (size_t i = 0; i < nodes.size() - 1; ++i) {
+      nodes[i].next.store(i + 1);
+    }
+    nodes[nodes.size() - 1].next.store(-1);
+
+    head.store(-1);
+    free_list.store(0);
+  }
 
   non_atomic void Push(int value) {
     int node_index;
@@ -42,18 +50,6 @@ struct TreiberStack {
     } while (!free_list.compare_exchange_strong(old_free, node_index));
 
     return value;
-  }
-
-  void Reset() {
-    // Reset free list (each node points to the next)
-    for (size_t i = 0; i < nodes.size() - 1; ++i) {
-      nodes[i].next.store(i + 1);
-    }
-    nodes[nodes.size() - 1].next.store(-1);
-
-    // Reset stack head and free list pointer
-    head.store(-1);
-    free_list.store(0);
   }
 
  private:

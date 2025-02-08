@@ -30,6 +30,7 @@ struct Spec {
 
 struct Opts {
   size_t threads;
+  size_t forbid_all_same;
   size_t tasks;
   size_t switches;
   size_t rounds;
@@ -66,7 +67,7 @@ std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
     case PCT: {
       std::cout << "pct\n";
       return std::make_unique<PctStrategy<TargetObj>>(opts.threads,
-                                                      std::move(l), true);
+                                                      std::move(l), opts.forbid_all_same);
     }
     default:
       assert(false && "unexpected typ");

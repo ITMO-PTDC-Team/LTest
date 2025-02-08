@@ -40,7 +40,10 @@ jobs:
           cmake --build build --target verifying/targets/nonlinear_queue
       - name: Run nonlinear_queue with pct strategy
         run: |
-          ./build/verifying/targets/nonlinear_queue --strategy pct --tasks 10 --rounds 240
+          ./build/verifying/targets/nonlinear_queue --strategy pct --tasks 10 --rounds 240 || error_code=$?
+          if [ "${error_code}" -ne 1 ]; then 
+            exit 1
+          fi
       - name: Run nonlinear_queue with random strategy
         run: |
           ./build/verifying/targets/nonlinear_queue --tasks 4 --rounds 100000 --strategy random --switches 1 || error_code=$?

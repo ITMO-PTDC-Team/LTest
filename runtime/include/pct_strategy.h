@@ -3,6 +3,7 @@
 #include <queue>
 #include <random>
 #include <utility>
+#include <cassert>
 
 #include "scheduler.h"
 
@@ -12,16 +13,18 @@
 // equivalent to the halt problem), k should be good approximation
 template <typename TargetObj>
 struct PctStrategy : Strategy {
-  // TODO: doc about is_another_required
+  // forbid_all_same indicates whether it is allowed to have all same tasks(same methods)
+  // in any moment of execution. Useful for blocking structures, for instance, you don't want
+  // to run mutex.lock in each thread
   explicit PctStrategy(size_t threads_count,
                        const std::vector<TaskBuilder>& constructors,
-                       bool is_another_required)
+                       bool forbid_all_same)
       : threads_count(threads_count),
         current_depth(1),
         current_schedule_length(0),
         constructors(constructors),
         threads(),
-        is_another_required(is_another_required) {
+        forbid_all_same(forbid_all_same) {
     std::random_device dev;
     rng = std::mt19937(dev());
     constructors_distribution =
@@ -33,14 +36,7 @@ struct PctStrategy : Strategy {
     // In fact, it doesn't depend on the task, it only depends on the
     // constructor
     size_t avg_k = 0;
-    // TODO: это не работает
-    //    for (auto &constructor : constructors) {
-    //      auto task = StackfulTask{constructor, &state};
-    //      log() << "task: " << task.GetName()
-    //            << " k: " << task.GetSuspensionPoints() << "\n";
-    //      avg_k += task.GetSuspensionPoints();
-    //      task.Terminate();
-    //    }
+
     avg_k = avg_k / constructors.size();
 
     PrepareForDepth(current_depth, avg_k);
@@ -59,7 +55,7 @@ struct PctStrategy : Strategy {
     // Have to ignore waiting threads, so can't do it faster than O(n)
     for (size_t i = 0; i < threads.size(); ++i) {
       // Ignore waiting tasks
-      if ((!threads[i].empty() && threads[i].back()->IsParked())) {
+      if (!threads[i].empty() && threads[i].back()->IsParked()) {
         // dual waiting if request finished, but follow up isn't
         // skip dual tasks that already have finished the request
         // section(follow-up will be executed in another task, so we can't
@@ -73,21 +69,7 @@ struct PctStrategy : Strategy {
       }
     }
 
-    //    if (max == std::numeric_limits<size_t>::min()) {
-    //      for (auto& thread : threads) {
-    //        if (thread.empty()) {
-    //          std::cout << "empty" << std::endl;
-    //        }
-    //
-    //        auto& task = thread.back();
-    //        if (std::holds_alternative<Task>(task)) {
-    //          std::cout << std::get<Task>(task)->GetName() << std::endl;
-    //        } else {
-    //          std::cout << std::get<DualTask>(task)->GetName() << std::endl;
-    //        }
-    //      }
-    //      assert(false);
-    //    }
+    assert((max != std::numeric_limits<size_t>::min(), "all threads are empty or parked"));
 
     // Check whether the priority change is required
     current_schedule_length++;
@@ -100,7 +82,7 @@ struct PctStrategy : Strategy {
     if (threads[index_of_max].empty() ||
         threads[index_of_max].back()->IsReturned()) {
       auto constructor = constructors.at(constructors_distribution(rng));
-      if (is_another_required) {
+      if (forbid_all_same) {
         auto names = CountNames(index_of_max);
         // TODO: выглядит непонятно и так себе
         while (true) {
@@ -122,7 +104,6 @@ struct PctStrategy : Strategy {
   }
 
   void StartNextRound() override {
-    //    log() << "depth: " << current_depth << "\n";
     // Reconstruct target as we start from the beginning.
     TerminateTasks();
     for (auto& thread : threads) {
@@ -209,7 +190,7 @@ struct PctStrategy : Strategy {
   // so we have to contains all tasks in queues(queue doesn't invalidate the
   // references)
   std::vector<StableVector<Task>> threads;
-  bool is_another_required;
+  bool forbid_all_same;
   std::uniform_int_distribution<std::mt19937::result_type>
       constructors_distribution;
   std::mt19937 rng;

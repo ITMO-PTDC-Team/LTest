@@ -31,7 +31,7 @@ jobs:
     steps:
       - name: Install deps
         run: |
-          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev protobuf-compiler
+          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev protobuf-compiler libboost-context-dev
       - name: Check out repository code
         uses: actions/checkout@v4
       - name: Build

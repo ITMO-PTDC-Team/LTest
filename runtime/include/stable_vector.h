@@ -47,8 +47,7 @@ struct StableVector {
   using type_t = std::byte[sizeof(T)];
 
   template <typename... Args>
-    requires std::constructible_from<T, Args...>
-  T &emplace_back(Args &&...args) {
+  requires std::constructible_from<T, Args...> T &emplace_back(Args &&...args) {
     const size_t index = 63 - __builtin_clzll(total_size + 1);
     if (((total_size + 1) & total_size) == 0 && !entities[index]) {
       entities[index] = ::new (static_cast<std::align_val_t>(alignof(T)))

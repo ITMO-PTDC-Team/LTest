@@ -1,9 +1,9 @@
 #pragma once
 
+#include <cassert>
 #include <queue>
 #include <random>
 #include <utility>
-#include <cassert>
 
 #include "scheduler.h"
 
@@ -13,9 +13,9 @@
 // equivalent to the halt problem), k should be good approximation
 template <typename TargetObj>
 struct PctStrategy : Strategy {
-  // forbid_all_same indicates whether it is allowed to have all same tasks(same methods)
-  // in any moment of execution. Useful for blocking structures, for instance, you don't want
-  // to run mutex.lock in each thread
+  // forbid_all_same indicates whether it is allowed to have all same tasks(same
+  // methods) in any moment of execution. Useful for blocking structures, for
+  // instance, you don't want to run mutex.lock in each thread
   explicit PctStrategy(size_t threads_count,
                        const std::vector<TaskBuilder>& constructors,
                        bool forbid_all_same)
@@ -69,7 +69,8 @@ struct PctStrategy : Strategy {
       }
     }
 
-    assert((max != std::numeric_limits<size_t>::min(), "all threads are empty or parked"));
+    assert((max != std::numeric_limits<size_t>::min(),
+            "all threads are empty or parked"));
 
     // Check whether the priority change is required
     current_schedule_length++;

@@ -2,8 +2,8 @@
 #include <signal.h>
 #include <valgrind/memcheck.h>
 
-#include <boost/context/fiber.hpp>
 #include <boost/context/detail/fcontext.hpp>
+#include <boost/context/fiber.hpp>
 #include <boost/context/fiber_fcontext.hpp>
 #include <cassert>
 #include <coroutine>
@@ -139,16 +139,18 @@ struct Coro final : public CoroBase {
     c->name = name;
     c->args_to_strings = std::move(args_to_strings);
     c->this_ptr = this_ptr;
-    c->ctx = boost::context::fiber_context([c](boost::context::fiber_context&& ctx) {
-      auto real_args = reinterpret_cast<std::tuple<Args...>*>(c->args.get());
-      auto this_arg = std::tuple<Target*>{reinterpret_cast<Target*>(c->this_ptr)};
-      c->ret = std::apply(c->func, std::tuple_cat(this_arg, *real_args));
-      c->is_returned = true;
-      return std::move(ctx);
-    });
+    c->ctx =
+        boost::context::fiber_context([c](boost::context::fiber_context&& ctx) {
+          auto real_args =
+              reinterpret_cast<std::tuple<Args...>*>(c->args.get());
+          auto this_arg =
+              std::tuple<Target*>{reinterpret_cast<Target*>(c->this_ptr)};
+          c->ret = std::apply(c->func, std::tuple_cat(this_arg, *real_args));
+          c->is_returned = true;
+          return std::move(ctx);
+        });
     return c;
   }
-
 
   std::vector<std::string> GetStrArgs() const override {
     assert(args_to_strings != nullptr);

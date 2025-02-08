@@ -68,7 +68,9 @@ DEFINE_int32(tasks, 15, "Number of tasks");
 DEFINE_int32(switches, 100000000, "Number of switches");
 DEFINE_int32(rounds, 5, "Number of switches");
 DEFINE_bool(verbose, false, "Verbosity");
-DEFINE_bool(forbid_all_same, false, "forbid scenarios that execute tasks with same name at all threads");
+DEFINE_bool(
+    forbid_all_same, false,
+    "forbid scenarios that execute tasks with same name at all threads");
 DEFINE_string(strategy, GetLiteral(StrategyType::RR), "Strategy");
 DEFINE_string(weights, "", "comma-separated list of weights for threads");
 

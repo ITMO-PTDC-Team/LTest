@@ -66,8 +66,8 @@ std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
     }
     case PCT: {
       std::cout << "pct\n";
-      return std::make_unique<PctStrategy<TargetObj>>(opts.threads,
-                                                      std::move(l), opts.forbid_all_same);
+      return std::make_unique<PctStrategy<TargetObj>>(
+          opts.threads, std::move(l), opts.forbid_all_same);
     }
     default:
       assert(false && "unexpected typ");
@@ -82,7 +82,7 @@ struct StrategySchedulerWrapper : StrategyScheduler {
                            size_t max_tasks, size_t max_rounds)
       : strategy(std::move(strategy)),
         StrategyScheduler(*strategy.get(), checker, pretty_printer, max_tasks,
-                          max_rounds) {};
+                          max_rounds){};
 
  private:
   std::unique_ptr<Strategy> strategy;

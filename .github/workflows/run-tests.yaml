@@ -11,7 +11,7 @@ jobs:
       options: --user root
     steps:
       - name: Install deps
-        run: apt update && apt install -y git ninja-build valgrind
+        run: apt update && apt install -y git ninja-build valgrind libboost-context-dev
       - name: Check out repository code
         uses: actions/checkout@v4
       - name: Build

@@ -46,7 +46,7 @@ auto toStringArgs(std::shared_ptr<void> args) {
 }
 
 template <typename Ret, typename Target, typename... Args>
-struct TargetMethod{
+struct TargetMethod {
   using Method = std::function<value_wrapper(Target *, Args...)>;
   TargetMethod(std::string_view method_name,
                std::function<std::tuple<Args...>(size_t)> gen, Method method) {
@@ -67,17 +67,6 @@ struct TargetMethod{
   }
 };
 
-// Emulate that void f() returns 0.
-template <typename Target, typename F, typename... Args>
-struct Wrapper {
-  F f;
-  Wrapper(F f) : f(std::move(f)) {}
-  int operator()(void *this_ptr, Args &&...args) {
-    f(reinterpret_cast<Target *>(this_ptr), std::forward<Args>(args)...);
-    return 0;
-  }
-};
-
 template <typename Target, typename... Args>
 struct TargetMethod<void, Target, Args...> {
   using Method = std::function<void(Target *, Args...)>;
@@ -87,7 +76,10 @@ struct TargetMethod<void, Target, Args...> {
     auto builder = [gen = std::move(gen), method_name,
                     method = std::move(method)](void *this_ptr,
                                                 size_t thread_num) -> Task {
-      auto wrapper = Wrapper<Target, decltype(method), Args...>{method};
+      auto wrapper = [f = std::move(method)](void *this_ptr, Args &&...args) {
+        f(reinterpret_cast<Target *>(this_ptr), std::forward<Args>(args)...);
+        return VoidV;
+      };
       auto args = std::shared_ptr<void>(new std::tuple(gen(thread_num)));
       auto coro = Coro<Target, Args...>::New(
           wrapper, this_ptr, args, &ltest::toStringArgs<Args...>, method_name);

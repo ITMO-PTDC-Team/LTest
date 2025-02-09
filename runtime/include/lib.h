@@ -1,17 +1,14 @@
 #pragma once
-#include <signal.h>
 #include <valgrind/memcheck.h>
 
 #include <boost/context/detail/fcontext.hpp>
 #include <boost/context/fiber.hpp>
 #include <boost/context/fiber_fcontext.hpp>
 #include <cassert>
-#include <coroutine>
-#include <cstdint>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 #define panic() assert(false)
@@ -79,6 +76,24 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   // Sets the token.
   void SetToken(std::shared_ptr<Token>);
 
+  struct FutexState {
+    int* addr;
+    int value;
+  };
+
+  inline void SetBlocked(long uaddr, int value) {
+    fstate = {reinterpret_cast<int*>(uaddr), value};
+  }
+
+  inline bool IsBlocked() {
+    /// Check that value stored by futex addr isn't changed
+    bool is_blocked = fstate.addr && *fstate.addr == fstate.value;
+    if (!is_blocked) {
+      fstate = FutexState{nullptr, 0};
+    }
+    return is_blocked;
+  }
+
   // Checks if the coroutine is parked.
   bool IsParked() const;
 
@@ -97,6 +112,8 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   int ret{};
   // Is coroutine returned.
   bool is_returned{};
+  // Futex state on which coroutine is blocked.
+  FutexState fstate{};
   // Name.
   std::string_view name;
   // Token.

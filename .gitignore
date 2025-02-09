@@ -3,3 +3,4 @@ build
 venv
 .devcontainer/**
 .cache/**
+third_party/**

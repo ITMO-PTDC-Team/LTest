@@ -1,23 +1,23 @@
 #pragma once
 
-#include <random>
 #include <utility>
 
 #include "pick_strategy.h"
-#include "scheduler.h"
 
-template <typename TargetObj>
-struct RoundRobinStrategy : PickStrategy<TargetObj> {
+template <typename TargetObj, StrategyVerifier Verifier>
+struct RoundRobinStrategy : PickStrategy<TargetObj, Verifier> {
   explicit RoundRobinStrategy(size_t threads_count,
                               std::vector<TaskBuilder> constructors)
       : next_task{0},
-        PickStrategy<TargetObj>{threads_count, std::move(constructors)} {}
+        PickStrategy<TargetObj, Verifier>{threads_count,
+                                          std::move(constructors)} {}
 
   size_t Pick() override {
-    auto &threads = PickStrategy<TargetObj>::threads;
+    auto &threads = PickStrategy<TargetObj, Verifier>::threads;
     for (size_t attempt = 0; attempt < threads.size(); ++attempt) {
       auto cur = (next_task++) % threads.size();
-      if (!threads[cur].empty() && threads[cur].back()->IsParked()) {
+      if (!threads[cur].empty() && (threads[cur].back()->IsParked() ||
+                                    threads[cur].back()->IsBlocked())) {
         continue;
       }
       return cur;

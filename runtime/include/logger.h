@@ -1,6 +1,12 @@
 #pragma once
 #include <iostream>
 
+#ifdef DEBUG
+#define debug(...) fprintf(__VA_ARGS__)
+#else
+#define debug(...)
+#endif
+
 struct Logger {
   bool verbose{};
 

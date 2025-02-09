@@ -1,9 +1,7 @@
 #pragma once
 
 #include <cassert>
-#include <queue>
 #include <random>
-#include <utility>
 
 #include "scheduler.h"
 
@@ -11,8 +9,8 @@
 // K represents the maximal number of potential switches in the program
 // Although it's impossible to predict the exact number of switches(since it's
 // equivalent to the halt problem), k should be good approximation
-template <typename TargetObj>
-struct PctStrategy : Strategy {
+template <typename TargetObj, StrategyVerifier Verifier>
+struct PctStrategy : Strategy<Verifier> {
   // forbid_all_same indicates whether it is allowed to have all same tasks(same
   // methods) in any moment of execution. Useful for blocking structures, for
   // instance, you don't want to run mutex.lock in each thread
@@ -49,13 +47,14 @@ struct PctStrategy : Strategy {
 
   // If there aren't any non returned tasks and the amount of finished tasks
   // is equal to the max_tasks the finished task will be returned
-  std::tuple<Task&, bool, int> Next() override {
+  TaskWithMetaData Next() override {
     size_t max = std::numeric_limits<size_t>::min();
     size_t index_of_max = 0;
     // Have to ignore waiting threads, so can't do it faster than O(n)
     for (size_t i = 0; i < threads.size(); ++i) {
       // Ignore waiting tasks
-      if (!threads[i].empty() && threads[i].back()->IsParked()) {
+      if (!threads[i].empty() &&
+          (threads[i].back()->IsParked() || threads[i].back()->IsBlocked())) {
         // dual waiting if request finished, but follow up isn't
         // skip dual tasks that already have finished the request
         // section(follow-up will be executed in another task, so we can't
@@ -87,8 +86,10 @@ struct PctStrategy : Strategy {
         auto names = CountNames(index_of_max);
         // TODO: выглядит непонятно и так себе
         while (true) {
-          names.insert(constructor.GetName());
-          if (names.size() == 1) {
+          auto name = constructor.GetName();
+          names.insert(name);
+          CreatedTaskMetaData task = {name, true, index_of_max};
+          if (names.size() == 1 || !this->sched_checker.Verify(task)) {
             constructor = constructors.at(constructors_distribution(rng));
           } else {
             break;
@@ -171,11 +172,13 @@ struct PctStrategy : Strategy {
   }
 
   void TerminateTasks() {
+    state.Reset();
     for (auto& thread : threads) {
       if (!thread.empty()) {
         thread.back()->Terminate();
       }
     }
+    this->sched_checker.Reset();
   }
 
   TargetObj state{};

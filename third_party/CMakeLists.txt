@@ -16,12 +16,12 @@ FetchContent_Declare(
         SYSTEM
 )
 
-FetchContent_Declare(
-        gflags
-	GIT_REPOSITORY	https://github.com/gflags/gflags.git
-	GIT_TAG			master
-        GIT_SHALLOW TRUE
-        SYSTEM
-)
+# FetchContent_Declare(
+#         gflags
+# 	GIT_REPOSITORY	https://github.com/gflags/gflags.git
+# 	GIT_TAG			master
+#         GIT_SHALLOW TRUE
+#         SYSTEM
+# )
 
-FetchContent_MakeAvailable(fuzztest googletest gflags)
+FetchContent_MakeAvailable(fuzztest googletest)

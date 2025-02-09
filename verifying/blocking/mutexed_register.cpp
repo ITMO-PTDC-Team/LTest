@@ -1,14 +1,28 @@
+#include <mutex>
+
+#include "folly/synchronization/Lock.h"
 #include "runtime/include/verifying.h"
 #include "verifying/specs/register.h"
 
+typedef folly::detail::lock_base_unique<std::mutex> lock_guard;
+
 struct Register {
-  non_atomic void add() { ++x; }
+  non_atomic void add() {
+    lock_guard lock{m_};
+    ++x_;
+  }
+  non_atomic int get() {
+    lock_guard lock{m_};
+    return x_;
+  }
 
-  non_atomic int get() { return x; }
+  void Reset() {
+    lock_guard lock{m_};
+    x_ = 0;
+  }
 
-  void Reset() { x = 0; }
-
-  int x{};
+  int x_{};
+  std::mutex m_;
 };
 
 target_method(ltest::generators::genEmpty, void, Register, add);

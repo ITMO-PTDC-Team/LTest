@@ -10,7 +10,7 @@ namespace spec {
 
 struct Queue;
 
-using method_t = std::function<int(Queue *l, void *)>;
+using mutex_method_t = std::function<int(Queue *l, void *)>;
 
 const int size = 2;
 
@@ -31,14 +31,16 @@ struct Queue {
     return res;
   }
   static auto GetMethods() {
-    method_t push_func = [](Queue *l, void *args) -> int {
+    mutex_method_t push_func = [](Queue *l, void *args) -> int {
       auto real_args = reinterpret_cast<std::tuple<int> *>(args);
       return l->Push(std::get<0>(*real_args));
     };
 
-    method_t pop_func = [](Queue *l, void *args) -> int { return l->Pop(); };
+    mutex_method_t pop_func = [](Queue *l, void *args) -> int {
+      return l->Pop();
+    };
 
-    return std::map<std::string, method_t>{
+    return std::map<std::string, mutex_method_t>{
         {"Push", push_func},
         {"Pop", pop_func},
     };

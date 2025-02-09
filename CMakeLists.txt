@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 3.14)
 set(CMAKE_C_COMPILER "/usr/bin/clang")
 set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
 project(lintest)
@@ -21,7 +21,6 @@ endif(CMAKE_BUILD_TYPE MATCHES Debug)
 add_subdirectory(third_party)
 
 include(GoogleTest)
-
 fuzztest_setup_fuzzing_flags()
 enable_testing()
 
@@ -30,3 +29,5 @@ add_subdirectory(runtime)
 
 add_subdirectory(test)
 add_subdirectory(verifying)
+
+add_subdirectory(syscall_intercept)

@@ -1,12 +1,12 @@
 
 #pragma once
-#include <queue>
+#include <algorithm>
 #include <random>
 
 #include "scheduler.h"
 
-template <typename TargetObj>
-struct PickStrategy : Strategy {
+template <typename TargetObj, StrategyVerifier Verifier>
+struct PickStrategy : Strategy<Verifier> {
   virtual size_t Pick() = 0;
 
   explicit PickStrategy(size_t threads_count,
@@ -28,17 +28,32 @@ struct PickStrategy : Strategy {
 
   // If there aren't any non returned tasks and the amount of finished tasks
   // is equal to the max_tasks the finished task will be returned
-  std::tuple<Task&, bool, int> Next() override {
+  TaskWithMetaData Next() override {
     auto current_task = Pick();
+    debug(stderr, "Picked thread: %zu\n", current_task);
 
     // it's the first task if the queue is empty
     if (threads[current_task].empty() ||
         threads[current_task].back()->IsReturned()) {
       // a task has finished or the queue is empty, so we add a new task
-      auto constructor = constructors.at(distribution(rng));
+      std::shuffle(constructors.begin(), constructors.end(), rng);
+      size_t verified_constructor = -1;
+      for (size_t i = 0; i < constructors.size(); ++i) {
+        TaskBuilder constructor = constructors.at(i);
+        CreatedTaskMetaData next_task = {constructor.GetName(), true,
+                                         current_task};
+        if (this->sched_checker.Verify(next_task)) {
+          verified_constructor = i;
+          break;
+        }
+      }
+      if (verified_constructor == -1) {
+        assert(false && "Oops, possible deadlock or incorrect verifier\n");
+      }
       threads[current_task].emplace_back(
-          constructor.Build(&state, current_task));
-      return {threads[current_task].back(), true, current_task};
+          constructors[verified_constructor].Build(&state, current_task));
+      TaskWithMetaData task{threads[current_task].back(), true, current_task};
+      return task;
     }
 
     return {threads[current_task].back(), false, current_task};
@@ -65,11 +80,13 @@ struct PickStrategy : Strategy {
   // Actually, we assume obstruction free here.
   // TODO: for non obstruction-free we need to take into account dependencies.
   void TerminateTasks() {
+    state.Reset();
     for (size_t i = 0; i < threads.size(); ++i) {
       if (!threads[i].empty()) {
         threads[i].back()->Terminate();
       }
     }
+    this->sched_checker.Reset();
   }
 
   TargetObj state{};

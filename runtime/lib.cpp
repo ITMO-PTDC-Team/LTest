@@ -1,7 +1,7 @@
 #include "include/lib.h"
 
 #include <cassert>
-#include <iostream>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -9,6 +9,12 @@
 Task this_coro{};
 
 boost::context::fiber_context sched_ctx;
+
+std::unordered_map<long, int> futex_state{};
+
+namespace ltest {
+std::vector<TaskBuilder> task_builders{};
+}
 
 Task CoroBase::GetPtr() { return shared_from_this(); }
 

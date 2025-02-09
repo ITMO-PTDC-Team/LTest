@@ -1,6 +1,4 @@
-
-#include <map>
-
+#include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
@@ -48,6 +46,9 @@ struct YieldInserter {
     for (auto &F : M) {
       if (IsTarget(F.getName(), index)) {
         InsertYields(F, index);
+
+        errs() << "yields inserted to the " << F.getName() << "\n";
+        errs() << F << "\n";
       }
     }
   }
@@ -58,18 +59,15 @@ struct YieldInserter {
   }
 
   bool NeedInterrupt(Instruction *insn, const FunIndex &index) {
-    return insn->isAtomic();
+    if (isa<LoadInst>(insn) || isa<StoreInst>(insn) ||
+         isa<AtomicRMWInst>(insn) /*||
+        isa<InvokeInst>(insn)*/) {
+      return true;
+    }
+    return false;
   }
 
   void InsertYields(Function &F, const FunIndex &index) {
-    auto name = F.getName();
-    if (visited.find(name) != visited.end()) {
-      return;
-    }
-    visited[name] = true;
-
-    errs() << "insert yields to the " << F.getName() << "\n";
-
     Builder Builder(&*F.begin());
     for (auto &B : F) {
       for (auto it = B.begin(); std::next(it) != B.end(); ++it) {
@@ -77,25 +75,6 @@ struct YieldInserter {
           Builder.SetInsertPoint(&*std::next(it));
           Builder.CreateCall(CoroYieldF, {})->getIterator();
           ++it;
-        }
-      }
-    }
-
-    errs() << F << "\n";
-
-    for (auto &B : F) {
-      for (auto &I : B) {
-        if (auto call = dyn_cast<CallInst>(&I)) {
-          auto fun = call->getCalledFunction();
-          if (fun && !fun->isDeclaration()) {
-            InsertYields(*fun, index);
-          }
-        }
-        if (auto invoke = dyn_cast<InvokeInst>(&I)) {
-          auto fun = invoke->getCalledFunction();
-          if (fun && !fun->isDeclaration()) {
-            InsertYields(*fun, index);
-          }
         }
       }
     }
@@ -113,7 +92,6 @@ struct YieldInserter {
     return false;
   }
 
-  std::map<StringRef, bool> visited{};
   Module &M;
   FunctionCallee CoroYieldF;
 };
@@ -139,7 +117,7 @@ llvmGetPassPluginInfo() {
           .PluginName = "yield_insert",
           .PluginVersion = "v0.1",
           .RegisterPassBuilderCallbacks = [](PassBuilder &PB) {
-            PB.registerOptimizerLastEPCallback(
+            PB.registerPipelineStartEPCallback(
                 [](ModulePassManager &MPM, OptimizationLevel Level) {
                   MPM.addPass(YieldInsertPass());
                 });

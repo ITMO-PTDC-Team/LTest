@@ -21,7 +21,7 @@ struct Queue {
     return res;
   }
 
-  using method_t = std::function<int(Queue *l, void *args)>;
+  using method_t = std::function<value_wrapper(Queue *l, void *args)>;
   static auto GetMethods() {
     method_t push_func = [](Queue *l, void *args) -> int {
       auto real_args = reinterpret_cast<PushArgTuple *>(args);

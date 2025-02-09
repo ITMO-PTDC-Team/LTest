@@ -47,12 +47,12 @@ using ::testing::AnyNumber;
 using ::testing::Return;
 using ::testing::ReturnRefOfCopy;
 
-std::function<int(Counter*, void*)> fetch_and_add =
+std::function<value_wrapper(Counter*, void*)> fetch_and_add =
     [](Counter* c, [[maybe_unused]] void* args) {
       c->count += 1;
       return c->count - 1;
     };
-std::function<int(Counter*, void*)> get =
+std::function<value_wrapper(Counter*, void*)> get =
     [](Counter* c, [[maybe_unused]] void* args) { return c->count; };
 
 TEST(LinearizabilityCheckerCounterTest, SmallLinearizableHistory) {
@@ -235,7 +235,7 @@ std::string draw_history(const std::vector<HistoryEvent>& history) {
       Response response = std::get<Response>(event);
       history_string << "[" << numeration[response.GetTask()]
                      << " res: " << response.GetTask()->GetName()
-                     << " returned: " << response.GetTask()->GetRetVal()
+                     << " returned: " << to_string(response.GetTask()->GetRetVal())
                      << "]\n";
     }
   }

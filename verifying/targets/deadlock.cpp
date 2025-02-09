@@ -39,7 +39,7 @@ struct Test {
 
   Mutex mu1, mu2{};
 
-  using method_t = std::function<int(Test *t, void *args)>;
+  using method_t = std::function<value_wrapper(Test *t, void *args)>;
 
   static auto GetMethods() {
     method_t lock_func = [](Test *l, void *args) -> int {

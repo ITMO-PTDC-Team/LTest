@@ -3,6 +3,7 @@
 #include <functional>
 #include <numeric>
 
+#include "lib.h"
 #include "lincheck.h"
 
 // This is the simplest wg version, it doesn't contain any optimizations, it's
@@ -12,7 +13,7 @@ template <class LinearSpecificationObject,
           class SpecificationObjectEqual =
               std::equal_to<LinearSpecificationObject>>
 struct LinearizabilityCheckerRecursive : ModelChecker {
-  using Method = std::function<int(LinearSpecificationObject*, void*)>;
+  using Method = std::function<value_wrapper(LinearSpecificationObject*, void*)>;
   using MethodMap = std::map<MethodName, Method>;
 
   LinearizabilityCheckerRecursive() = delete;
@@ -94,7 +95,7 @@ bool LinearizabilityCheckerRecursive<
           data_structure_state;
       // state is already have been copied, because it's the argument of the
       // lambda
-      int res =
+      value_wrapper res =
           method(&data_structure_state_copy, minimal_op.GetTask()->GetArgs());
       // If invoke doesn't have a response we can't check the response
       if (inv_res.find(i) == inv_res.end()) {

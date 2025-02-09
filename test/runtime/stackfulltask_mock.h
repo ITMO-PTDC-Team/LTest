@@ -10,7 +10,7 @@ class MockTask : public CoroBase {
   MOCK_METHOD(Task, Restart, (void*), (override));
   MOCK_METHOD(void, Resume, (), ());
   MOCK_METHOD(bool, IsReturned, (), (const));
-  MOCK_METHOD(int, GetRetVal, (), (const, override));
+  MOCK_METHOD(value_wrapper, GetRetVal, (), (const, override));
   MOCK_METHOD(std::string_view, GetName, (), (const, override));
   MOCK_METHOD(std::vector<std::string>, GetStrArgs, (), (const, override));
   MOCK_METHOD(void*, GetArgs, (), (const, override));

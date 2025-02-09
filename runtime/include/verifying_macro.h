@@ -46,11 +46,8 @@ auto toStringArgs(std::shared_ptr<void> args) {
 }
 
 template <typename Ret, typename Target, typename... Args>
-struct TargetMethod;
-
-template <typename Target, typename... Args>
-struct TargetMethod<int, Target, Args...> {
-  using Method = std::function<int(Target *, Args...)>;
+struct TargetMethod{
+  using Method = std::function<value_wrapper(Target *, Args...)>;
   TargetMethod(std::string_view method_name,
                std::function<std::tuple<Args...>(size_t)> gen, Method method) {
     auto builder = [gen = std::move(gen), method_name,

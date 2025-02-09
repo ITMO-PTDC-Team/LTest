@@ -7,7 +7,7 @@ namespace spec {
 
 struct LinearRegister;
 
-using mutex_method_t = std::function<int(LinearRegister *l, void *)>;
+using mutex_method_t = std::function<value_wrapper(LinearRegister *l, void *)>;
 
 struct LinearRegister {
   int x = 0;

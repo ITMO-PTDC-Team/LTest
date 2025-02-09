@@ -31,7 +31,7 @@ void CoroBase::Resume() {
   this_coro.reset();
 }
 
-int CoroBase::GetRetVal() const {
+value_wrapper CoroBase::GetRetVal() const {
   assert(IsReturned());
   return ret;
 }

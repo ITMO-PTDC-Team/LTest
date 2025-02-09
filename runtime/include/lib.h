@@ -5,6 +5,7 @@
 #include <boost/context/fiber.hpp>
 #include <boost/context/fiber_fcontext.hpp>
 #include <cassert>
+#include "value_wrapper.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -55,7 +56,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   bool IsReturned() const;
 
   // Returns return value of the coroutine.
-  virtual int GetRetVal() const;
+  virtual value_wrapper GetRetVal() const;
 
   // Returns the name of the coroutine.
   virtual std::string_view GetName() const;
@@ -109,7 +110,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   friend class Coro;
 
   // Return value.
-  int ret{};
+  value_wrapper ret;
   // Is coroutine returned.
   bool is_returned{};
   // Futex state on which coroutine is blocked.
@@ -124,7 +125,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
 template <typename Target, typename... Args>
 struct Coro final : public CoroBase {
   // CoroF is a target class method.
-  using CoroF = std::function<int(Target*, Args...)>;
+  using CoroF = std::function<value_wrapper(Target*, Args...)>;
   // ArgsToStringF converts arguments to the strings for pretty printing.
   using ArgsToStringsF =
       std::function<std::vector<std::string>(std::shared_ptr<void>)>;

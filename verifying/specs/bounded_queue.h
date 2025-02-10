@@ -10,7 +10,7 @@ namespace spec {
 
 struct Queue;
 
-using method_t = std::function<int(Queue *l, void *)>;
+using method_t = std::function<value_wrapper(Queue *l, void *)>;
 
 const int size = 2;
 

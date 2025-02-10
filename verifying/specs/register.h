@@ -8,19 +8,19 @@ namespace spec {
 
 struct LinearRegister;
 
-using method_t = std::function<int(LinearRegister *l, void *)>;
+using method_t = std::function<value_wrapper(LinearRegister *l, void *)>;
 
 struct LinearRegister {
   int x = 0;
-  int add() {
+  void add() {
     ++x;
-    return 0;
   }
   int get() { return x; }
 
   static auto GetMethods() {
-    method_t add_func = [](LinearRegister *l, void *) -> int {
-      return l->add();
+    method_t add_func = [](LinearRegister *l, void *) {
+      l->add();
+      return VoidV;
     };
 
     method_t get_func = [](LinearRegister *l, void *) -> int {

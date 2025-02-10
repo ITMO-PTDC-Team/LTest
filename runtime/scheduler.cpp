@@ -6,12 +6,15 @@
 StrategyScheduler::StrategyScheduler(Strategy &sched_class,
                                      ModelChecker &checker,
                                      PrettyPrinter &pretty_printer,
-                                     size_t max_tasks, size_t max_rounds)
+                                     size_t max_tasks, size_t max_rounds,
+                                     verify_state_func valid,
+                                     bool no_extra_tasks)
     : strategy(sched_class),
       checker(checker),
       pretty_printer(pretty_printer),
       max_tasks(max_tasks),
-      max_rounds(max_rounds) {}
+      max_rounds(max_rounds),
+      no_extra_tasks(no_extra_tasks) {}
 
 Scheduler::Result StrategyScheduler::runRound() {
   // History of invoke and response events which is required for the checker
@@ -21,8 +24,8 @@ Scheduler::Result StrategyScheduler::runRound() {
 
   for (size_t finished_tasks = 0; finished_tasks < max_tasks;) {
     auto [next_task, is_new, thread_id] = strategy.Next();
-
-    // fill the sequential history
+    // TODO: how to revert a invalid task?
+    //  fill the sequential history
     if (is_new) {
       sequential_history.emplace_back(Invoke(next_task, thread_id));
     }

@@ -8,11 +8,6 @@
 namespace ltest {
 
 template <>
-std::string toString<int>(const int &a) {
-  return std::to_string(a);
-}
-
-template <>
 std::string toString<std::shared_ptr<Token>>(
     const std::shared_ptr<Token> &token) {
   return "token";
@@ -73,6 +68,7 @@ DEFINE_bool(
     "forbid scenarios that execute tasks with same name at all threads");
 DEFINE_string(strategy, GetLiteral(StrategyType::RR), "Strategy");
 DEFINE_string(weights, "", "comma-separated list of weights for threads");
+DEFINE_bool(no_extra_tasks, false, "Create only tasks which will be finished");
 
 // Extracts required opts, returns the rest of args.
 Opts parse_opts() {
@@ -92,6 +88,7 @@ Opts parse_opts() {
     }
   }
   opts.thread_weights = std::move(thread_weights);
+  opts.noExtraTasks = FLAGS_no_extra_tasks;
   return opts;
 }
 

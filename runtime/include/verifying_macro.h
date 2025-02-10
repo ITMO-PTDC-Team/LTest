@@ -23,6 +23,11 @@ namespace ltest {
 template <typename T>
 std::string toString(const T &a);
 
+template <typename T>
+std::string toString(const T &a) requires (std::is_integral_v<T>){
+  return std::to_string(a);
+}
+
 template <typename tuple_t, size_t... index>
 auto toStringListHelper(const tuple_t &t,
                         std::index_sequence<index...>) noexcept {

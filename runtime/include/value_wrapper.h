@@ -62,8 +62,9 @@ comp_func get_default_compator() {
   };
 }
 
-class Void {};
 }  // namespace value_wrapper_details
-static value_wrapper VoidV{value_wrapper_details::Void{},
+class Void {};
+
+static value_wrapper VoidV{Void{},
                            [](auto& a, auto& b) { return true; },
                            [](auto& a) { return "void"; }};

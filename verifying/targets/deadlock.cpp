@@ -1,10 +1,9 @@
 /**
- * ./verify.py build --src ./targets/deadlock.cpp
- * ./verify.py run -v --tasks 5 --strategy rr
- * ./verify.py run -v --tasks 5 --strategy random
+ * ./build/verifying/targets/deadlock -v --tasks 5 --strategy rr
+ * ./build/verifying/targets/deadlock -v --tasks 5 --strategy random
  *
  * It important to limit switches.
- * ./verify.py run -v --tasks 2 --strategy tla --rounds 100000 --switches 4
+ * ./build/verifying/targets/deadlock -v --tasks 2 --strategy tla --rounds 100000 --switches 4
  */
 #include <atomic>
 #include <cstring>

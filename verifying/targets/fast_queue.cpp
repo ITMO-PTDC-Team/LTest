@@ -1,6 +1,5 @@
 /**
- * ./verify.py build --src ./targets/fast_queue.cpp
- * ./verify.py run --strategy tla --tasks 4 --rounds 50000 --switches 1
+ * ./build/verifying/targets/fast_queue --strategy tla --tasks 4 --rounds 50000 --switches 1
  *
  */
 #include <atomic>

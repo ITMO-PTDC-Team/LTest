@@ -3,7 +3,6 @@
 #include <functional>
 #include <numeric>
 
-#include "lib.h"
 #include "lincheck.h"
 
 // This is the simplest wg version, it doesn't contain any optimizations, it's

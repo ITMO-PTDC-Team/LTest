@@ -2,6 +2,7 @@
 #include <gflags/gflags.h>
 
 #include <memory>
+#include <string_view>
 
 #include "lib.h"
 #include "lincheck_recursive.h"
@@ -21,14 +22,22 @@ enum StrategyType { RR, RND, TLA, PCT };
 
 constexpr const char *GetLiteral(StrategyType t);
 
+class DefaultArgumentValidation {
+ public:
+  static bool valid(void *seq_history, std::string_view func, void *arguments) {
+    return true;
+  }
+};
 template <class TargetObj, class LinearSpec,
           class LinearSpecHash = std::hash<LinearSpec>,
-          class LinearSpecEquals = std::equal_to<LinearSpec>>
+          class LinearSpecEquals = std::equal_to<LinearSpec>,
+          class ArgumentValidation = DefaultArgumentValidation>
 struct Spec {
   using target_obj_t = TargetObj;
   using linear_spec_t = LinearSpec;
   using linear_spec_hash_t = LinearSpecHash;
   using linear_spec_equals_t = LinearSpecEquals;
+  using argument_validation_t = ArgumentValidation;
 };
 
 struct Opts {
@@ -41,6 +50,7 @@ struct Opts {
   bool syscall_trap;
   StrategyType typ;
   std::vector<int> thread_weights;
+  bool noExtraTasks;
 };
 
 Opts parse_opts();
@@ -85,10 +95,11 @@ template <StrategyVerifier Verifier>
 struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
   StrategySchedulerWrapper(std::unique_ptr<Strategy<Verifier>> strategy,
                            ModelChecker &checker, PrettyPrinter &pretty_printer,
-                           size_t max_tasks, size_t max_rounds)
+                           size_t max_tasks, size_t max_rounds,
+                           verify_state_func valid, bool noExtraTasks)
       : strategy(std::move(strategy)),
         StrategyScheduler<Verifier>(*strategy.get(), checker, pretty_printer,
-                                    max_tasks, max_rounds) {};
+                                    max_tasks, max_rounds, std::move(valid), noExtraTasks)  {};
 
  private:
   std::unique_ptr<Strategy<Verifier>> strategy;
@@ -97,7 +108,8 @@ struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
 template <typename TargetObj, StrategyVerifier Verifier>
 std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
                                          std::vector<TaskBuilder> l,
-                                         PrettyPrinter &pretty_printer) {
+                                         PrettyPrinter &pretty_printer,
+                                         verify_state_func valid) {
   std::cout << "strategy = ";
   switch (opts.typ) {
     case RR:
@@ -105,14 +117,14 @@ std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
     case RND: {
       auto strategy = MakeStrategy<TargetObj, Verifier>(opts, std::move(l));
       auto scheduler = std::make_unique<StrategySchedulerWrapper<Verifier>>(
-          std::move(strategy), checker, pretty_printer, opts.tasks,
-          opts.rounds);
+          std::move(strategy), checker, pretty_printer, opts.tasks, opts.rounds,
+          std::move(valid), opts.noExtraTasks);
       return scheduler;
     }
     case TLA: {
       auto scheduler = std::make_unique<TLAScheduler<TargetObj>>(
           opts.tasks, opts.rounds, opts.threads, opts.switches, std::move(l),
-          checker, pretty_printer);
+          checker, pretty_printer, std::move(valid), opts.noExtraTasks);
       return scheduler;
     }
   }
@@ -154,7 +166,8 @@ int Run(int argc, char *argv[]) {
                      typename Spec::linear_spec_t{}};
 
   auto scheduler = MakeScheduler<typename Spec::target_obj_t, Verifier>(
-      checker, opts, std::move(task_builders), pretty_printer);
+      checker, opts, std::move(task_builders), pretty_printer,
+      &(Spec::argument_validation_t::valid));
   std::cout << "\n\n";
   std::cout.flush();
   return TrapRun(std::move(scheduler), pretty_printer);

@@ -1,6 +1,11 @@
 #pragma once
+#include <array>
 #include <limits>
+#include <map>
+#include <memory>
 #include <optional>
+#include <string_view>
+#include <tuple>
 #include <utility>
 
 #include "lib.h"
@@ -38,6 +43,8 @@ concept StrategyVerifier = requires(T a) {
   { a.Reset() } -> std::same_as<void>;
 };
 
+constexpr size_t argument_search_limit = 100;
+using verify_state_func = std::function<bool(void*, std::string_view, void*)>;
 // Strategy is the general strategy interface which decides which task
 // will be the next one it can be implemented by different strategies, such as:
 // randomized/tla/fair
@@ -70,7 +77,8 @@ struct StrategyScheduler : public Scheduler {
   // scheduler will end execution of the Run function
   StrategyScheduler(Strategy<Verifier>& sched_class, ModelChecker& checker,
                     PrettyPrinter& pretty_printer, size_t max_tasks,
-                    size_t max_rounds)
+                    size_t max_rounds, verify_state_func valid,
+                    bool noExtraTasks)
       : strategy(sched_class),
         checker(checker),
         pretty_printer(pretty_printer),
@@ -138,20 +146,25 @@ struct StrategyScheduler : public Scheduler {
   PrettyPrinter& pretty_printer;
   size_t max_tasks;
   size_t max_rounds;
+  verify_state_func valid;
+  bool no_extra_tasks;
 };
 
-// TLAScheduler generates all executions satisfying some conditions.
+// TLAScheduler generates all executions with arguments valid by valid function
 template <typename TargetObj>
 struct TLAScheduler : Scheduler {
   TLAScheduler(size_t max_tasks, size_t max_rounds, size_t threads_count,
                size_t max_switches, std::vector<TaskBuilder> constructors,
-               ModelChecker& checker, PrettyPrinter& pretty_printer)
+               ModelChecker& checker, PrettyPrinter& pretty_printer,
+               verify_state_func valid, bool noExtraTasks)
       : max_tasks{max_tasks},
         max_rounds{max_rounds},
         max_switches{max_switches},
         constructors{std::move(constructors)},
         checker{checker},
-        pretty_printer{pretty_printer} {
+        pretty_printer{pretty_printer},
+        valid(std::move(valid)),
+        started_tasks{noExtraTasks ? 0 : std::numeric_limits<size_t>::max()} {
     for (size_t i = 0; i < threads_count; ++i) {
       threads.emplace_back(Thread{
           .id = i,
@@ -295,6 +308,7 @@ struct TLAScheduler : Scheduler {
     }
     if (is_new) {
       // inv.
+      started_tasks--;
       sequential_history.pop_back();
     }
 
@@ -330,12 +344,27 @@ struct TLAScheduler : Scheduler {
       }
 
       all_parked = false;
+
+      if (started_tasks != std::numeric_limits<size_t>::max() &&
+          started_tasks == max_tasks) {
+        break;
+      }
       // Choose constructor to create task.
       for (size_t cons_num = 0; auto cons : constructors) {
         frame.is_new = true;
         auto size_before = tasks.size();
-        tasks.emplace_back(cons.Build(&state, i));
-
+        Task t;
+        size_t c = 0;
+        do {
+          t = cons.Build(&state, i);
+          assert(c < argument_search_limit);
+          c++;
+        } while (!valid(static_cast<void*>(&sequential_history), t->GetName(),
+                        t->GetArgs()));
+        tasks.emplace_back(t);
+        if (started_tasks != std::numeric_limits<size_t>::max()) {
+          started_tasks++;
+        }
         auto [is_over, res] = ResumeTask(frame, step, switches, thread, true);
         if (is_over || res.has_value()) {
           return {is_over, res};
@@ -351,7 +380,6 @@ struct TLAScheduler : Scheduler {
         ++cons_num;
       }
     }
-
     assert(!all_parked && "deadlock");
     frames.pop_back();
     return {false, {}};
@@ -365,6 +393,7 @@ struct TLAScheduler : Scheduler {
   ModelChecker& checker;
 
   // Running state.
+  size_t started_tasks{};
   size_t finished_tasks{};
   size_t finished_rounds{};
   TargetObj state{};
@@ -373,4 +402,5 @@ struct TLAScheduler : Scheduler {
   std::vector<size_t> thread_id_history;
   StableVector<Thread> threads;
   StableVector<Frame> frames;
+  verify_state_func valid;
 };

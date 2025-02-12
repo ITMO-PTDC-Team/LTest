@@ -25,7 +25,9 @@ struct RandomStrategy : PickStrategy<TargetObj> {
       }
       pick_weights.push_back(weights[i]);
     }
+
     assert(!pick_weights.empty() && "deadlock");
+
     auto thread_distribution =
         std::discrete_distribution<>(pick_weights.begin(), pick_weights.end());
     auto num = thread_distribution(PickStrategy<TargetObj>::rng);
@@ -38,7 +40,43 @@ struct RandomStrategy : PickStrategy<TargetObj> {
       }
       num--;
     }
-    assert(false && "oops");
+    assert(false && "Cannot pick thread to continue round generation");
+  }
+
+  size_t PickSchedule() override {
+    pick_weights.clear();
+    auto &threads = PickStrategy<TargetObj>::threads;
+
+    for (size_t i = 0; i < threads.size(); ++i) {
+      int task_index = this->GetNextTaskInThread(i);
+      if (
+        task_index == threads[i].size() ||
+        threads[i][task_index]->IsParked()
+      ) {
+        continue;
+      }
+      pick_weights.push_back(weights[i]);
+    }
+
+    assert(!pick_weights.empty() && "deadlock");
+
+    auto thread_distribution =
+        std::discrete_distribution<>(pick_weights.begin(), pick_weights.end());
+    auto num = thread_distribution(PickStrategy<TargetObj>::rng);
+    for (size_t i = 0; i < threads.size(); ++i) {
+      int task_index = this->GetNextTaskInThread(i);
+      if (
+        task_index == threads[i].size() ||
+        threads[i][task_index]->IsParked()
+      ) {
+        continue;
+      }
+      if (num == 0) {
+        return i;
+      }
+      num--;
+    }
+    assert(false && "Cannot pick thread to continue round scheduling");
   }
 
  private:

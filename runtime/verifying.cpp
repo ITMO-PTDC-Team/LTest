@@ -66,7 +66,9 @@ StrategyType FromLiteral(std::string &&a) {
 DEFINE_int32(threads, 2, "Number of threads");
 DEFINE_int32(tasks, 15, "Number of tasks");
 DEFINE_int32(switches, 100000000, "Number of switches");
-DEFINE_int32(rounds, 5, "Number of switches");
+DEFINE_int32(rounds, 5, "Number of rounds");
+DEFINE_int32(exploration_runs, 15, "Number of attempts to find nonlinearized round during each minimization step");
+DEFINE_int32(minimization_runs, 15, "Number of minimization runs for smart minimizor");
 DEFINE_bool(verbose, false, "Verbosity");
 DEFINE_bool(
     forbid_all_same, false,
@@ -82,6 +84,9 @@ Opts parse_opts() {
   opts.switches = FLAGS_switches;
   opts.rounds = FLAGS_rounds;
   opts.forbid_all_same = FLAGS_forbid_all_same;
+  opts.exploration_runs = FLAGS_exploration_runs;
+  opts.minimization_runs = FLAGS_minimization_runs;
+  opts.verbose = FLAGS_verbose;
   opts.typ = FromLiteral(std::move(FLAGS_strategy));
   std::vector<int> thread_weights;
   if (FLAGS_weights != "") {

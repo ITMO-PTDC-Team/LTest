@@ -7,6 +7,8 @@ set (SOURCE_FILES
         scheduler.cpp
         verifying.cpp 
         generators.cpp
+        minimization.cpp
+        minimization_smart.cpp
 )
 
 add_library(runtime STATIC ${SOURCE_FILES})

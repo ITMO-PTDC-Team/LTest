@@ -25,5 +25,22 @@ struct RoundRobinStrategy : PickStrategy<TargetObj> {
     assert(false && "deadlock");
   }
 
+  size_t PickSchedule() override {
+    auto &threads = PickStrategy<TargetObj>::threads;
+    for (size_t attempt = 0; attempt < threads.size(); ++attempt) {
+      auto cur = (next_task++) % threads.size();
+      int task_index = this->GetNextTaskInThread(cur);
+
+      if (
+        task_index == threads[cur].size() ||
+        threads[cur][task_index]->IsParked()
+      ) {
+        continue;
+      }
+      return cur;
+    }
+    assert(false && "deadlock");
+  }
+
   size_t next_task;
 };

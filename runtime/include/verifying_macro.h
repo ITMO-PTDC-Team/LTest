@@ -53,12 +53,12 @@ struct TargetMethod<int, Target, Args...> {
   using Method = std::function<int(Target *, Args...)>;
   TargetMethod(std::string_view method_name,
                std::function<std::tuple<Args...>(size_t)> gen, Method method) {
-    auto builder = [gen = std::move(gen), method_name,
-                    method = std::move(method)](void *this_ptr,
-                                                size_t thread_num) -> Task {
+    auto builder =
+        [gen = std::move(gen), method_name, method = std::move(method)](
+            void *this_ptr, size_t thread_num, int task_id) -> Task {
       auto args = std::shared_ptr<void>(new std::tuple(gen(thread_num)));
       auto coro = Coro<Target, Args...>::New(
-          method, this_ptr, args, &ltest::toStringArgs<Args...>, method_name);
+          method, this_ptr, args, &ltest::toStringArgs<Args...>, method_name, task_id);
       if (ltest::generators::generated_token) {
         coro->SetToken(ltest::generators::generated_token);
         ltest::generators::generated_token.reset();
@@ -87,13 +87,13 @@ struct TargetMethod<void, Target, Args...> {
 
   TargetMethod(std::string_view method_name,
                std::function<std::tuple<Args...>(size_t)> gen, Method method) {
-    auto builder = [gen = std::move(gen), method_name,
-                    method = std::move(method)](void *this_ptr,
-                                                size_t thread_num) -> Task {
+    auto builder =
+        [gen = std::move(gen), method_name, method = std::move(method)](
+            void *this_ptr, size_t thread_num, int task_id) -> Task {
       auto wrapper = Wrapper<Target, decltype(method), Args...>{method};
       auto args = std::shared_ptr<void>(new std::tuple(gen(thread_num)));
       auto coro = Coro<Target, Args...>::New(
-          wrapper, this_ptr, args, &ltest::toStringArgs<Args...>, method_name);
+          wrapper, this_ptr, args, &ltest::toStringArgs<Args...>, method_name, task_id);
       if (ltest::generators::generated_token) {
         coro->SetToken(ltest::generators::generated_token);
         ltest::generators::generated_token.reset();

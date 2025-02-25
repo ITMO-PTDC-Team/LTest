@@ -52,7 +52,7 @@ auto toStringArgs(std::shared_ptr<void> args) {
 
 template <typename Ret, typename Target, typename... Args>
 struct TargetMethod {
-  using Method = std::function<value_wrapper(Target *, Args...)>;
+  using Method = std::function<ValueWrapper(Target *, Args...)>;
   TargetMethod(std::string_view method_name,
                std::function<std::tuple<Args...>(size_t)> gen, Method method) {
     auto builder = [gen = std::move(gen), method_name,
@@ -83,7 +83,7 @@ struct TargetMethod<void, Target, Args...> {
                                                 size_t thread_num) -> Task {
       auto wrapper = [f = std::move(method)](void *this_ptr, Args &&...args) {
         f(reinterpret_cast<Target *>(this_ptr), std::forward<Args>(args)...);
-        return VoidV;
+        return void_v;
       };
       auto args = std::shared_ptr<void>(new std::tuple(gen(thread_num)));
       auto coro = Coro<Target, Args...>::New(

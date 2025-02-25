@@ -2,6 +2,7 @@
 #include <map>
 
 #include "include/lincheck.h"
+#include "value_wrapper.h"
 
 // get_inv_res_mapping returns map (invoke_index -> corresponding
 // response_index)
@@ -29,7 +30,7 @@ std::map<size_t, size_t> get_inv_res_mapping(
 Invoke::Invoke(const Task &task, int thread_id)
     : task(task), thread_id(thread_id) {}
 
-Response::Response(const Task &task, value_wrapper result, int thread_id)
+Response::Response(const Task &task, ValueWrapper result, int thread_id)
     : task(task), result(result), thread_id(thread_id) {}
 
 const Task &Invoke::GetTask() const { return this->task; }

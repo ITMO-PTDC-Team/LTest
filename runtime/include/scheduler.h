@@ -1,8 +1,6 @@
 #pragma once
-#include <array>
 #include <limits>
 #include <map>
-#include <memory>
 #include <optional>
 #include <string_view>
 #include <tuple>
@@ -77,8 +75,7 @@ struct StrategyScheduler : public Scheduler {
   // scheduler will end execution of the Run function
   StrategyScheduler(Strategy<Verifier>& sched_class, ModelChecker& checker,
                     PrettyPrinter& pretty_printer, size_t max_tasks,
-                    size_t max_rounds, verify_state_func valid,
-                    bool noExtraTasks)
+                    size_t max_rounds)
       : strategy(sched_class),
         checker(checker),
         pretty_printer(pretty_printer),
@@ -146,25 +143,20 @@ struct StrategyScheduler : public Scheduler {
   PrettyPrinter& pretty_printer;
   size_t max_tasks;
   size_t max_rounds;
-  verify_state_func valid;
-  bool no_extra_tasks;
 };
 
-// TLAScheduler generates all executions with arguments valid by valid function
+// TLAScheduler generates all executions satisfying some conditions.
 template <typename TargetObj>
 struct TLAScheduler : Scheduler {
   TLAScheduler(size_t max_tasks, size_t max_rounds, size_t threads_count,
-               size_t max_switches, std::vector<TaskBuilder> constructors,
-               ModelChecker& checker, PrettyPrinter& pretty_printer,
-               verify_state_func valid, bool noExtraTasks)
+               size_t max_switches, size_t max_depth, std::vector<TaskBuilder> constructors,
+               ModelChecker& checker, PrettyPrinter& pretty_printer)
       : max_tasks{max_tasks},
         max_rounds{max_rounds},
         max_switches{max_switches},
         constructors{std::move(constructors)},
         checker{checker},
-        pretty_printer{pretty_printer},
-        valid(std::move(valid)),
-        started_tasks{noExtraTasks ? 0 : std::numeric_limits<size_t>::max()} {
+        pretty_printer{pretty_printer}, max_depth(max_depth) {
     for (size_t i = 0; i < threads_count; ++i) {
       threads.emplace_back(Thread{
           .id = i,
@@ -308,7 +300,7 @@ struct TLAScheduler : Scheduler {
     }
     if (is_new) {
       // inv.
-      started_tasks--;
+      --started_tasks;
       sequential_history.pop_back();
     }
 
@@ -344,42 +336,30 @@ struct TLAScheduler : Scheduler {
       }
 
       all_parked = false;
-
-      if (started_tasks != std::numeric_limits<size_t>::max() &&
-          started_tasks == max_tasks) {
-        break;
-      }
       // Choose constructor to create task.
-      for (size_t cons_num = 0; auto cons : constructors) {
-        frame.is_new = true;
-        auto size_before = tasks.size();
-        Task t;
-        size_t c = 0;
-        do {
-          t = cons.Build(&state, i);
-          assert(c < argument_search_limit);
-          c++;
-        } while (!valid(static_cast<void*>(&sequential_history), t->GetName(),
-                        t->GetArgs()));
-        tasks.emplace_back(t);
-        if (started_tasks != std::numeric_limits<size_t>::max()) {
+      bool stop = started_tasks == max_tasks;
+      if (!stop && threads[i].tasks.size() < max_depth) {
+        for (auto cons : constructors) {
+          frame.is_new = true;
+          auto size_before = tasks.size();
+          tasks.emplace_back(cons.Build(&state, i));
           started_tasks++;
-        }
-        auto [is_over, res] = ResumeTask(frame, step, switches, thread, true);
-        if (is_over || res.has_value()) {
-          return {is_over, res};
-        }
+          auto [is_over, res] = ResumeTask(frame, step, switches, thread, true);
+          if (is_over || res.has_value()) {
+            return {is_over, res};
+          }
 
-        tasks.back()->Terminate();
-        tasks.pop_back();
-        auto size_after = thread.tasks.size();
-        assert(size_before == size_after);
-        // As we can't return to the past in coroutine, we need to replay all
-        // tasks from the beginning.
-        Replay(step);
-        ++cons_num;
+          tasks.back()->Terminate();
+          tasks.pop_back();
+          auto size_after = thread.tasks.size();
+          assert(size_before == size_after);
+          // As we can't return to the past in coroutine, we need to replay all
+          // tasks from the beginning.
+          Replay(step);
+        }
       }
     }
+
     assert(!all_parked && "deadlock");
     frames.pop_back();
     return {false, {}};
@@ -389,12 +369,14 @@ struct TLAScheduler : Scheduler {
   size_t max_tasks;
   size_t max_rounds;
   size_t max_switches;
+  size_t max_depth;
   std::vector<TaskBuilder> constructors;
   ModelChecker& checker;
 
   // Running state.
   size_t started_tasks{};
   size_t finished_tasks{};
+
   size_t finished_rounds{};
   TargetObj state{};
   std::vector<std::variant<Invoke, Response>> sequential_history;
@@ -402,5 +384,4 @@ struct TLAScheduler : Scheduler {
   std::vector<size_t> thread_id_history;
   StableVector<Thread> threads;
   StableVector<Frame> frames;
-  verify_state_func valid;
 };

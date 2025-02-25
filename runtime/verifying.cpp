@@ -58,25 +58,42 @@ StrategyType FromLiteral(std::string &&a) {
   }
 }
 
-DEFINE_int32(threads, 2, "Number of threads");
-DEFINE_int32(tasks, 15, "Number of tasks");
-DEFINE_int32(switches, 100000000, "Number of switches");
-DEFINE_int32(rounds, 5, "Number of switches");
+// These values will be anyway overwritten, so explicit are zeroed - for default
+// values see DefaultOptionOverride
+DEFINE_int32(threads, 0, "Number of threads");
+DEFINE_int32(tasks, 0,
+             "Number of tasks which will be started and finihsed in scenario");
+DEFINE_int32(switches, 0, "Number of switches");
+DEFINE_int32(rounds, 0, "Number of switches");
+DEFINE_int32(depth, 0, "How many tasks can be executed on one thread");
 DEFINE_bool(verbose, false, "Verbosity");
 DEFINE_bool(
     forbid_all_same, false,
     "forbid scenarios that execute tasks with same name at all threads");
-DEFINE_string(strategy, GetLiteral(StrategyType::RR), "Strategy");
+DEFINE_string(strategy, "", "Strategy");
 DEFINE_string(weights, "", "comma-separated list of weights for threads");
-DEFINE_bool(no_extra_tasks, false, "Create only tasks which will be finished");
+
+void SetOpts(const DefaultOptions &def) {
+  FLAGS_threads = def.threads;
+  FLAGS_tasks = def.tasks;
+  FLAGS_switches = def.switches;
+  FLAGS_rounds = def.rounds;
+  FLAGS_depth = def.depth;
+  FLAGS_verbose = def.verbose;
+  FLAGS_strategy = def.strategy;
+  FLAGS_forbid_all_same = def.forbid_all_same;
+  FLAGS_weights = def.weights;
+}
 
 // Extracts required opts, returns the rest of args.
-Opts parse_opts() {
+Opts ParseOpts() {
   auto opts = Opts();
   opts.threads = FLAGS_threads;
   opts.tasks = FLAGS_tasks;
   opts.switches = FLAGS_switches;
   opts.rounds = FLAGS_rounds;
+  opts.depth = FLAGS_depth;
+  opts.verbose = FLAGS_verbose;
   opts.forbid_all_same = FLAGS_forbid_all_same;
   opts.verbose = FLAGS_verbose;
   opts.typ = FromLiteral(std::move(FLAGS_strategy));
@@ -89,7 +106,6 @@ Opts parse_opts() {
     }
   }
   opts.thread_weights = std::move(thread_weights);
-  opts.noExtraTasks = FLAGS_no_extra_tasks;
   return opts;
 }
 

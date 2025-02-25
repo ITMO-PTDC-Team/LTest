@@ -3,11 +3,10 @@
 #include <any>
 #include <functional>
 #include <string>
-class value_wrapper;
+class ValueWrapper;
 
-using to_string_func = std::function<std::string(const value_wrapper&)>;
-using comp_func =
-    std::function<bool(const value_wrapper&, const value_wrapper&)>;
+using to_string_func = std::function<std::string(const ValueWrapper&)>;
+using comp_func = std::function<bool(const ValueWrapper&, const ValueWrapper&)>;
 
 namespace value_wrapper_details {
 template <typename T>
@@ -15,56 +14,57 @@ to_string_func get_default_to_string();
 template <typename T>
 comp_func get_default_compator();
 }  // namespace value_wrapper_details
-class value_wrapper {
-  std::any value;
-  comp_func compare;
-  to_string_func toStr;
+class ValueWrapper {
+  std::any value_;
+  comp_func compare_;
+  to_string_func to_str_;
 
  public:
-  value_wrapper() = default;
+  ValueWrapper() = default;
 
   template <typename T>
-  value_wrapper(
+  ValueWrapper(
       const T& t,
       const comp_func& cmp = value_wrapper_details::get_default_compator<T>(),
       const to_string_func& str =
           value_wrapper_details::get_default_to_string<T>())
-      : value(t), compare(cmp), toStr(str) {}
-  bool operator==(const value_wrapper& other) const {
-    return compare(*this, other);
+      : value_(t), compare_(cmp), to_str_(str) {}
+  bool operator==(const ValueWrapper& other) const {
+    return compare_(*this, other);
   }
-  friend std::string to_string(const value_wrapper& wrapper) {
-    return wrapper.toStr(wrapper);
+  friend std::string to_string(const ValueWrapper& wrapper) {
+    return wrapper.to_str_(wrapper);
   }
-  bool has_value() const { return value.has_value(); }
+  bool HasValue() const { return value_.has_value(); }
   template <typename T>
-  T get_value() const {
-    return std::any_cast<T>(value);
+  T GetValue() const {
+    return std::any_cast<T>(value_);
   }
 };
 namespace value_wrapper_details {
 template <typename T>
 to_string_func get_default_to_string() {
   using std::to_string;
-  return [](const value_wrapper& a) { return to_string(a.get_value<T>()); };
+  return [](const ValueWrapper& a) { return to_string(a.GetValue<T>()); };
 }
 
 template <typename T>
 comp_func get_default_compator() {
-  return [](const value_wrapper& a, const value_wrapper& b) {
-    if (a.has_value() != b.has_value()) {
+  return [](const ValueWrapper& a, const ValueWrapper& b) {
+    if (a.HasValue() != b.HasValue()) {
       return false;
     }
-    if ((!a.has_value() && !b.has_value())) {
+    if ((!a.HasValue() && !b.HasValue())) {
       return true;
     }
-    return a.get_value<T>() == b.get_value<T>();
+    auto l = a.GetValue<T>();
+    auto r = b.GetValue<T>();
+    return l == r;
   };
 }
 
 }  // namespace value_wrapper_details
 class Void {};
 
-static value_wrapper VoidV{Void{},
-                           [](auto& a, auto& b) { return true; },
+static ValueWrapper void_v{Void{}, [](auto& a, auto& b) { return true; },
                            [](auto& a) { return "void"; }};

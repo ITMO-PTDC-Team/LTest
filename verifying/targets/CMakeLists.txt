@@ -5,6 +5,7 @@ set (SOURCE_TARGET_LIST
     mutex_queue.cpp
     race_register.cpp
     nonlinear_queue.cpp
+    unique_args.cpp
 )
 
 foreach(source_name ${SOURCE_TARGET_LIST})

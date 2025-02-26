@@ -2,12 +2,13 @@
 #include <functional>
 #include <map>
 #include <string>
+#include "runtime/include/value_wrapper.h"
 
 namespace spec {
 
 struct LinearMutex;
 
-using mutex_method_t = std::function<int(LinearMutex *l, void *)>;
+using mutex_method_t = std::function<ValueWrapper(LinearMutex *l, void *)>;
 
 struct LinearMutex {
  private:

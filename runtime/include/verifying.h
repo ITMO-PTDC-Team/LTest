@@ -122,7 +122,7 @@ struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
                            size_t max_tasks, size_t max_rounds)
       : strategy(std::move(strategy)),
         StrategyScheduler<Verifier>(*strategy.get(), checker, pretty_printer,
-                                    max_tasks, max_rounds, std::move(valid), noExtraTasks)  {};
+                                    max_tasks, max_rounds)  {};
 
  private:
   std::unique_ptr<Strategy<Verifier>> strategy;

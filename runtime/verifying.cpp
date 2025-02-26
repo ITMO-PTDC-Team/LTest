@@ -65,7 +65,8 @@ DEFINE_int32(tasks, 0,
              "Number of tasks which will be started and finihsed in scenario");
 DEFINE_int32(switches, 0, "Number of switches");
 DEFINE_int32(rounds, 0, "Number of switches");
-DEFINE_int32(depth, 0, "How many tasks can be executed on one thread");
+DEFINE_int32(depth, 0,
+             "How many tasks can be executed on one thread(Only for TLA)");
 DEFINE_bool(verbose, false, "Verbosity");
 DEFINE_bool(
     forbid_all_same, false,

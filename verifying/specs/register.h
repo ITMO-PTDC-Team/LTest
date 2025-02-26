@@ -7,19 +7,19 @@ namespace spec {
 
 struct LinearRegister;
 
-using mutex_method_t = std::function<int(LinearRegister *l, void *)>;
+using mutex_method_t = std::function<ValueWrapper(LinearRegister *l, void *)>;
 
 struct LinearRegister {
   int x = 0;
-  int add() {
+  void add() {
     ++x;
-    return 0;
   }
   int get() { return x; }
 
   static auto GetMethods() {
-    mutex_method_t add_func = [](LinearRegister *l, void *) -> int {
-      return l->add();
+    mutex_method_t add_func = [](LinearRegister *l, void *) {
+      l->add();
+      return void_v;
     };
 
     mutex_method_t get_func = [](LinearRegister *l, void *) -> int {

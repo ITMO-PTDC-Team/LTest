@@ -10,7 +10,7 @@ namespace spec {
 
 struct Queue;
 
-using mutex_method_t = std::function<int(Queue *l, void *)>;
+using mutex_method_t = std::function<ValueWrapper(Queue *l, void *)>;
 
 const int size = 2;
 

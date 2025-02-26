@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <gflags/gflags.h>
 
 #include <memory>
@@ -21,29 +22,62 @@ enum StrategyType { RR, RND, TLA, PCT };
 
 constexpr const char *GetLiteral(StrategyType t);
 
+class DefaultOptionOverride;
+
 template <class TargetObj, class LinearSpec,
           class LinearSpecHash = std::hash<LinearSpec>,
-          class LinearSpecEquals = std::equal_to<LinearSpec>>
+          class LinearSpecEquals = std::equal_to<LinearSpec>,
+          class OptionsOverride = DefaultOptionOverride>
 struct Spec {
   using target_obj_t = TargetObj;
   using linear_spec_t = LinearSpec;
   using linear_spec_hash_t = LinearSpecHash;
   using linear_spec_equals_t = LinearSpecEquals;
+  using options_override_t = OptionsOverride;
 };
 
 struct Opts {
   size_t threads;
-  size_t forbid_all_same;
   size_t tasks;
   size_t switches;
   size_t rounds;
+  size_t depth;
+  bool forbid_all_same;
   bool verbose;
   bool syscall_trap;
   StrategyType typ;
   std::vector<int> thread_weights;
 };
 
-Opts parse_opts();
+struct DefaultOptions {
+  size_t threads;
+  size_t tasks;
+  size_t switches;
+  size_t rounds;
+  size_t depth;
+  bool forbid_all_same;
+  bool verbose;
+  const char *strategy;
+  const char *weights;
+};
+
+struct DefaultOptionOverride {
+  static DefaultOptions GetOptions() {
+    return {.threads = 2,
+            .tasks = 15,
+            .switches = 100000000,
+            .rounds = 5,
+            .depth = 5,
+            .forbid_all_same = false,
+            .verbose = false,
+            .strategy = "rr",
+            .weights = ""};
+  }
+};
+
+void SetOpts(const DefaultOptions &def);
+
+Opts ParseOpts();
 
 std::vector<std::string> split(const std::string &s, char delim);
 
@@ -88,7 +122,7 @@ struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
                            size_t max_tasks, size_t max_rounds)
       : strategy(std::move(strategy)),
         StrategyScheduler<Verifier>(*strategy.get(), checker, pretty_printer,
-                                    max_tasks, max_rounds) {};
+                                    max_tasks, max_rounds)  {};
 
  private:
   std::unique_ptr<Strategy<Verifier>> strategy;
@@ -105,14 +139,13 @@ std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
     case RND: {
       auto strategy = MakeStrategy<TargetObj, Verifier>(opts, std::move(l));
       auto scheduler = std::make_unique<StrategySchedulerWrapper<Verifier>>(
-          std::move(strategy), checker, pretty_printer, opts.tasks,
-          opts.rounds);
+          std::move(strategy), checker, pretty_printer, opts.tasks, opts.rounds);
       return scheduler;
     }
     case TLA: {
       auto scheduler = std::make_unique<TLAScheduler<TargetObj>>(
-          opts.tasks, opts.rounds, opts.threads, opts.switches, std::move(l),
-          checker, pretty_printer);
+          opts.tasks, opts.rounds, opts.threads, opts.switches, opts.depth,
+          std::move(l), checker, pretty_printer);
       return scheduler;
     }
   }
@@ -134,8 +167,10 @@ inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
 
 template <class Spec, StrategyVerifier Verifier = DefaultStrategyVerifier>
 int Run(int argc, char *argv[]) {
+  auto t = Spec::options_override_t::GetOptions();
+  SetOpts(Spec::options_override_t::GetOptions());
   gflags::ParseCommandLineFlags(&argc, &argv, true);
-  Opts opts = parse_opts();
+  Opts opts = ParseOpts();
 
   logger_init(opts.verbose);
   std::cout << "threads  = " << opts.threads << "\n";

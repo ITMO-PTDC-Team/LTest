@@ -26,9 +26,8 @@ hook(long syscall_number,
 		if (arg1 == FUTEX_WAIT_PRIVATE || arg1 == FUTEX_WAIT_BITSET_PRIVATE) {
 			this_coro->SetBlocked(arg0, arg2);
 		} else if (arg1 == FUTEX_WAKE_PRIVATE || arg1 == FUTEX_WAKE_BITSET_PRIVATE) {
-		
-		}
-		else {
+			debug(stderr, "caught wake\n");
+		} else {
 			assert(false && "unsupported futex call");
 		}
 		CoroYield();

@@ -56,6 +56,10 @@ class Mutex {
     return 0;
   }
 
+  void Release() {
+    locked_.store(0);
+  }
+
   void Reset() { locked_.store(0); }
 
  private:

@@ -3,12 +3,19 @@
 #include <gflags/gflags.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <stdexcept>
+#include <string>
 
 namespace ltest {
 
 template <>
 std::string toString<int>(const int &a) {
+  return std::to_string(a);
+}
+
+template <>
+std::string toString<size_t>(const size_t &a) {
   return std::to_string(a);
 }
 

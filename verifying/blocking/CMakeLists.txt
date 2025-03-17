@@ -7,6 +7,8 @@ set (SOURCE_TARGET_LIST
 set (FOLLY_SOURCE_TARGET_LIST
     folly_sharedmutex.cpp
     folly_rwspinlock.cpp
+    shared_mutexed_register.cpp
+    bank.cpp
 )
 
 foreach(source_name ${SOURCE_TARGET_LIST})

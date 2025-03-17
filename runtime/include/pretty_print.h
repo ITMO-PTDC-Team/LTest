@@ -38,7 +38,7 @@ struct PrettyPrinter {
       return get<1>(v).thread_id;
     };
 
-    int cell_width = 20;  // Up it if necessary. Enough for now.
+    int cell_width = 50;  // Up it if necessary. Enough for now.
 
     auto print_separator = [&out, this, cell_width]() {
       out << "*";

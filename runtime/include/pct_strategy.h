@@ -186,13 +186,26 @@ struct PctStrategy : Strategy<Verifier> {
     }
   }
 
+  template<ManualReleased T = TargetObj>
   void TerminateTasks() {
-    state.Reset();
-    for (auto& thread : threads) {
-      if (!thread.empty()) {
-        thread.back()->Terminate();
+    state.Release();
+    for (size_t i = 0; i < threads.size(); ++i) {
+      if (!threads[i].empty()) {
+        threads[i].back()->Terminate();
       }
     }
+    state.Reset();
+    this->sched_checker.Reset();
+  }
+
+  template<typename T = TargetObj>
+  void TerminateTasks() {
+    for (size_t i = 0; i < threads.size(); ++i) {
+      if (!threads[i].empty()) {
+        threads[i].back()->Terminate();
+      }
+    }
+    state.Reset();
     this->sched_checker.Reset();
   }
 

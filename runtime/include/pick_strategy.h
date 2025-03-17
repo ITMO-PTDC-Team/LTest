@@ -79,13 +79,26 @@ struct PickStrategy : Strategy<Verifier> {
   // We do it in a dangerous way: in random order.
   // Actually, we assume obstruction free here.
   // TODO: for non obstruction-free we need to take into account dependencies.
+  template<ManualReleased T = TargetObj>
   void TerminateTasks() {
-    state.Reset();
+    state.Release();
     for (size_t i = 0; i < threads.size(); ++i) {
       if (!threads[i].empty()) {
         threads[i].back()->Terminate();
       }
     }
+    state.Reset();
+    this->sched_checker.Reset();
+  }
+
+  template<typename T = TargetObj>
+  void TerminateTasks() {
+    for (size_t i = 0; i < threads.size(); ++i) {
+      if (!threads[i].empty()) {
+        threads[i].back()->Terminate();
+      }
+    }
+    state.Reset();
     this->sched_checker.Reset();
   }
 

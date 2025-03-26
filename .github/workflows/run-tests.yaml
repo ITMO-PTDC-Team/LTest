@@ -46,28 +46,16 @@ jobs:
           cmake --build build --target verifying/targets/nonlinear_queue verifying/blocking/nonlinear_mutex verifying/blocking/simple_mutex
       - name: Run nonlinear_queue with pct strategy
         run: |
-          ./build/verifying/targets/nonlinear_queue --strategy pct --tasks 10 --rounds 240
-          if [ $? -ne 1 ]; then 
-            exit 1
-          fi
+          ! ./build/verifying/targets/nonlinear_queue --strategy pct --tasks 10 --rounds 240
       - name: Run nonlinear_queue with random strategy
         run: |
-          ./build/verifying/targets/nonlinear_queue --rounds 10000 --strategy random --switches 1
-          if [ $? -ne 1 ]; then 
-            exit 1
-          fi
+          ! ./build/verifying/targets/nonlinear_queue --strategy random --rounds 10000 --switches 1
       - name: Run nonlinear_mutex with random strategy
         run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --threads 4 --strategy random
-          if [ $? -ne 1 ]; then 
-            exit 1
-          fi
+          ! LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy random --rounds 10000 --threads 4
       - name: Run nonlinear_mutex with pct strategy
         run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy pct --tasks 10 --rounds 1000
-          if [ $? -ne 1 ]; then 
-            exit 1
-          fi
+          ! LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy pct --tasks 10 --rounds 10000
   verifying-folly-test:
     runs-on: ubuntu-latest
     env:
@@ -106,13 +94,7 @@ jobs:
       - name: Run folly rwspinlock with random strategy
         run: |
           LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/folly_rwspinlock --strategy random
-          if [ $? -ne 0 ]; then
-            exit 1
-          fi
       - name: Run folly shared_mutex with random strategy
         run: |
           LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/folly_sharedmutex --strategy random
-          if [ $? -ne 0 ]; then
-            exit 1
-          fi
       

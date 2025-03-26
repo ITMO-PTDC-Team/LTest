@@ -103,7 +103,7 @@ jobs:
       - name: Build tests
         run: |
           cmake --build build --target verifying/targets/blocking/folly_rwspinlock verifying/targets/blocking/folly_sharedmutex
-      - name: Run folly shared_mutex with random strategy
+      - name: Run folly rwspinlock with random strategy
         run: |
           LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/folly_rwspinlock --strategy random || error_code=$?
           if [ "${error_code}" -ne 0 ]; then

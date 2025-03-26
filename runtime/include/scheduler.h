@@ -40,10 +40,9 @@ concept StrategyVerifier = requires(T a) {
 };
 
 template <typename T>
-concept ManualReleased = requires (T a) {
+concept ManualReleased = requires(T a) {
   { a.Release() } -> std::same_as<void>;
 };
-
 
 // Strategy is the general strategy interface which decides which task
 // will be the next one it can be implemented by different strategies, such as:

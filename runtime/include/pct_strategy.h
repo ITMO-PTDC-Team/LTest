@@ -186,7 +186,7 @@ struct PctStrategy : Strategy<Verifier> {
     }
   }
 
-  template<ManualReleased T = TargetObj>
+  template <ManualReleased T = TargetObj>
   void TerminateTasks() {
     state.Release();
     for (size_t i = 0; i < threads.size(); ++i) {
@@ -198,7 +198,7 @@ struct PctStrategy : Strategy<Verifier> {
     this->sched_checker.Reset();
   }
 
-  template<typename T = TargetObj>
+  template <typename T = TargetObj>
   void TerminateTasks() {
     for (size_t i = 0; i < threads.size(); ++i) {
       if (!threads[i].empty()) {

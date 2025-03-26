@@ -73,7 +73,7 @@ struct YieldInserter {
       return;
     }
     visited.insert(name);
-    
+
     Builder Builder(&*F.begin());
     for (auto &B : F) {
       for (auto it = B.begin(); std::next(it) != B.end(); ++it) {

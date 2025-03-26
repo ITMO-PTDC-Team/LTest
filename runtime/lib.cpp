@@ -1,17 +1,16 @@
 #include "include/lib.h"
 
 #include <cassert>
-#include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include "logger.h"
 #include "yield_guard.h"
 
 // See comments in the lib.h.
 Task this_coro{};
 
 boost::context::fiber_context sched_ctx;
-
-std::unordered_map<long, int> futex_state{};
 
 namespace ltest {
 std::vector<TaskBuilder> task_builders{};
@@ -24,6 +23,8 @@ void CoroBase::SetToken(std::shared_ptr<Token> token) { this->token = token; }
 void CoroBase::Resume() {
   this_coro = this->GetPtr();
   assert(!this_coro->IsReturned() && this_coro->ctx);
+  debug(stderr, "name: %s\n",
+        std::string(this_coro->GetPtr()->GetName()).c_str());
   boost::context::fiber_context([](boost::context::fiber_context&& ctx) {
     sched_ctx = std::move(ctx);
     this_coro->ctx = std::move(this_coro->ctx).resume();

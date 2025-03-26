@@ -104,7 +104,6 @@ struct StrategyScheduler : public Scheduler {
 
  private:
   Scheduler::Result runRound() {
-    ltest::YieldGuard guard{};
     // History of invoke and response events which is required for the checker
     std::vector<std::variant<Invoke, Response>> sequential_history;
     // Full history of the current execution in the Run function

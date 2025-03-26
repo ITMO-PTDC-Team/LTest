@@ -23,6 +23,7 @@ void CoroBase::SetToken(std::shared_ptr<Token> token) { this->token = token; }
 void CoroBase::Resume() {
   this_coro = this->GetPtr();
   assert(!this_coro->IsReturned() && this_coro->ctx);
+  ltest::YieldGuard guard{};
   debug(stderr, "name: %s\n",
         std::string(this_coro->GetPtr()->GetName()).c_str());
   boost::context::fiber_context([](boost::context::fiber_context&& ctx) {
@@ -56,6 +57,7 @@ extern "C" void CoroYield() {
     return;
   }
   assert(this_coro && sched_ctx);
+  debug(stderr, "Switch to %s\n", this_coro->GetName().data());
   boost::context::fiber_context([](boost::context::fiber_context&& ctx) {
     this_coro->ctx = std::move(ctx);
     return std::move(sched_ctx);

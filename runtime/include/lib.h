@@ -79,15 +79,23 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   struct FutexState {
     int* addr;
     int value;
+
+    /// Check that value stored by futex addr isn't changed
+    bool IsBlocked() { return addr && *addr == value; }
   };
 
-  inline void SetBlocked(long uaddr, int value) {
-    fstate = {reinterpret_cast<int*>(uaddr), value};
+  bool SetBlocked(long uaddr, int value) {
+    auto state = FutexState{reinterpret_cast<int*>(uaddr), value};
+    if (!state.IsBlocked()) {
+      fstate = FutexState{nullptr, 0};
+      return false;
+    }
+    fstate = state;
+    return true;
   }
 
-  inline bool IsBlocked() {
-    /// Check that value stored by futex addr isn't changed
-    bool is_blocked = fstate.addr && *fstate.addr == fstate.value;
+  bool IsBlocked() {
+    auto is_blocked = fstate.IsBlocked();
     if (!is_blocked) {
       fstate = FutexState{nullptr, 0};
     }

@@ -58,13 +58,13 @@ jobs:
           fi
       - name: Run nonlinear_mutex with random strategy
         run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy random || error_code=$?
+          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --threads 4 --strategy random || error_code=$?
           if [ "${error_code}" -ne 1 ]; then 
             exit 1
           fi
       - name: Run nonlinear_mutex with pct strategy
         run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy pct --tasks 10 --rounds 240 || error_code=$?
+          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy pct --tasks 10 --rounds 1000 || error_code=$?
           if [ "${error_code}" -ne 1 ]; then 
             exit 1
           fi
@@ -102,7 +102,7 @@ jobs:
           cmake --build folly/build_dir --target install
       - name: Build tests
         run: |
-          cmake --build build --target verifying/targets/blocking/folly_rwspinlock verifying/targets/blocking/folly_sharedmutex
+          cmake --build build --target verifying/blocking/folly_rwspinlock verifying/blocking/folly_sharedmutex
       - name: Run folly rwspinlock with random strategy
         run: |
           LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/folly_rwspinlock --strategy random || error_code=$?

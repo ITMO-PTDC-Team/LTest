@@ -22,15 +22,17 @@ hook(long syscall_number,
 		*result = 0;
 		return 0;
 	} else if (syscall_number == SYS_futex) {
-		debug(stderr, "caught futex(0x%lx, %ld, %ld)\n", (unsigned long)arg0, arg1, arg2);
+		debug(stderr, "caught futex(0x%lx, %ld), exp: %ld, cur: %d\n", (unsigned long)arg0, arg1, arg2, *((int*)arg0));
 		if (arg1 == FUTEX_WAIT_PRIVATE || arg1 == FUTEX_WAIT_BITSET_PRIVATE) {
-			this_coro->SetBlocked(arg0, arg2);
+			if (this_coro->SetBlocked(arg0, arg2)) {
+				CoroYield();
+			}
 		} else if (arg1 == FUTEX_WAKE_PRIVATE || arg1 == FUTEX_WAKE_BITSET_PRIVATE) {
 			debug(stderr, "caught wake\n");
+			CoroYield();
 		} else {
 			assert(false && "unsupported futex call");
 		}
-		CoroYield();
 		*result = 0;
 		return 0;
 	} else {

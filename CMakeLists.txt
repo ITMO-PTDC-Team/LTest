@@ -9,12 +9,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # TODO(kmitkin): require to understand, what is it considered to be "optimized" build
 # set(CMAKE_CXX_FLAGS_RELEASE "???")
-set(CMAKE_CXX_FLAGS_DEBUG "-DDEBUG -g -ggdb3 -O0 -fno-omit-frame-pointer")
 # set(CMAKE_CXX_FLAGS "-stdlib=libc++ ${CMAKE_CXX_FLAGS}")
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
     message(STATUS "Debug mode ON")
-    set(CMAKE_CXX_FLAGS_DEBUG "-DDEBUG ${CMAKE_CXX_FLAGS_DEBUG}")
+    set(CMAKE_CXX_FLAGS_DEBUG "-DDEBUG -g -ggdb3 -O0 -fno-omit-frame-pointer")
     set(CMAKE_WARN_FLAGS -Wall -Wextra -Werror -pedantic-errors)
     set(CMAKE_ASAN_FLAGS -fsanitize=address -fsanitize=undefined -DADDRESS_SANITIZER)
 endif(CMAKE_BUILD_TYPE MATCHES Debug)

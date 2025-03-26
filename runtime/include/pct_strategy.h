@@ -68,7 +68,7 @@ struct PctStrategy : Strategy<Verifier> {
       }
     }
 
-    assert((max != std::numeric_limits<size_t>::min(),
+    assert((max != std::numeric_limits<size_t>::min() &&
             "all threads are empty or parked"));
 
     // Check whether the priority change is required
@@ -81,7 +81,22 @@ struct PctStrategy : Strategy<Verifier> {
 
     if (threads[index_of_max].empty() ||
         threads[index_of_max].back()->IsReturned()) {
-      auto constructor = constructors.at(constructors_distribution(rng));
+      // a task has finished or the queue is empty, so we add a new task
+      std::shuffle(constructors.begin(), constructors.end(), rng);
+      size_t verified_constructor = -1;
+      for (size_t i = 0; i < constructors.size(); ++i) {
+        TaskBuilder constructor = constructors.at(i);
+        CreatedTaskMetaData next_task = {constructor.GetName(), true,
+                                         index_of_max};
+        if (this->sched_checker.Verify(next_task)) {
+          verified_constructor = i;
+          break;
+        }
+      }
+      if (verified_constructor == -1) {
+        assert(false && "Oops, possible deadlock or incorrect verifier\n");
+      }
+      auto constructor = constructors.at(verified_constructor);
       if (forbid_all_same) {
         auto names = CountNames(index_of_max);
         // TODO: выглядит непонятно и так себе

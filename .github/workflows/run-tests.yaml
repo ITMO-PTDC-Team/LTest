@@ -42,7 +42,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Build
         run: |
-          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --target verifying/targets/nonlinear_queue verifying/blocking/nonlinear_mutex verifying/blocking/simple_mutex
       - name: Run nonlinear_queue with pct strategy
         run: |
@@ -70,6 +70,8 @@ jobs:
           fi
   verifying-folly-test:
     runs-on: ubuntu-latest
+    env:
+      LTEST_BUILD_PATH: "/__w/LTest/LTest/build"
     defaults:
       run:
         shell: bash
@@ -89,10 +91,10 @@ jobs:
           cmake --build syscall_intercept/build --target install
       - name: Check out repository code
         uses: actions/checkout@v4
-      - name: Build plugin pass
+      - name: Build folly ltest dependencies
         run: |
-          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Debug
-          cmake --build build --target plugin_pass
+          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target plugin_pass runtime
       - name: Install folly
         run: |
           git clone --depth=1 https://github.com/Kirillog/folly.git && \

@@ -9,6 +9,7 @@ set (SOURCE_TARGET_LIST
 set (FOLLY_SOURCE_TARGET_LIST
     folly_sharedmutex.cpp
     folly_rwspinlock.cpp
+    folly_flatcombining_queue.cpp
 )
 
 foreach(source_name ${SOURCE_TARGET_LIST})
@@ -20,6 +21,6 @@ endforeach(source_name ${SOURCE_TARGET_LIST})
 foreach(source_name ${FOLLY_SOURCE_TARGET_LIST})
     get_filename_component(target ${source_name} NAME_WE)
     verify_target(${target})
-    target_link_libraries(${target} PRIVATE glog folly)
+    target_link_libraries(${target} PRIVATE glog folly double-conversion)
     add_dependencies(${target} preload)
 endforeach(source_name ${FOLLY_SOURCE_TARGET_LIST})

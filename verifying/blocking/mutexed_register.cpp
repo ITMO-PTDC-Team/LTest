@@ -5,7 +5,7 @@
 
 struct Register {
   non_atomic void add() {
-    std::lock_guard lock{m_};
+    while (!m_.try_lock()) {}
     ++x_;
   }
   non_atomic int get() {

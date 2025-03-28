@@ -2,13 +2,10 @@
 #include <deque>
 #include <functional>
 #include <map>
-#include <mutex>
-#include <random>
 #include <shared_mutex>
 #include <tuple>
 
 #include "runtime/include/verifying.h"
-#include "verifying/blocking/blocking_primitives.h"
 
 static constexpr size_t INIT = 100;
 static constexpr size_t SIZE = 2;
@@ -95,7 +92,7 @@ struct LinearBankEquals {
 class Bank {
  private:
   struct Cell {
-    safe_shared_mutex m;
+    std::shared_mutex m;
     int amount;
     Cell(int amount) : amount(amount) {}
   };

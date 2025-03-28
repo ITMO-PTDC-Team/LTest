@@ -1,5 +1,4 @@
 #include "clang/AST/ASTConsumer.h"
-#include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "clang/Rewrite/Frontend/FixItRewriter.h"
 #include "clang/AST/Expr.h"

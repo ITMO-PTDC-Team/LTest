@@ -7,7 +7,7 @@
 #include <iostream>
 #include <vector>
 
-#include "../specs/bounded_queue.h"
+#include "../specs/queue.h"
 
 template <typename T>
 struct Node {

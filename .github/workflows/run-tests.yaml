@@ -3,6 +3,7 @@ on:
   push:
   pull_request:
     branches: [ "master" ]
+
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
@@ -14,7 +15,7 @@ jobs:
       options: --user root
     steps:
       - name: Install deps
-        run: apt update && apt install -y git ninja-build valgrind libboost-context-dev libgflags-dev
+        run: apt update && apt install -y git ninja-build valgrind libboost-context-dev libgflags-dev libclang-19-dev
       - name: Check out repository code
         uses: actions/checkout@v4
       - name: Build
@@ -34,7 +35,7 @@ jobs:
     steps:
       - name: Install deps
         run: |
-          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev protobuf-compiler libboost-context-dev pkg-config libcapstone-dev && \
+          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev protobuf-compiler libboost-context-dev pkg-config libcapstone-dev libclang-19-dev && \
           git clone https://github.com/Kirillog/syscall_intercept.git &&  \
           cmake syscall_intercept -G Ninja -B syscall_intercept/build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang && \
           cmake --build syscall_intercept/build --target install
@@ -42,20 +43,9 @@ jobs:
         uses: actions/checkout@v4
       - name: Build
         run: |
-          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --target verifying/targets/nonlinear_queue verifying/blocking/nonlinear_mutex verifying/blocking/simple_mutex
-      - name: Run nonlinear_mutex with random strategy
-        run: |
-          ! LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy random --rounds 1000
-      - name: Run nonlinear_mutex with pct strategy
-        run: |
-          ! LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy pct ---rounds 1000
-      - name: Run simple_mutex with random strategy
-        run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy random
-      - name: Run simple_mutex with pct strategy
-        run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy pct --rounds 1000
+          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build --target verifying/targets/nonlinear_queue verifying/targets/nonlinear_ms_queue verifying/targets/nonlinear_treiber_stack verifying/targets/nonlinear_set verifying/blocking/nonlinear_mutex \
+              verifying/blocking/simple_mutex verifying/blocking/bank verifying/blocking/mutexed_register verifying/blocking/shared_mutexed_register
       - name: Run nonlinear_queue with random strategy
         run: |
           ! ./build/verifying/targets/nonlinear_queue --rounds 10000 --strategy random --switches 1
@@ -68,6 +58,36 @@ jobs:
       - name: Run nonlinear_queue with pct strategy (minimization)
         run: |
           ! ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy pct --minimize
+      - name: Run nonlinear_mutex with random strategy
+        run: |
+          ! LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy random --rounds 1000
+      - name: Run nonlinear_mutex with pct strategy
+        run: |
+          ! LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy pct --rounds 1000
+      - name: Run simple_mutex with random strategy
+        run: |
+          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy random --rounds 100
+      - name: Run simple_mutex with pct strategy
+        run: |
+          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy pct --rounds 100
+      - name: Run bank with pct strategy
+        run: |
+          ./build/verifying/blocking/bank --strategy pct --rounds 100
+      - name: Run bank with random strategy
+        run: |
+          ./build/verifying/blocking/bank --strategy random --rounds 100
+      - name: Run shared_mutexed_register with pct strategy
+        run: |
+          ./build/verifying/blocking/shared_mutexed_register --strategy pct --rounds 100
+      - name: Run shared_mutexed_register with random strategy
+        run: |
+          ./build/verifying/blocking/shared_mutexed_register --strategy random --rounds 100
+      - name: Run mutexed_register with pct strategy
+        run: |
+          ./build/verifying/blocking/mutexed_register --strategy pct --rounds 100
+      - name: Run mutexed_register with random strategy
+        run: |
+          ./build/verifying/blocking/mutexed_register --strategy random --rounds 100
   verifying-test-release:
     runs-on: ubuntu-latest
     defaults:
@@ -79,7 +99,7 @@ jobs:
     steps:
       - name: Install deps
         run: |
-          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev protobuf-compiler libboost-context-dev pkg-config libcapstone-dev && \
+          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev protobuf-compiler libboost-context-dev pkg-config libcapstone-dev libclang-19-dev && \
           git clone https://github.com/Kirillog/syscall_intercept.git &&  \
           cmake syscall_intercept -G Ninja -B syscall_intercept/build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang && \
           cmake --build syscall_intercept/build --target install
@@ -88,7 +108,8 @@ jobs:
       - name: Build
         run: |
           cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --target verifying/targets/nonlinear_queue verifying/targets/nonlinear_ms_queue verifying/targets/nonlinear_treiber_stack verifying/targets/nonlinear_set verifying/blocking/nonlinear_mutex verifying/blocking/simple_mutex
+          cmake --build build --target verifying/targets/nonlinear_queue verifying/targets/nonlinear_ms_queue verifying/targets/nonlinear_treiber_stack verifying/targets/nonlinear_set verifying/blocking/nonlinear_mutex \
+              verifying/blocking/simple_mutex verifying/blocking/bank verifying/blocking/mutexed_register verifying/blocking/shared_mutexed_register
       - name: Run nonlinear_queue with random strategy (minimization)
         run: |
           ! ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy random --minimize
@@ -113,7 +134,6 @@ jobs:
       - name: Run nonlinear_set with pct strategy (minimization)
         run: |
           ! ./build/verifying/targets/nonlinear_set --tasks 40 --rounds 200000 --strategy pct --minimize
-            - name: Run nonlinear_mutex with random strategy
       - name: Run nonlinear_mutex with random strategy
         run: |
           ! LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy random --rounds 10000
@@ -126,7 +146,25 @@ jobs:
       - name: Run simple_mutex with pct strategy
         run: |
           LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy pct --rounds 1000
-  verifying-folly-test:
+      - name: Run bank with pct strategy
+        run: |
+          ./build/verifying/blocking/bank --strategy pct --rounds 1000
+      - name: Run bank with random strategy
+        run: |
+          ./build/verifying/blocking/bank --strategy random --rounds 1000
+      - name: Run shared_mutexed_register with pct strategy
+        run: |
+          ./build/verifying/blocking/shared_mutexed_register --strategy pct --rounds 1000
+      - name: Run shared_mutexed_register with random strategy
+        run: |
+          ./build/verifying/blocking/shared_mutexed_register --strategy random --rounds 1000
+      - name: Run mutexed_register with pct strategy
+        run: |
+          ./build/verifying/blocking/mutexed_register --strategy pct --rounds 1000
+      - name: Run mutexed_register with random strategy
+        run: |
+          ./build/verifying/blocking/mutexed_register --strategy random --rounds 1000
+  verifying-folly-release:
     runs-on: ubuntu-latest
     env:
       LTEST_BUILD_PATH: "/__w/LTest/LTest/build"
@@ -139,7 +177,7 @@ jobs:
     steps:
       - name: Install deps
         run: |
-          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev \
+          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev libclang-19-dev \
                     protobuf-compiler libboost-context-dev pkg-config libcapstone-dev \
                     libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev \
                     libdouble-conversion-dev libfast-float-dev libevent-dev libssl-dev libfmt-dev \
@@ -160,11 +198,16 @@ jobs:
           cmake --build folly/build_dir --target install
       - name: Build tests
         run: |
-          cmake --build build --target verifying/blocking/folly_rwspinlock verifying/blocking/folly_sharedmutex
+          cmake --build build --target verifying/blocking/folly_rwspinlock verifying/blocking/folly_sharedmutex \
+            verifying/blocking/folly_flatcombining_queue
       - name: Run folly rwspinlock with random strategy
         run: |
           LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/folly_rwspinlock --strategy random
       - name: Run folly shared_mutex with random strategy
         run: |
           LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/folly_sharedmutex --strategy random
+      - name: Run folly flatcombining queue with pct strategy
+        run: |
+          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/folly_flatcombining_queue --strategy pct
+
       

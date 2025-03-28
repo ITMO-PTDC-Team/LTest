@@ -47,7 +47,7 @@ auto generateInt(size_t unused_param) {
 
 // Specify target structure and it's sequential specification.
 using spec_t =
-    ltest::Spec<Queue, spec::Queue<>, spec::QueueHash<>, spec::QueueEquals<>>;
+    ltest::Spec<Queue, spec::Queue, spec::QueueHash, spec::QueueEquals>;
 
 LTEST_ENTRYPOINT(spec_t);
 

@@ -13,53 +13,7 @@ using namespace clang;
 using namespace ast_matchers;
 using namespace llvm;
 
-
-//-----------------------------------------------------------------------------
-// ASTFinder callback
-//-----------------------------------------------------------------------------
-class CodeRefactorMatcher : public clang::ast_matchers::MatchFinder::MatchCallback {
-public:
-	explicit CodeRefactorMatcher(
-		ASTContext& Context,
-		clang::Rewriter &RewriterForCodeRefactor,
-		std::vector<std::string> NamesToReplace,
-		std::vector<std::string> NamesToInsert
-	);
-	
-	void onEndOfTranslationUnit() override;
-	void run(const clang::ast_matchers::MatchFinder::MatchResult &Result) override;
-	std::string GetArgumentsFromTemplateType(const TemplateSpecializationType *TST);
-
-private:
-	ASTContext& Context;
-	clang::Rewriter CodeRefactorRewriter;
-  std::vector<std::string> NamesToReplace;
-  std::vector<std::string> NamesToInsert;
-
-	std::string getSourceRangeAsString(const SourceRange& SR) const;
-};
-
-//-----------------------------------------------------------------------------
-// ASTConsumer
-//-----------------------------------------------------------------------------
-class CodeRefactorASTConsumer : public clang::ASTConsumer {
-public:
-	CodeRefactorASTConsumer(
-		ASTContext& Context,
-		clang::Rewriter &R,
-		std::vector<std::string> NamesToReplace,
-		std::vector<std::string> NamesToInsert
-	);
-
-	void HandleTranslationUnit(clang::ASTContext &Ctx) override;
-
-private:
-	clang::ast_matchers::MatchFinder Finder;
-	CodeRefactorMatcher CodeRefactorHandler;
-
-	std::vector<std::string> NamesToReplace;
-	std::vector<std::string> NamesToInsert;
-};
+namespace replace_pass {
 
 struct TypeName {
   
@@ -67,7 +21,7 @@ struct TypeName {
     TemplateName, SimpleName
   };
 
-  static int of(std::string name) {
+  static int of(std::string_view name) {
     if (name == "::std::mutex"
       || name == "::std::shared_mutex") {
       return TypeName::SimpleName;
@@ -80,16 +34,67 @@ struct TypeName {
 };
 
 
+struct ReplacePair {
+  std::string old_name;
+  std::string new_name;
+};
+
+//-----------------------------------------------------------------------------
+// ASTFinder callback
+//-----------------------------------------------------------------------------
+class CodeRefactorMatcher : public clang::ast_matchers::MatchFinder::MatchCallback {
+public:
+  using MatchResult = clang::ast_matchers::MatchFinder::MatchResult;
+
+	explicit CodeRefactorMatcher(
+		ASTContext& Context,
+		clang::Rewriter &RewriterForCodeRefactor,
+    std::vector<ReplacePair> Names
+	);
+	
+	void run(const MatchResult &Result) override;
+	std::string GetArgumentsFromTemplateType(const TemplateSpecializationType *TST);
+
+private:
+
+  void runFor(const ReplacePair &p, const MatchResult &Result);
+	std::string getSourceRangeAsString(const SourceRange& SR) const;
+
+private:
+	ASTContext& Context;
+	clang::Rewriter& CodeRefactorRewriter;
+  std::vector<ReplacePair> Names;
+};
+
+//-----------------------------------------------------------------------------
+// ASTConsumer
+//-----------------------------------------------------------------------------
+class CodeRefactorASTConsumer : public clang::ASTConsumer {
+public:
+	CodeRefactorASTConsumer(
+		ASTContext& Context,
+		clang::Rewriter &R,
+    std::vector<ReplacePair> Names
+	);
+
+	void HandleTranslationUnit(clang::ASTContext &Ctx) override;
+
+private:
+	clang::ast_matchers::MatchFinder Finder;
+	CodeRefactorMatcher CodeRefactorHandler;
+  clang::Rewriter& Rewriter;
+
+  std::vector<ReplacePair> Names;
+};
+
 class NameMatcherFactory {
 	using ClangMatcher = ::clang::ast_matchers::internal::BindableMatcher<TypeLoc> ;
 
 public:
-	NameMatcherFactory() {
-
-	}
+	NameMatcherFactory() {}
 
   // Does not support matching the parameters of the functions
-	ClangMatcher CreateMatcherFor(std::string name) {
+	ClangMatcher CreateMatcherFor(std::string_view name) {
     switch (TypeName::of(name)) {
       case TypeName::SimpleName: {
         return CreateSimpleMatcherFor(name);
@@ -100,7 +105,7 @@ public:
     };
 	}
 
-  ClangMatcher CreateSimpleMatcherFor(std::string name) {
+  ClangMatcher CreateSimpleMatcherFor(std::string_view name) {
     return elaboratedTypeLoc(
       hasNamedTypeLoc(internal::BindableMatcher<TypeLoc>(
         new internal::TypeLocTypeMatcher((
@@ -112,7 +117,7 @@ public:
     );
   }
 
-	ClangMatcher CreateTemplateMatcherFor(std::string name) {
+	ClangMatcher CreateTemplateMatcherFor(std::string_view name) {
     return elaboratedTypeLoc(
       hasNamedTypeLoc(
         loc(
@@ -128,3 +133,4 @@ public:
     );
 	}
 };
+}

@@ -7,6 +7,8 @@ set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(APPLY_CLANG_TOOL ON)
+
 # TODO(kmitkin): require to understand, what is it considered to be "optimized" build
 # set(CMAKE_CXX_FLAGS_RELEASE "???")
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -24,6 +26,7 @@ include(GoogleTest)
 fuzztest_setup_fuzzing_flags()
 enable_testing()
 
+add_subdirectory(clangpass)
 add_subdirectory(codegen)
 add_subdirectory(runtime)
 

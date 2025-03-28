@@ -3,15 +3,14 @@
 #include <shared_mutex>
 
 #include "../specs/register.h"
-#include "blocking_primitives.h"
-#include "runtime/include/lib.h"
+#include "runtime/include/blocking_primitives.h"
 #include "runtime/include/verifying.h"
 #include "runtime/include/verifying_macro.h"
 
 struct MutexedRegister {
  private:
   int x{};
-  safe_shared_mutex m{};
+  ltest::shared_mutex m{};
 
  public:
   non_atomic int add() {

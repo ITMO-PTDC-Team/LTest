@@ -13,9 +13,9 @@
 // License: The Unlicense
 //==============================================================================
 #include <clang/Basic/Diagnostic.h>
+#include <clang/Rewrite/Core/Rewriter.h>
 #include <clang/Tooling/Refactoring/Rename/RenamingAction.h>
 #include <clang/Tooling/Refactoring/Rename/USRFindingAction.h>
-#include <iostream>
 #include "clangpass.h"
 
 #include "clang/Frontend/CompilerInstance.h"
@@ -24,27 +24,38 @@
 #include "llvm/Support/CommandLine.h"
 
 using namespace clang;
+using namespace replace_pass;
 
 //===----------------------------------------------------------------------===//
 // Command line options
 //===----------------------------------------------------------------------===//
 static cl::OptionCategory CodeRefactorCategory("atomics-replacer options");
 
-// TODO: make the prefix (e.g. `__tmp_`source.cpp) a external parameter as well
-static cl::list<std::string> ClassNameToReplaceOpt{
+static cl::opt<std::string> TemporaryPrefix{
+  "temp-prefix",
+  cl::desc("Prefix for temporary files"),
+  cl::init("__tmp_"), 
+  cl::cat(CodeRefactorCategory)
+};
+static cl::list<std::string> ClassNamesToReplace{
   "replace-names",
   cl::desc("Names of the classes/structs which usages should be renamed"),
-  cl::OneOrMore, cl::cat(CodeRefactorCategory)};
-static cl::list<std::string> ClassNameToInsertOpt{
-  "insert-names", cl::desc("Names of the classes/structs which should be used instead"),
-  cl::OneOrMore, cl::cat(CodeRefactorCategory)};
+  cl::OneOrMore,
+  cl::CommaSeparated,
+  cl::cat(CodeRefactorCategory)};
+static cl::list<std::string> ClassNamesToInsert{
+  "insert-names",
+  cl::desc("Names of the classes/structs which should be used instead"),
+  cl::OneOrMore, 
+  cl::CommaSeparated,
+  cl::cat(CodeRefactorCategory)};
 
 //===----------------------------------------------------------------------===//
 // PluginASTAction
 //===----------------------------------------------------------------------===//
 class CodeRefactorPluginAction : public PluginASTAction {
 public:
-  explicit CodeRefactorPluginAction() {};
+  explicit CodeRefactorPluginAction() {}
   // Not used
   bool ParseArgs(
     const CompilerInstance &CI,
@@ -57,36 +68,22 @@ public:
     CompilerInstance &CI,
     StringRef file
   ) override {
-    RewriterForCodeRefactor.setSourceMgr(
-      CI.getSourceManager(),
-      CI.getLangOpts()
-    );
+    RewriterForCodeRefactor.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
+
+    std::vector<ReplacePair> pairs;
+    pairs.reserve(ClassNamesToReplace.size());
+    for (int i = 0; i < ClassNamesToReplace.size(); ++i) {
+      pairs.emplace_back(ClassNamesToReplace[i], ClassNamesToInsert[i]);
+    }
+
     return std::make_unique<CodeRefactorASTConsumer>(
-      CI.getASTContext(), RewriterForCodeRefactor, 
-      std::vector<std::string>(ClassNameToReplaceOpt.begin(), ClassNameToReplaceOpt.end()), ClassNameToInsertOpt);
+      CI.getASTContext(), RewriterForCodeRefactor, pairs);
   }
 
 private:
   Rewriter RewriterForCodeRefactor;
 };
 
-
-class MyDiagnosticConsumer : public DiagnosticConsumer {
-  public:
-      void HandleDiagnostic(DiagnosticsEngine::Level Level,
-                           const Diagnostic &Info) override {
-          // Custom handling of diagnostics
-          llvm::SmallString<100> OutStr;
-          Info.FormatDiagnostic(OutStr);
-          llvm::errs() << "MyConsumer: " << OutStr << "\n";
-      }
-      
-      // Optional: Override to be informed when a source file is processed
-      void clear() override { /* ... */ }
-      
-      // Optional: Override to control diagnostic output
-      bool IncludeInDiagnosticCounts() const override { return true; }
-  };
 
 //===----------------------------------------------------------------------===//
 // Main driver code.
@@ -104,94 +101,12 @@ int main(int Argc, const char **Argv) {
     return EXIT_FAILURE;
   }
 
-  auto Files = eOptParser->getSourcePathList();
   clang::tooling::RefactoringTool Tool(
     eOptParser->getCompilations(),
     eOptParser->getSourcePathList()
   );
-  tooling::USRFindingAction FindingAction({}, ClassNameToReplaceOpt, false);
-  Tool.run(tooling::newFrontendActionFactory(&FindingAction).get());
-  const std::vector<std::vector<std::string>> &USRList =
-      FindingAction.getUSRList();
-  const std::vector<std::string> &PrevNames = FindingAction.getUSRSpellings();
-  if (FindingAction.errorOccurred()) {
-    // Diagnostics are already issued at this point.
-    return 1;
-  }
 
-  for (auto i = 0; i < Files.size(); ++i) {
-    std::cerr << "FILE: " << Files[i] << "\n";
-  }
+  return Tool.run(clang::tooling::newFrontendActionFactory<CodeRefactorPluginAction>()
+  .get());
 
-  for (auto i = 0; i < USRList.size(); ++i) {
-    for (auto j : USRList[i]) {
-      std::cerr << j << "\n";
-    }
-  }
-
-  // Perform the renaming.
-  tooling::RenamingAction RenameAction(ClassNameToInsertOpt, PrevNames, USRList,
-                                       Tool.getReplacements(), true);
-  std::unique_ptr<tooling::FrontendActionFactory> Factory =
-      tooling::newFrontendActionFactory(&RenameAction);
-  int ExitCode = Tool.run(Factory.get());
-
-  // Write every file to stdout. Right now we just barf the files without any
-    // indication of which files start where, other than that we print the files
-    // in the same order we see them.
-    LangOptions DefaultLangOptions;
-    IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts = new DiagnosticOptions();
-    IgnoringDiagConsumer DiagnosticConsumer;
-    DiagnosticsEngine Diagnostics(
-        IntrusiveRefCntPtr<DiagnosticIDs>(new DiagnosticIDs()), &*DiagOpts,
-        &DiagnosticConsumer, false);
-    auto &FileMgr = Tool.getFiles();
-    SourceManager Sources(Diagnostics, FileMgr);
-    Rewriter Rewrite(Sources, DefaultLangOptions);
-
-    Tool.applyAllReplacements(Rewrite);
-    for (const auto &File : Files) {
-      auto EntryRef = FileMgr.getFileRef(File);
-      const auto ID = Sources.getOrCreateFileID(*EntryRef, SrcMgr::C_User);
-      // Rewrite.getEditBuffer(ID).write(outs());
-      const RewriteBuffer& Buffer = Rewrite.getEditBuffer(ID);
-
-      // Output to stdout
-      llvm::outs() << "Transformed code:\n";
-      Buffer.write(llvm::outs());
-      llvm::outs() << "\n";
-
-      // Output to file
-      const FileEntry *Entry = Sources.getFileEntryForID(ID);
-      StringRef OriginalFilename = Entry->tryGetRealPathName();
-
-      size_t slashIndex = OriginalFilename.rfind("/");
-      // the path should be absolute, so in the worst case we will get '/' as index 0
-      assert(slashIndex != std::string::npos);
-      slashIndex += 1; // include the '/' itself
-
-      std::string Path = std::string(OriginalFilename.begin(), OriginalFilename.begin() + slashIndex);
-      std::string SourceFilename = std::string(OriginalFilename.begin() + slashIndex, OriginalFilename.end());
-
-      llvm::outs() << "Original filename: " << OriginalFilename << "\n";
-      std::string OutputFilename = Path + "__tmp_" + SourceFilename;
-
-      std::error_code EC;
-      llvm::raw_fd_ostream OS(OutputFilename, EC, llvm::sys::fs::OF_None);
-      
-      if (EC) {
-        llvm::errs() << "Error: Could not open output file: " << EC.message() << "\n";
-        return EC.value();
-      }
-
-      llvm::outs() << "Writing to file: " << OutputFilename << "\n";
-      //OS << std::string(Buffer->begin(), Buffer->end());
-      Buffer.write(OS);
-      OS.close();
-    }
-
-  return ExitCode;
-
-
-  // return Tool.run(clang::tooling::newFrontendActionFactory<CodeRefactorPluginAction>().get());
 }

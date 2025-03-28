@@ -34,6 +34,8 @@ struct Queue {
     for (int i = 0; i < N; ++i) a[i].store(0);
   }
 
+  std::mutex m_;
+
   std::atomic<int> a[N];
   std::atomic<int> head{};
 };

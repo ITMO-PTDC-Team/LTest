@@ -1,7 +1,6 @@
 #pragma once
 #include "lib.h"
 
-namespace std {
 
 namespace ltest {
 
@@ -54,6 +53,4 @@ namespace ltest {
       int locked{0};
       long locked_addr{reinterpret_cast<long>(&locked)};
   };
-}
-
 }

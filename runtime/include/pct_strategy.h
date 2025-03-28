@@ -80,15 +80,16 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       count_chosen_same = 1;
     }
 
-    //TODO: Choose constant better
+    // TODO: Choose constant better
     if (count_chosen_same == 100) {
-      assert(snd_max != std::numeric_limits<size_t>::min() && "possible livelock");
+      assert(snd_max != std::numeric_limits<size_t>::min() &&
+             "possible livelock");
       priorities[index_of_max] = snd_max - 1;
       index_of_max = index_of_snd_max;
     }
 
     assert(max != std::numeric_limits<size_t>::min() &&
-            "all threads are empty or blocked");
+           "all threads are empty or blocked");
 
     // Check whether the priority change is required
     current_schedule_length++;
@@ -261,7 +262,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   size_t threads_count;
   size_t current_depth;
   size_t current_schedule_length;
-  // NOTE(kmitkin): added for livelock avoiding in spinlocks (read more in original article)
+  // NOTE(kmitkin): added for livelock avoiding in spinlocks (read more in
+  // original article)
   size_t count_chosen_same;
   size_t last_chosen;
   std::vector<ssize_t> priorities;

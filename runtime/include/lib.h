@@ -87,9 +87,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
 
   virtual ~CoroBase();
 
-  boost::context::fiber_context& GetCtx() {
-    return ctx;
-  }
+  boost::context::fiber_context& GetCtx() { return ctx; }
 
  protected:
   CoroBase() = default;

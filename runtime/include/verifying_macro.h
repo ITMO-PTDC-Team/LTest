@@ -18,7 +18,7 @@ extern std::vector<TaskBuilder> task_builders;
 // Tell that the function need to be converted to the coroutine.
 #define non_atomic attr(ltest_nonatomic)
 // Tell that the function must not contain interleavings.
-#define atomic attr(ltest_atomic)
+#define ___atomic attr(ltest_atomic)
 
 namespace ltest {
 

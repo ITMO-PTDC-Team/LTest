@@ -94,13 +94,15 @@ struct YieldInserter {
       for (auto &I : B) {
         if (auto call = dyn_cast<CallInst>(&I)) {
           auto fun = call->getCalledFunction();
-          if (fun && !fun->isDeclaration() && !IsAtomic(fun->getName(), index)) {
+          if (fun && !fun->isDeclaration() &&
+              !IsAtomic(fun->getName(), index)) {
             InsertYields(*fun, index);
           }
         }
         if (auto invoke = dyn_cast<InvokeInst>(&I)) {
           auto fun = invoke->getCalledFunction();
-          if (fun && !fun->isDeclaration() && !IsAtomic(fun->getName(), index)) {
+          if (fun && !fun->isDeclaration() &&
+              !IsAtomic(fun->getName(), index)) {
             InsertYields(*fun, index);
           }
         }

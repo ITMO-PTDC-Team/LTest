@@ -23,8 +23,9 @@ void CoroBase::Resume() {
   assert(!this_coro->IsReturned() && this_coro->ctx);
   // debug(stderr, "name: %s\n",
   //       std::string(this_coro->GetPtr()->GetName()).c_str());
-  // NOTE(kmitkin): Guard below prevents us from call CoroYield in the scheduler coroutine, 
-  // area that protected by it should be as small as possible to reduce errors
+  // NOTE(kmitkin): Guard below prevents us from call CoroYield in the scheduler
+  // coroutine, area that protected by it should be as small as possible to
+  // reduce errors
   ltest::YieldGuard guard{};
   boost::context::fiber_context([](boost::context::fiber_context&& ctx) {
     sched_ctx = std::move(ctx);

@@ -13,7 +13,8 @@ include_directories(SYSTEM "${LLVM_INCLUDE_DIRS};${CLANG_INCLUDE_DIRS}")
 set(CLANG_TOOL "ClangPassTool")
 set(CLANG_TOOL_SOURCES
   "${CMAKE_CURRENT_SOURCE_DIR}/clangpass_tool.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/clangpass.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/ast_consumer.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/refactor_matcher.cpp"
 )
 
 add_executable(

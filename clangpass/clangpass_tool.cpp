@@ -3,12 +3,10 @@
 //    clangpass_tool.cpp
 //
 // DESCRIPTION:
-//    A standalone tool that runs the clangpass plugin. See
-//    clangpass.cpp for a complete description.
+//    Replaces all ::std:: names usages to custom runtime friendly implementations  
 //
 // USAGE:
-//    * ./build/bin/clangpass_tool --replace-name=::std::atomic --insert-name=LTestAtomic ./AtomicsReplacer/test-project/main.cpp
-//
+//    * ./build/bin/clangpass_tool --replace-names=::std::atomic,::std::mutex --insert-names=LTestAtomic,ltest::mutex ./verifying/targets/nonlinear_queue.cpp
 //
 // License: The Unlicense
 //==============================================================================
@@ -35,8 +33,7 @@ static cl::opt<std::string> TemporaryPrefix{
   "temp-prefix",
   cl::desc("Prefix for temporary files"),
   cl::init("__tmp_"), 
-  cl::cat(CodeRefactorCategory)
-};
+  cl::cat(CodeRefactorCategory)};
 static cl::list<std::string> ClassNamesToReplace{
   "replace-names",
   cl::desc("Names of the classes/structs which usages should be renamed"),

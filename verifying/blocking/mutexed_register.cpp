@@ -7,6 +7,7 @@ struct Register {
   non_atomic void add() {
     while (!m_.try_lock()) {}
     ++x_;
+    m_.unlock();
   }
   non_atomic int get() {
     std::lock_guard lock{m_};

@@ -16,6 +16,7 @@ namespace ltest {
 
     bool try_lock() {
       if (locked) {
+        CoroYield();
         return false;
       }
       locked = true;

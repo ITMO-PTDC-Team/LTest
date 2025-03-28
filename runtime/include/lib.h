@@ -1,6 +1,4 @@
 #pragma once
-#include <valgrind/memcheck.h>
-
 #include <boost/context/detail/fcontext.hpp>
 #include <boost/context/fiber.hpp>
 #include <boost/context/fiber_fcontext.hpp>
@@ -18,23 +16,6 @@ struct CoroBase;
 extern std::shared_ptr<CoroBase> this_coro;
 
 extern boost::context::fiber_context sched_ctx;
-
-// Runtime token.
-// Target method could use token generator.
-struct Token {
-  // Parks the task. Yields.
-  void Park();
-  // Unpark the task parked by token.
-  void Unpark();
-
- private:
-  // Resets the token.
-  void Reset();
-  // If token is parked.
-  bool parked{};
-
-  friend class CoroBase;
-};
 
 extern "C" void CoroYield();
 
@@ -75,9 +56,6 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   // Terminate the coroutine.
   void Terminate();
 
-  // Sets the token.
-  void SetToken(std::shared_ptr<Token>);
-
   struct FutexState {
     int* addr;
     int value;
@@ -109,6 +87,10 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
 
   virtual ~CoroBase();
 
+  boost::context::fiber_context& GetCtx() {
+    return ctx;
+  }
+
  protected:
   CoroBase() = default;
 
@@ -128,8 +110,6 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   FutexState fstate{};
   // Name.
   std::string_view name;
-  // Token.
-  std::shared_ptr<Token> token{};
   boost::context::fiber_context ctx;
 };
 
@@ -151,9 +131,6 @@ struct Coro final : public CoroBase {
      */
     assert(IsReturned());
     auto coro = New(func, this_ptr, args, args_to_strings, name, id);
-    if (token != nullptr) {
-      coro->token = std::move(token);
-    }
     return coro;
   }
 

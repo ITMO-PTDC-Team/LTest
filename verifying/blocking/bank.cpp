@@ -107,20 +107,20 @@ class Bank {
   }
 
   non_atomic int Add(int i, size_t count) {
-    debug(stderr, "Add [%d] %lu\n", i, count);
+    // debug(stderr, "Add [%d] %lu\n", i, count);
     std::lock_guard lock{cells_[i].m};
     cells_[i].amount += count;
     return 0;
   }
 
   non_atomic int Read(int i) {
-    debug(stderr, "Read [%d]\n", i);
+    // debug(stderr, "Read [%d]\n", i);
     std::shared_lock lock{cells_[i].m};
     return cells_[i].amount;
   }
 
   non_atomic int Transfer(int i, int j, size_t count) {
-    debug(stderr, "Transfer [%d] -> [%d] %lu\n", i, j, count);
+    // debug(stderr, "Transfer [%d] -> [%d] %lu\n", i, j, count);
 
     int first = std::min(i, j);
     int second = std::max(i, j);
@@ -145,7 +145,7 @@ class Bank {
   }
 
   non_atomic int ReadBoth(int i, int j) {
-    debug(stderr, "ReadBoth [%d], [%d] \n", i, j);
+    // debug(stderr, "ReadBoth [%d], [%d] \n", i, j);
     int first = std::min(i, j);
     int second = std::max(i, j);
     int res;
@@ -185,12 +185,12 @@ auto generateReadBoth(size_t) {
   return std::make_tuple<int, int>(rand() % SIZE, rand() % SIZE);
 }
 
-target_method(generateAdd, int, Bank, Add, int, size_t);
-target_method(generateRead, int, Bank, Read, int);
-target_method(generateTransfer, int, Bank, Transfer, int, int, size_t);
-target_method(generateReadBoth, int, Bank, ReadBoth, int, int);
-
 using spec_t = ltest::Spec<Bank, spec::LinearBank, spec::LinearBankHash,
                            spec::LinearBankEquals>;
 
 LTEST_ENTRYPOINT(spec_t);
+
+target_method(generateAdd, int, Bank, Add, int, size_t);
+target_method(generateRead, int, Bank, Read, int);
+target_method(generateTransfer, int, Bank, Transfer, int, int, size_t);
+target_method(generateReadBoth, int, Bank, ReadBoth, int, int);

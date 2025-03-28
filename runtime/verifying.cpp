@@ -19,12 +19,6 @@ std::string toString<size_t>(const size_t &a) {
   return std::to_string(a);
 }
 
-template <>
-std::string toString<std::shared_ptr<Token>>(
-    const std::shared_ptr<Token> &token) {
-  return "token";
-}
-
 std::string toLower(std::string str) {
   std::transform(str.begin(), str.end(), str.begin(),
                  [](unsigned char c) { return std::tolower(c); });

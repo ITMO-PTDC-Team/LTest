@@ -16,8 +16,7 @@ struct RoundRobinStrategy : PickStrategy<TargetObj, Verifier> {
     auto &threads = PickStrategy<TargetObj, Verifier>::threads;
     for (size_t attempt = 0; attempt < threads.size(); ++attempt) {
       auto cur = (next_task++) % threads.size();
-      if (!threads[cur].empty() && (threads[cur].back()->IsParked() ||
-                                    threads[cur].back()->IsBlocked())) {
+      if (!threads[cur].empty() && threads[cur].back()->IsBlocked()) {
         continue;
       }
       return cur;

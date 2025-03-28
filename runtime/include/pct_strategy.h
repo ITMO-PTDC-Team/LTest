@@ -50,12 +50,12 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   TaskWithMetaData Next() override {
     auto& threads = this->threads;
     size_t max = std::numeric_limits<size_t>::min();
-    size_t index_of_max = 0;
+    size_t snd_max = std::numeric_limits<size_t>::min();
+    size_t index_of_max = 0, index_of_snd_max = 0;
     // Have to ignore waiting threads, so can't do it faster than O(n)
     for (size_t i = 0; i < threads.size(); ++i) {
       // Ignore waiting tasks
-      if (!threads[i].empty() &&
-          (threads[i].back()->IsParked() || threads[i].back()->IsBlocked())) {
+      if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
         // dual waiting if request finished, but follow up isn't
         // skip dual tasks that already have finished the request
         // section(follow-up will be executed in another task, so we can't
@@ -64,13 +64,31 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
 
       if (max <= priorities[i]) {
+        index_of_snd_max = index_of_max;
+        snd_max = max;
         max = priorities[i];
         index_of_max = i;
+      } else if (snd_max <= priorities[i]) {
+        snd_max = priorities[i];
+        index_of_snd_max = i;
       }
     }
 
-    assert((max != std::numeric_limits<size_t>::min() &&
-            "all threads are empty or parked"));
+    if (index_of_max == last_chosen) {
+      ++count_chosen_same;
+    } else {
+      count_chosen_same = 1;
+    }
+
+    //TODO: Choose constant better
+    if (count_chosen_same == 100) {
+      assert(snd_max != std::numeric_limits<size_t>::min() && "possible livelock");
+      priorities[index_of_max] = snd_max - 1;
+      index_of_max = index_of_snd_max;
+    }
+
+    assert(max != std::numeric_limits<size_t>::min() &&
+            "all threads are empty or blocked");
 
     // Check whether the priority change is required
     current_schedule_length++;
@@ -79,6 +97,9 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         priorities[index_of_max] = current_depth - i;
       }
     }
+
+    // debug(stderr, "Chosed thread: %d\n", index_of_max);
+    last_chosen = index_of_max;
 
     if (threads[index_of_max].empty() ||
         threads[index_of_max].back()->IsReturned()) {
@@ -221,7 +242,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
   void PrepareForDepth(size_t depth, size_t k) {
     // Generates priorities
-    priorities = std::vector<size_t>(threads_count);
+    priorities = std::vector<ssize_t>(threads_count);
     for (size_t i = 0; i < priorities.size(); ++i) {
       priorities[i] = current_depth + i;
     }
@@ -240,7 +261,10 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   size_t threads_count;
   size_t current_depth;
   size_t current_schedule_length;
-  std::vector<size_t> priorities;
+  // NOTE(kmitkin): added for livelock avoiding in spinlocks (read more in original article)
+  size_t count_chosen_same;
+  size_t last_chosen;
+  std::vector<ssize_t> priorities;
   std::vector<size_t> priority_change_points;
   // Strategy struct is the owner of all tasks, and all
   // references can't be invalidated before the end of the round,

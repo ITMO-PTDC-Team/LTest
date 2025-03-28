@@ -330,10 +330,8 @@ struct StrategyScheduler : public SchedulerWithReplay {
     FullHistory full_history;
 
     for (size_t finished_tasks = 0; finished_tasks < max_tasks;) {
-      debug(stderr, "Tasks finished: %d\n", finished_tasks);
-
       auto t = strategy.Next();
-      auto& [next_task, is_new, thread_id] = t;
+      auto [next_task, is_new, thread_id] = t;
 
       // fill the sequential history
       if (is_new) {
@@ -348,6 +346,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
 
         auto result = next_task->GetRetVal();
         sequential_history.emplace_back(Response(next_task, result, thread_id));
+        debug(stderr, "Tasks finished: %d\n", finished_tasks);
       }
     }
 
@@ -593,7 +592,7 @@ struct TLAScheduler : Scheduler {
       sequential_history.emplace_back(Invoke(task, thread_id));
     }
 
-    assert(!task->IsParked());
+    assert(!task->IsBlocked());
     task->Resume();
     bool is_finished = task->IsReturned();
     if (is_finished) {
@@ -653,7 +652,7 @@ struct TLAScheduler : Scheduler {
       auto& thread = threads[i];
       auto& tasks = thread.tasks;
       if (!tasks.empty() && !tasks.back()->IsReturned()) {
-        if (tasks.back()->IsParked()) {
+        if (tasks.back()->IsBlocked()) {
           continue;
         }
         all_parked = false;

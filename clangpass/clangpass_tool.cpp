@@ -98,6 +98,17 @@ int main(int Argc, const char **Argv) {
     return EXIT_FAILURE;
   }
 
+  // auto files = eOptParser->getSourcePathList();
+  // std::vector<const char*> Args = {"clang++", "-E" };
+  // Args.insert(Args.end(), files.begin(), files.end());
+    
+  // auto OptionsParser = clang::tooling::CommonOptionsParser::create(
+  //     Args.size(), Args.data(), 
+  //   );
+  
+  // clang::tooling::ClangTool Tool(OptionsParser->getCompilations(),
+  //                              OptionsParser->getSourcePathList());
+
   clang::tooling::RefactoringTool Tool(
     eOptParser->getCompilations(),
     eOptParser->getSourcePathList()

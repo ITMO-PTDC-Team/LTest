@@ -6,8 +6,6 @@ struct Register {
 
   non_atomic int get() { return x; }
 
-  void Reset() { x = 0; }
-
   int x{};
 };
 
@@ -18,5 +16,9 @@ using spec_t =
 LTEST_ENTRYPOINT(spec_t);
 
 target_method(ltest::generators::genEmpty, void, Register, add);
+<<<<<<< HEAD
 
 target_method(ltest::generators::genEmpty, int, Register, get);
+=======
+target_method(ltest::generators::genEmpty, int, Register, get);
+>>>>>>> ded9bdd (refactor verifying targets)

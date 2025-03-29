@@ -5,6 +5,12 @@
 #include "verifying/blocking/verifiers/shared_mutex_verifier.h"
 #include "verifying/specs/mutex.h"
 
+using spec_t =
+    ltest::Spec<folly::SharedMutex, spec::SharedLinearMutex,
+                spec::SharedLinearMutexHash, spec::SharedLinearMutexEquals>;
+
+LTEST_ENTRYPOINT_CONSTRAINT(spec_t, spec::SharedMutexVerifier);
+
 target_method(ltest::generators::genEmpty, int, folly::SharedMutex, lock);
 
 target_method(ltest::generators::genEmpty, int, folly::SharedMutex, unlock);
@@ -22,9 +28,3 @@ int (folly::SharedMutexImpl<false>::*unlock_shared)() =
 const char *unlock_shared_task_name = "unlock_shared";
 ltest::TargetMethod<int, folly::SharedMutex> unlock_shared_ltest_method_cls{
     unlock_shared_task_name, ltest::generators::genEmpty, unlock_shared};
-
-using spec_t =
-    ltest::Spec<folly::SharedMutex, spec::SharedLinearMutex,
-                spec::SharedLinearMutexHash, spec::SharedLinearMutexEquals>;
-
-LTEST_ENTRYPOINT_CONSTRAINT(spec_t, spec::SharedMutexVerifier);

@@ -21,18 +21,16 @@ class FlatCombiningQueue : public folly::FlatCombining<FlatCombiningQueue> {
     debug(stderr, "Pop completed\n");
     return result;
   }
-
-  void Reset() { while (queue_.Pop()); }
 };
 
 auto generateInt(size_t thread_num) {
   return std::make_tuple<int>(rand() % 10 + 1);
 }
 
-target_method(generateInt, int, FlatCombiningQueue, Push, int);
-target_method(ltest::generators::genEmpty, int, FlatCombiningQueue, Pop);
-
 using spec_t = ltest::Spec<FlatCombiningQueue, spec::Queue, spec::QueueHash,
                            spec::QueueEquals>;
 
 LTEST_ENTRYPOINT(spec_t);
+
+target_method(generateInt, int, FlatCombiningQueue, Push, int);
+target_method(ltest::generators::genEmpty, int, FlatCombiningQueue, Pop);

@@ -15,11 +15,6 @@ struct Register {
     return x_;
   }
 
-  void Reset() {
-    std::lock_guard lock{m_};
-    x_ = 0;
-  }
-
   int x_{};
   std::mutex m_;
 };

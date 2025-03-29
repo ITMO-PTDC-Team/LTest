@@ -161,13 +161,6 @@ class Bank {
     }
     return res;
   }
-
-  void Reset() {
-    for (int i = 0; i < SIZE; ++i) {
-      std::lock_guard lock{cells_[i].m};
-      cells_[i].amount = INIT / 2;
-    }
-  }
 };
 
 auto generateAdd(size_t) {

@@ -117,8 +117,7 @@ struct Strategy {
 template <typename TargetObj, StrategyVerifier Verifier>
 struct BaseStrategyWithThreads : public Strategy {
 
-  BaseStrategyWithThreads(size_t threads_count, std::vector<TaskBuilder> constructors) : state(std::make_unique<TargetObj>()) {
-    constructors = std::move(constructors);
+  BaseStrategyWithThreads(size_t threads_count, std::vector<TaskBuilder> constructors) : state(std::make_unique<TargetObj>()), threads_count(threads_count), constructors(std::move(constructors)) {
     round_schedule.resize(threads_count, -1);
 
     constructors_distribution =
@@ -264,8 +263,10 @@ struct BaseStrategyWithThreads : public Strategy {
                               [=](const TaskBuilder& b) {
                                 return b.GetName() == *releaseTask;
                               });
-            auto task = constructor.Build(&*state, thread_index);
-            thread.emplace_back(task, true, thread_index);
+            auto task = constructor.Build(&*state, thread_index, task_index);
+            auto verified = this->sched_checker.Verify(CreatedTaskMetaData{std::string(task->GetName()), true, thread_index});
+            assert(verified && "wrong release task at termination");
+            thread.emplace_back(task);
           } 
         }
 
@@ -276,7 +277,7 @@ struct BaseStrategyWithThreads : public Strategy {
           task->Resume();
           if (task->IsReturned()) {
             OnVerifierTaskFinish(TaskWithMetaData{task, false, thread_index});
-            debug(stderr, "Terminated: %d\n", thread_index);
+            debug(stderr, "Terminated: %ld\n", thread_index);
           }
         }
       }
@@ -305,6 +306,7 @@ struct BaseStrategyWithThreads : public Strategy {
   // references can't be invalidated before the end of the round,
   // so we have to contains all tasks in queues(queue doesn't invalidate the
   // references)
+  size_t threads_count;
   std::vector<StableVector<Task>> threads;
   std::vector<TaskBuilder> constructors;
   std::uniform_int_distribution<std::mt19937::result_type>
@@ -337,7 +339,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
   Scheduler::Result Run() override {
     for (size_t i = 0; i < max_rounds; ++i) {
       log() << "run round: " << i << "\n";
-      debug(stderr, "run round: %d\n", i);
+      debug(stderr, "run round: %ld\n", i);
       auto histories = RunRound();
 
       if (histories.has_value()) {
@@ -402,7 +404,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
 
         auto result = next_task->GetRetVal();
         sequential_history.emplace_back(Response(next_task, result, thread_id));
-        debug(stderr, "Tasks finished: %d\n", finished_tasks);
+        debug(stderr, "Tasks finished: %ld\n", finished_tasks);
       }
     }
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cassert>
-#include <memory>
 #include <random>
 
 #include "scheduler.h"
@@ -12,11 +11,12 @@
 // equivalent to the halt problem), k should be good approximation
 template <typename TargetObj, StrategyVerifier Verifier>
 struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
-  explicit PctStrategy(size_t threads_count,
-                       std::vector<TaskBuilder> constructors)
-      : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count, constructors),
+  PctStrategy(size_t threads_count,
+                       std::vector<TaskBuilder> ctrs)
+      : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count, ctrs),
         current_depth(1),
         current_schedule_length(0) {
+    debug(stderr, "%ld:", this->constructors.size());
     // We have information about potential number of resumes
     // but because of the implementation, it's only available in the task.
     // In fact, it doesn't depend on the task, it only depends on the
@@ -25,6 +25,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     avg_k = avg_k / this->constructors.size();
 
     PrepareForDepth(current_depth, avg_k);
+    
   }
 
   // If there aren't any non returned tasks and the amount of finished tasks
@@ -86,9 +87,10 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
     }
 
-    debug(stderr, "Chosen thread: %d, cnt_count: %d\n", index_of_max,
-          count_chosen_same);
+    // debug(stderr, "Chosen thread: %d, cnt_count: %d\n", index_of_max,
+    //       count_chosen_same);
     last_chosen = index_of_max;
+    return index_of_max;
   }
 
   // NOTE: `Next` version use heuristics for livelock avoiding, but not there
@@ -177,7 +179,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
   void PrepareForDepth(size_t depth, size_t k) {
     // Generates priorities
-    priorities = std::vector<ssize_t>(threads_count);
+    priorities = std::vector<ssize_t>(this->threads_count);
     for (size_t i = 0; i < priorities.size(); ++i) {
       priorities[i] = current_depth + i;
     }
@@ -193,7 +195,6 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   }
 
   std::vector<size_t> k_statistics;
-  size_t threads_count;
   size_t current_depth;
   size_t current_schedule_length;
   // NOTE(kmitkin): added for livelock avoiding in spinlocks (read more in

@@ -41,14 +41,6 @@ class MPMCBoundedQueue {
     }
   }
 
-  void Reset() {
-    for (size_t i = 0; i < size; ++i) {
-      vec_[i].generation.store(i);
-    }
-    head_.store(0);
-    tail_.store(0);
-  }
-
   non_atomic int Push(int value) {
     while (true) {
       auto h = head_.load(/*std::memory_order_relaxed*/);
@@ -111,5 +103,4 @@ using spec_t = ltest::Spec<MPMCBoundedQueue, spec::Queue, spec::QueueHash,
 LTEST_ENTRYPOINT(spec_t);
 
 target_method(generateInt, int, MPMCBoundedQueue, Push, int);
-
 target_method(ltest::generators::genEmpty, int, MPMCBoundedQueue, Pop);

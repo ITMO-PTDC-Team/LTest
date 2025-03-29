@@ -48,5 +48,4 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
  protected:
   size_t next_task = 0;
-  size_t threads_count;
 };

@@ -29,11 +29,6 @@ struct Queue {
     return 0;
   }
 
-  void Reset() {
-    head.store(0);
-    for (int i = 0; i < N; ++i) a[i].store(0);
-  }
-
   std::atomic<int> a[N];
   std::atomic<int> head{};
 };
@@ -49,6 +44,6 @@ using spec_t =
 
 LTEST_ENTRYPOINT(spec_t);
 
+// Targets.
 target_method(generateInt, void, Queue, Push, int);
-
 target_method(ltest::generators::genEmpty, int, Queue, Pop);

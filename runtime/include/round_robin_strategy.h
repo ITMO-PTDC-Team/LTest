@@ -31,7 +31,7 @@ struct RoundRobinStrategy : PickStrategy<TargetObj, Verifier> {
       int task_index = this->GetNextTaskInThread(cur);
 
       if (task_index == threads[cur].size() ||
-          threads[cur][task_index]->IsParked()) {
+          threads[cur][task_index]->IsBlocked()) {
         continue;
       }
       return cur;

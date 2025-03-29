@@ -47,7 +47,14 @@ struct SharedMutexVerifier {
     }
   }
 
-  void Reset() { status.clear(); }
+  std::optional<std::string> ReleaseTask(size_t thread_id) {
+    if (status[thread_id] == WRITER) {
+      return {"unlock"};
+    } else if (status[thread_id] == READER) {
+      return {"unlock_shared"};
+    }
+    return std::nullopt;
+  }
 
   std::unordered_map<size_t, size_t> status;
 };

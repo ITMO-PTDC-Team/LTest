@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <memory>
 #include <random>
 
 #include "scheduler.h"
@@ -11,25 +12,11 @@
 // equivalent to the halt problem), k should be good approximation
 template <typename TargetObj, StrategyVerifier Verifier>
 struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
-  // forbid_all_same indicates whether it is allowed to have all same tasks(same
-  // methods) in any moment of execution. Useful for blocking structures, for
-  // instance, you don't want to run mutex.lock in each thread
   explicit PctStrategy(size_t threads_count,
-                       std::vector<TaskBuilder> constructors,
-                       bool forbid_all_same)
-      : threads_count(threads_count),
+                       std::vector<TaskBuilder> constructors)
+      : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count, constructors),
         current_depth(1),
-        current_schedule_length(0),
-        forbid_all_same(forbid_all_same) {
-    this->constructors = std::move(constructors);
-    this->round_schedule.resize(threads_count, -1);
-
-    std::random_device dev;
-    rng = std::mt19937(dev());
-    this->constructors_distribution =
-        std::uniform_int_distribution<std::mt19937::result_type>(
-            0, this->constructors.size() - 1);
-
+        current_schedule_length(0) {
     // We have information about potential number of resumes
     // but because of the implementation, it's only available in the task.
     // In fact, it doesn't depend on the task, it only depends on the
@@ -38,16 +25,15 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     avg_k = avg_k / this->constructors.size();
 
     PrepareForDepth(current_depth, avg_k);
-
-    // Create queues.
-    for (size_t i = 0; i < threads_count; ++i) {
-      this->threads.emplace_back();
-    }
   }
 
   // If there aren't any non returned tasks and the amount of finished tasks
   // is equal to the max_tasks the finished task will be returned
   TaskWithMetaData Next() override {
+    return this->NextVerifiedFor(NextThreadId());
+  }
+
+  size_t NextThreadId() override {
     auto& threads = this->threads;
     ssize_t max = std::numeric_limits<ssize_t>::min();
     ssize_t snd_max = std::numeric_limits<ssize_t>::min();
@@ -58,7 +44,6 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       // debug(stderr, "prior: %d, number %d\n", priorities[i], i);
       if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
         // debug(stderr, "blocked\n", priorities[i], i);
-
         // dual waiting if request finished, but follow up isn't
         // skip dual tasks that already have finished the request
         // section(follow-up will be executed in another task, so we can't
@@ -78,9 +63,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     }
 
     // TODO: Choose wiser constant
-    if (count_chosen_same == 100) {
-      assert(snd_max != std::numeric_limits<ssize_t>::min() &&
-             "possible livelock");
+    if (count_chosen_same == 100 &&
+        snd_max != std::numeric_limits<ssize_t>::min()) {
       priorities[index_of_max] = snd_max - 1;
       index_of_max = index_of_snd_max;
     }
@@ -102,55 +86,17 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
     }
 
-    // debug(stderr, "Chosed thread: %d, cnt_count: %d\n", index_of_max, count_chosen_same);
+    debug(stderr, "Chosen thread: %d, cnt_count: %d\n", index_of_max,
+          count_chosen_same);
     last_chosen = index_of_max;
-
-    if (threads[index_of_max].empty() ||
-        threads[index_of_max].back()->IsReturned()) {
-      // a task has finished or the queue is empty, so we add a new task
-      std::shuffle(this->constructors.begin(), this->constructors.end(), rng);
-      size_t verified_constructor = -1;
-      for (size_t i = 0; i < this->constructors.size(); ++i) {
-        TaskBuilder constructor = this->constructors.at(i);
-        CreatedTaskMetaData next_task = {constructor.GetName(), true,
-                                         index_of_max};
-        if (this->sched_checker.Verify(next_task)) {
-          verified_constructor = i;
-          break;
-        }
-      }
-      if (verified_constructor == -1) {
-        assert(false && "Oops, possible deadlock or incorrect verifier\n");
-      }
-      auto constructor = this->constructors.at(verified_constructor);
-      if (forbid_all_same) {
-        auto names = CountNames(index_of_max);
-        // TODO: выглядит непонятно и так себе
-        while (true) {
-          auto name = constructor.GetName();
-          names.insert(name);
-          CreatedTaskMetaData task = {name, true, index_of_max};
-          if (names.size() == 1 || !this->sched_checker.Verify(task)) {
-            constructor =
-                this->constructors.at(this->constructors_distribution(rng));
-          } else {
-            break;
-          }
-        }
-      }
-
-      threads[index_of_max].emplace_back(
-          constructor.Build(&this->state, index_of_max, this->new_task_id++));
-      return {threads[index_of_max].back(), true, index_of_max};
-    }
-
-    return {threads[index_of_max].back(), false, index_of_max};
   }
 
+  // NOTE: `Next` version use heuristics for livelock avoiding, but not there
+  // refactor later to avoid copy-paste 
   TaskWithMetaData NextSchedule() override {
     auto& round_schedule = this->round_schedule;
     auto& threads = this->threads;
-
+    
     size_t max = std::numeric_limits<size_t>::min();
     size_t index_of_max = 0;
     // Have to ignore waiting threads, so can't do it faster than O(n)
@@ -158,7 +104,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       int task_index = this->GetNextTaskInThread(i);
       // Ignore waiting tasks
       if (task_index == threads[i].size() ||
-          threads[i][task_index]->IsParked()) {
+          threads[i][task_index]->IsBlocked()) {
         // dual waiting if request finished, but follow up isn't
         // skip dual tasks that already have finished the request
         // section(follow-up will be executed in another task, so we can't
@@ -229,22 +175,6 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     PrepareForDepth(current_depth, new_k);
   }
 
-  std::unordered_set<std::string> CountNames(size_t except_thread) {
-    std::unordered_set<std::string> names;
-
-    for (size_t i = 0; i < this->threads.size(); ++i) {
-      auto& thread = this->threads[i];
-      if (thread.empty() || i == except_thread) {
-        continue;
-      }
-
-      auto& task = thread.back();
-      names.insert(std::string{task->GetName()});
-    }
-
-    return names;
-  }
-
   void PrepareForDepth(size_t depth, size_t k) {
     // Generates priorities
     priorities = std::vector<ssize_t>(threads_count);
@@ -272,10 +202,5 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   size_t last_chosen;
   std::vector<ssize_t> priorities;
   std::vector<size_t> priority_change_points;
-  // Strategy struct is the owner of all tasks, and all
-  // references can't be invalidated before the end of the round,
-  // so we have to contains all tasks in queues(queue doesn't invalidate the
-  // references)
-  bool forbid_all_same;
   std::mt19937 rng;
 };

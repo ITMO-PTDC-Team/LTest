@@ -4,9 +4,9 @@ extern bool __yield;
 
 namespace ltest {
 
-struct YieldGuard {
-  YieldGuard();
-  ~YieldGuard();
+struct AllowYieldArea {
+  AllowYieldArea();
+  ~AllowYieldArea();
 };
 
 }  // namespace ltest

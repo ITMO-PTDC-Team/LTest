@@ -38,6 +38,7 @@ class Mutex {
     while (CompareExchange(0, 2) != 0) {
       if (CompareExchange(1, 2) > 0) {
         while (locked_.load() == 2) {
+          debug(stderr, "Futex wait spinlock\n");
           FutexWait(Addr(locked_), 2);
         }
       }
@@ -55,8 +56,6 @@ class Mutex {
     debug(stderr, "Unlock finished\n");
     return 0;
   }
-
-  void Release() { locked_.store(0); }
 
   void Reset() { locked_.store(0); }
 

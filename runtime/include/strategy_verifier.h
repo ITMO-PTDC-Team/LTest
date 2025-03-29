@@ -6,5 +6,7 @@ struct DefaultStrategyVerifier {
 
   inline void OnFinished(TaskWithMetaData task) {}
 
-  inline void Reset() {}
+  inline std::optional<std::string> ReleaseTask(size_t thread_id) {
+    return std::nullopt;
+  }
 };

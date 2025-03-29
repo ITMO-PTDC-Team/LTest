@@ -39,19 +39,16 @@ concept StrategyVerifier = requires(T a) {
   {
     a.OnFinished(TaskWithMetaData(std::declval<Task&>(), bool(), int()))
   } -> std::same_as<void>;
-  { a.Reset() } -> std::same_as<void>;
-};
-
-template <typename T>
-concept ManualReleased = requires(T a) {
-  { a.Release() } -> std::same_as<void>;
+  { a.ReleaseTask(int()) } -> std::same_as<std::optional<std::string>>;
 };
 
 // Strategy is the general strategy interface which decides which task
 // will be the next one it can be implemented by different strategies, such as:
 // randomized/tla/fair
-// template <StrategyVerifier Verifier>
 struct Strategy {
+
+  virtual size_t NextThreadId() = 0;
+
   virtual TaskWithMetaData Next() = 0;
 
   // Returns the same data as `Next` method. However, it does not generate the
@@ -119,6 +116,24 @@ struct Strategy {
 
 template <typename TargetObj, StrategyVerifier Verifier>
 struct BaseStrategyWithThreads : public Strategy {
+
+  BaseStrategyWithThreads(size_t threads_count, std::vector<TaskBuilder> constructors) : state(std::make_unique<TargetObj>()) {
+    constructors = std::move(constructors);
+    round_schedule.resize(threads_count, -1);
+
+    constructors_distribution =
+        std::uniform_int_distribution<std::mt19937::result_type>(
+            0, constructors.size() - 1);
+
+    // Create queues.
+    for (size_t i = 0; i < threads_count; ++i) {
+      threads.emplace_back();
+    }
+
+    std::random_device dev;
+    rng = std::mt19937(dev());
+  }
+
   std::optional<std::tuple<Task&, int>> GetTask(int task_id) override {
     // TODO: can this be optimized?
     int thread_id = 0;
@@ -144,7 +159,6 @@ struct BaseStrategyWithThreads : public Strategy {
 
   void ResetCurrentRound() override {
     TerminateTasks();
-    //state.Reset();
     for (auto& thread : threads) {
       size_t tasks_in_thread = thread.size();
       for (size_t i = 0; i < tasks_in_thread; ++i) {
@@ -182,11 +196,44 @@ struct BaseStrategyWithThreads : public Strategy {
     sched_checker.OnFinished(task);
   }
 
+  TaskWithMetaData Next() override {
+    return NextVerifiedFor(NextThreadId());
+  }
+
+  TaskWithMetaData NextVerifiedFor(size_t thread_index) {
+    // it's the first task if the queue is empty
+    if (threads[thread_index].empty() ||
+        threads[thread_index].back()->IsReturned()) {
+      // a task has finished or the queue is empty, so we add a new task
+      std::shuffle(this->constructors.begin(), this->constructors.end(), rng);
+      size_t verified_constructor = -1;
+      for (size_t i = 0; i < this->constructors.size(); ++i) {
+        TaskBuilder constructor = this->constructors.at(i);
+        CreatedTaskMetaData next_task = {constructor.GetName(), true,
+          thread_index};
+        if (this->sched_checker.Verify(next_task)) {
+          verified_constructor = i;
+          break;
+        }
+      }
+      if (verified_constructor == -1) {
+        assert(false && "Oops, possible deadlock or incorrect verifier\n");
+      }
+      threads[thread_index].emplace_back(
+          this->constructors[verified_constructor].Build(
+              &*this->state, thread_index, this->new_task_id++));
+      TaskWithMetaData task{threads[thread_index].back(), true,
+        thread_index};
+      return task;
+    }
+
+    return {threads[thread_index].back(), false, thread_index};
+  }
+
  protected:
   // Terminates all running tasks.
   // We do it in a dangerous way: in random order.
   // Actually, we assume obstruction free here.
-  // TODO: for locks we need to figure out how to properly terminate: see https://github.com/ITMO-PTDC-Team/LTest/issues/13
   void TerminateTasks() {
     auto& round_schedule = this->round_schedule;
     assert(round_schedule.size() == this->threads.size() &&
@@ -208,29 +255,37 @@ struct BaseStrategyWithThreads : public Strategy {
           task_index++;
         }
 
-        if (task_index < thread.size()) {
-          auto& task = thread[task_index];
+        if (task_index == thread.size()) {
+          std::optional<std::string> releaseTask = this->sched_checker.ReleaseTask(thread_index);
+          // Check if we should schedule release task to unblock other tasks
+          if (releaseTask) {
+            auto constructor =
+                *std::find_if(constructors.begin(), constructors.end(),
+                              [=](const TaskBuilder& b) {
+                                return b.GetName() == *releaseTask;
+                              });
+            auto task = constructor.Build(&*state, thread_index);
+            thread.emplace_back(task, true, thread_index);
+          } 
+        }
 
-          // if task is blocked and it is the last one, then just increment the task index
-          if (task->IsBlocked()) {
-            assert(task_index == thread.size() - 1 && "Trying to terminate blocked task, which is not last in the thread.");
-            if (task_index == thread.size() - 1) {
-              task_index++;
-            }
-          }
-          else {
-            has_nonterminated_threads = true;
-            // do a single step in this task
-            task->Resume();
+        if (task_index < thread.size() && !thread[task_index]->IsBlocked()) {
+          auto& task = thread[task_index];
+          has_nonterminated_threads = true;
+          // do a single step in this task
+          task->Resume();
+          if (task->IsReturned()) {
+            OnVerifierTaskFinish(TaskWithMetaData{task, false, thread_index});
+            debug(stderr, "Terminated: %d\n", thread_index);
           }
         }
       }
     }
 
-    this->sched_checker.Reset();
-    state.Reset();
+    state.reset(new TargetObj{});
   }
 
+  /// Returns task id in threads[thread_index] skipping removed tasks
   int GetNextTaskInThread(int thread_index) const override {
     auto& thread = threads[thread_index];
     int task_index = round_schedule[thread_index];
@@ -245,7 +300,7 @@ struct BaseStrategyWithThreads : public Strategy {
   }
 
   Verifier sched_checker{};
-  TargetObj state{};
+  std::unique_ptr<TargetObj> state;
   // Strategy struct is the owner of all tasks, and all
   // references can't be invalidated before the end of the round,
   // so we have to contains all tasks in queues(queue doesn't invalidate the
@@ -254,6 +309,7 @@ struct BaseStrategyWithThreads : public Strategy {
   std::vector<TaskBuilder> constructors;
   std::uniform_int_distribution<std::mt19937::result_type>
       constructors_distribution;
+  std::mt19937 rng;
 };
 
 // StrategyScheduler generates different sequential histories (using Strategy)
@@ -494,6 +550,7 @@ struct TLAScheduler : Scheduler {
           .tasks = StableVector<Task>{},
       });
     }
+    state = std::make_unique<TargetObj>();
   };
 
   Scheduler::Result Run() override {
@@ -548,7 +605,7 @@ struct TLAScheduler : Scheduler {
     // Firstly, terminate all running tasks.
     TerminateTasks();
     // In histories we store references, so there's no need to update it.
-    //state.Reset();
+    state.reset(new TargetObj{});
     for (size_t step = 0; step < step_end; ++step) {
       auto& frame = frames[step];
       auto task = frame.task;
@@ -673,7 +730,7 @@ struct TLAScheduler : Scheduler {
       for (size_t cons_num = 0; auto cons : constructors) {
         frame.is_new = true;
         auto size_before = tasks.size();
-        tasks.emplace_back(cons.Build(&state, i, -1 /* TODO: fix task id for tla, because it is Scheduler and not Strategy class for some reason */));
+        tasks.emplace_back(cons.Build(&*state, i, -1 /* TODO: fix task id for tla, because it is Scheduler and not Strategy class for some reason */));
 
         auto [is_over, res] = ResumeTask(frame, step, switches, thread, true);
         if (is_over || res.has_value()) {
@@ -706,7 +763,7 @@ struct TLAScheduler : Scheduler {
   // Running state.
   size_t finished_tasks{};
   size_t finished_rounds{};
-  TargetObj state{};
+  std::unique_ptr<TargetObj> state;
   std::vector<std::variant<Invoke, Response>> sequential_history;
   std::vector<std::pair<int, std::reference_wrapper<Task>>> full_history;
   std::vector<size_t> thread_id_history;

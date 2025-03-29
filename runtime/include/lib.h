@@ -53,6 +53,9 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   // https://en.cppreference.com/w/cpp/memory/enable_shared_from_this
   std::shared_ptr<CoroBase> GetPtr();
 
+  // Try to terminate the coroutine.
+  void TryTerminate();
+
   // Terminate the coroutine.
   void Terminate();
 

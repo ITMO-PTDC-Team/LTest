@@ -49,13 +49,16 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   // is equal to the max_tasks the finished task will be returned
   TaskWithMetaData Next() override {
     auto& threads = this->threads;
-    size_t max = std::numeric_limits<size_t>::min();
-    size_t snd_max = std::numeric_limits<size_t>::min();
+    ssize_t max = std::numeric_limits<ssize_t>::min();
+    ssize_t snd_max = std::numeric_limits<ssize_t>::min();
     size_t index_of_max = 0, index_of_snd_max = 0;
     // Have to ignore waiting threads, so can't do it faster than O(n)
     for (size_t i = 0; i < threads.size(); ++i) {
       // Ignore waiting tasks
+      // debug(stderr, "prior: %d, number %d\n", priorities[i], i);
       if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
+        // debug(stderr, "blocked\n", priorities[i], i);
+
         // dual waiting if request finished, but follow up isn't
         // skip dual tasks that already have finished the request
         // section(follow-up will be executed in another task, so we can't
@@ -74,21 +77,21 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
     }
 
+    // TODO: Choose wiser constant
+    if (count_chosen_same == 100) {
+      assert(snd_max != std::numeric_limits<ssize_t>::min() &&
+             "possible livelock");
+      priorities[index_of_max] = snd_max - 1;
+      index_of_max = index_of_snd_max;
+    }
+
     if (index_of_max == last_chosen) {
       ++count_chosen_same;
     } else {
       count_chosen_same = 1;
     }
 
-    // TODO: Choose constant better
-    if (count_chosen_same == 100) {
-      assert(snd_max != std::numeric_limits<size_t>::min() &&
-             "possible livelock");
-      priorities[index_of_max] = snd_max - 1;
-      index_of_max = index_of_snd_max;
-    }
-
-    assert(max != std::numeric_limits<size_t>::min() &&
+    assert(max != std::numeric_limits<ssize_t>::min() &&
            "all threads are empty or blocked");
 
     // Check whether the priority change is required
@@ -99,7 +102,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
     }
 
-    // debug(stderr, "Chosed thread: %d\n", index_of_max);
+    // debug(stderr, "Chosed thread: %d, cnt_count: %d\n", index_of_max, count_chosen_same);
     last_chosen = index_of_max;
 
     if (threads[index_of_max].empty() ||
@@ -217,6 +220,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     }
     k_statistics.push_back(current_schedule_length);
     current_schedule_length = 0;
+    count_chosen_same = 0;
 
     // current_depth have been increased
     size_t new_k = std::reduce(k_statistics.begin(), k_statistics.end()) /

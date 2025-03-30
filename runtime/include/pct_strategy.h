@@ -62,7 +62,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     }
 
     // TODO: Choose wiser constant
-    if (count_chosen_same == 100 &&
+    if (count_chosen_same == 100 && index_of_max == last_chosen && 
         snd_max != std::numeric_limits<ssize_t>::min()) {
       priorities[index_of_max] = snd_max - 1;
       index_of_max = index_of_snd_max;

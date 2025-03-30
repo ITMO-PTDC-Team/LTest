@@ -17,6 +17,8 @@ extern std::vector<TaskBuilder> task_builders;
 
 // Tell that the function need to be converted to the coroutine.
 #define non_atomic attr(ltest_nonatomic)
+// Tell that the function must not contain interleavings.
+#define as_atomic attr(ltest_atomic)
 
 namespace ltest {
 
@@ -60,10 +62,6 @@ struct TargetMethod<int, Target, Args...> {
       auto coro = Coro<Target, Args...>::New(method, this_ptr, args,
                                              &ltest::toStringArgs<Args...>,
                                              method_name, task_id);
-      if (ltest::generators::generated_token) {
-        coro->SetToken(ltest::generators::generated_token);
-        ltest::generators::generated_token.reset();
-      }
       return coro;
     };
     ltest::task_builders.push_back(
@@ -96,10 +94,6 @@ struct TargetMethod<void, Target, Args...> {
       auto coro = Coro<Target, Args...>::New(wrapper, this_ptr, args,
                                              &ltest::toStringArgs<Args...>,
                                              method_name, task_id);
-      if (ltest::generators::generated_token) {
-        coro->SetToken(ltest::generators::generated_token);
-        ltest::generators::generated_token.reset();
-      }
       return coro;
     };
     ltest::task_builders.push_back(

@@ -7,7 +7,7 @@ namespace spec {
 
 struct LinearRegister;
 
-using mutex_method_t = std::function<int(LinearRegister *l, void *)>;
+using register_method_t = std::function<int(LinearRegister *l, void *)>;
 
 struct LinearRegister {
   int x = 0;
@@ -18,15 +18,15 @@ struct LinearRegister {
   int get() { return x; }
 
   static auto GetMethods() {
-    mutex_method_t add_func = [](LinearRegister *l, void *) -> int {
+    register_method_t add_func = [](LinearRegister *l, void *) -> int {
       return l->add();
     };
 
-    mutex_method_t get_func = [](LinearRegister *l, void *) -> int {
+    register_method_t get_func = [](LinearRegister *l, void *) -> int {
       return l->get();
     };
 
-    return std::map<std::string, mutex_method_t>{
+    return std::map<std::string, register_method_t>{
         {"add", add_func},
         {"get", get_func},
     };

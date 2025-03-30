@@ -3,6 +3,7 @@
 
 #include <memory>
 
+#include "blocking_primitives.h"
 #include "lib.h"
 #include "lincheck_recursive.h"
 #include "logger.h"
@@ -33,7 +34,6 @@ struct Spec {
 
 struct Opts {
   size_t threads;
-  size_t forbid_all_same;
   size_t tasks;
   size_t switches;
   size_t rounds;
@@ -73,8 +73,8 @@ std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
     }
     case PCT: {
       std::cout << "pct\n";
-      return std::make_unique<PctStrategy<TargetObj, Verifier>>(
-          opts.threads, std::move(l), opts.forbid_all_same);
+      return std::make_unique<PctStrategy<TargetObj, Verifier>>(opts.threads,
+                                                                std::move(l));
     }
     default:
       assert(false && "unexpected type");
@@ -133,7 +133,7 @@ inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
   if (result.has_value()) {
     std::cout << "non linearized:\n";
     pretty_printer.PrettyPrint(result.value().second, std::cout);
-    return 1;
+    return 3;  // see https://tldp.org/LDP/abs/html/exitcodes.html
   } else {
     std::cout << "success!\n";
     return 0;

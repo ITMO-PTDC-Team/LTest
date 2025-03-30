@@ -8,8 +8,6 @@ namespace ltest {
 
 namespace generators {
 
-extern std::shared_ptr<Token> generated_token;
-
 // Makes single argument from the value.
 template <typename T>
 auto makeSingleArg(T&& arg) {
@@ -18,8 +16,6 @@ auto makeSingleArg(T&& arg) {
 }
 
 std::tuple<> genEmpty(size_t thread_num);
-
-std::tuple<std::shared_ptr<Token>> genToken(size_t thread_num);
 
 }  // namespace generators
 

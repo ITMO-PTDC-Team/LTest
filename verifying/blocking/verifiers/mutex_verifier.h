@@ -34,7 +34,12 @@ struct MutexVerifier {
     }
   }
 
-  void Reset() { status.clear(); }
+  std::optional<std::string> ReleaseTask(size_t thread_id) {
+    if (status[thread_id] == 1) {
+      return {"Unlock"};
+    }
+    return std::nullopt;
+  }
 
   // NOTE(kmitkin): we cannot just store number of thread that holds mutex
   //                because Lock can finish before Unlock!

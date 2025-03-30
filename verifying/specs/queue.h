@@ -7,7 +7,6 @@
 
 namespace spec {
 
-template <typename PushArgTuple = std::tuple<int>, std::size_t ValueIndex = 0>
 struct Queue {
   std::deque<int> deq{};
   int Push(int v) {
@@ -24,8 +23,8 @@ struct Queue {
   using method_t = std::function<int(Queue *l, void *args)>;
   static auto GetMethods() {
     method_t push_func = [](Queue *l, void *args) -> int {
-      auto real_args = reinterpret_cast<PushArgTuple *>(args);
-      return l->Push(std::get<ValueIndex>(*real_args));
+      auto real_args = reinterpret_cast<std::tuple<int> *>(args);
+      return l->Push(std::get<0>(*real_args));
     };
 
     method_t pop_func = [](Queue *l, void *args) -> int { return l->Pop(); };
@@ -37,21 +36,19 @@ struct Queue {
   }
 };
 
-template <typename QueueCls = Queue<>>
 struct QueueHash {
-  size_t operator()(const QueueCls &r) const {
+  size_t operator()(const Queue &r) const {
     int res = 0;
     for (int elem : r.deq) {
       res += elem;
     }
     return res;
-  }  // namespace spec
+  }
 };
 
-template <typename QueueCls = Queue<>>
 struct QueueEquals {
   template <typename PushArgTuple, int ValueIndex>
-  bool operator()(const QueueCls &lhs, const QueueCls &rhs) const {
+  bool operator()(const Queue &lhs, const Queue &rhs) const {
     return lhs.deq == rhs.deq;
   }
 };

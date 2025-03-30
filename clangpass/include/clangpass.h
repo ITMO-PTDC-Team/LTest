@@ -47,23 +47,22 @@ public:
   using MatchResult = clang::ast_matchers::MatchFinder::MatchResult;
 
 	explicit CodeRefactorMatcher(
-		ASTContext& Context,
-		clang::Rewriter &RewriterForCodeRefactor,
-    std::vector<ReplacePair> Names
+		ASTContext& context,
+		clang::Rewriter &rewriter,
+    std::vector<ReplacePair> names
 	);
 	
-	void run(const MatchResult &Result) override;
-	std::string GetArgumentsFromTemplateType(const TemplateSpecializationType *TST);
+	void run(const MatchResult &result) override;
+	std::string GetArgumentsFromTemplateType(const TemplateSpecializationType *type);
 
 private:
 
-  void runFor(const ReplacePair &p, const MatchResult &Result);
-	std::string getSourceRangeAsString(const SourceRange& SR) const;
+  void runFor(const ReplacePair &p, const MatchResult &result);
 
 private:
-	ASTContext& Context;
-	clang::Rewriter& CodeRefactorRewriter;
-  std::vector<ReplacePair> Names;
+	ASTContext& context;
+	clang::Rewriter& rewriter;
+  std::vector<ReplacePair> names;
 };
 
 //-----------------------------------------------------------------------------
@@ -72,19 +71,25 @@ private:
 class CodeRefactorASTConsumer : public clang::ASTConsumer {
 public:
 	CodeRefactorASTConsumer(
-		ASTContext& Context,
-		clang::Rewriter &R,
-    std::vector<ReplacePair> Names
+		ASTContext& context,
+		clang::Rewriter &rewriter,
+    std::vector<ReplacePair> names,
+    std::string temp_prefix
 	);
 
-	void HandleTranslationUnit(clang::ASTContext &Ctx) override;
+	void HandleTranslationUnit(clang::ASTContext &ctx) override;
 
 private:
-	clang::ast_matchers::MatchFinder Finder;
-	CodeRefactorMatcher CodeRefactorHandler;
-  clang::Rewriter& Rewriter;
 
-  std::vector<ReplacePair> Names;
+  std::string RefactoredFileName(StringRef original_filename) const;
+
+private:
+	clang::ast_matchers::MatchFinder match_finder;
+	CodeRefactorMatcher refactor_handler;
+  clang::Rewriter& rewriter;
+
+  std::vector<ReplacePair> names;
+  std::string temp_prefix;
 };
 
 class NameMatcherFactory {
@@ -102,6 +107,8 @@ public:
       case TypeName::TemplateName: {
         return CreateTemplateMatcherFor(name);
       }
+      default:
+        assert(false && "Unsupported type name");
     };
 	}
 

@@ -14,7 +14,7 @@
 #include <clang/Rewrite/Core/Rewriter.h>
 #include <clang/Tooling/Refactoring/Rename/RenamingAction.h>
 #include <clang/Tooling/Refactoring/Rename/USRFindingAction.h>
-#include "clangpass.h"
+#include "include/clangpass.h"
 
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Tooling/CommonOptionsParser.h"
@@ -55,17 +55,17 @@ public:
   explicit CodeRefactorPluginAction() {}
   // Not used
   bool ParseArgs(
-    const CompilerInstance &CI,
+    const CompilerInstance &compiler,
     const std::vector<std::string> &args
   ) override {
     return true;
   }
 
   std::unique_ptr<ASTConsumer> CreateASTConsumer(
-    CompilerInstance &CI,
+    CompilerInstance &compiler,
     StringRef file
   ) override {
-    RewriterForCodeRefactor.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
+    rewriter.setSourceMgr(compiler.getSourceManager(), compiler.getLangOpts());
 
     std::vector<ReplacePair> pairs;
     pairs.reserve(ClassNamesToReplace.size());
@@ -74,25 +74,25 @@ public:
     }
 
     return std::make_unique<CodeRefactorASTConsumer>(
-      CI.getASTContext(), RewriterForCodeRefactor, pairs);
+      compiler.getASTContext(), rewriter, pairs, TemporaryPrefix);
   }
 
 private:
-  Rewriter RewriterForCodeRefactor;
+  Rewriter rewriter;
 };
 
 
 //===----------------------------------------------------------------------===//
 // Main driver code.
 //===----------------------------------------------------------------------===//
-int main(int Argc, const char **Argv) {
-  Expected<tooling::CommonOptionsParser> eOptParser =
+int main(int argc, const char **argv) {
+  Expected<tooling::CommonOptionsParser> options =
     clang::tooling::CommonOptionsParser::create(
-      Argc,
-      Argv,
+      argc,
+      argv,
       CodeRefactorCategory
     );
-  if (auto E = eOptParser.takeError()) {
+  if (auto E = options.takeError()) {
     errs() << "Problem constructing CommonOptionsParser "
            << toString(std::move(E)) << '\n';
     return EXIT_FAILURE;
@@ -109,12 +109,12 @@ int main(int Argc, const char **Argv) {
   // clang::tooling::ClangTool Tool(OptionsParser->getCompilations(),
   //                              OptionsParser->getSourcePathList());
 
-  clang::tooling::RefactoringTool Tool(
-    eOptParser->getCompilations(),
-    eOptParser->getSourcePathList()
+  clang::tooling::RefactoringTool tool(
+    options->getCompilations(),
+    options->getSourcePathList()
   );
 
-  return Tool.run(clang::tooling::newFrontendActionFactory<CodeRefactorPluginAction>()
+  return tool.run(clang::tooling::newFrontendActionFactory<CodeRefactorPluginAction>()
   .get());
 
 }

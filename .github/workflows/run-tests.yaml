@@ -136,7 +136,7 @@ jobs:
           ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_set --tasks 40 --rounds 200000 --strategy pct --minimize
       - name: Run nonlinear_mutex with random strategy
         run: |
-          ./scripts/check.sh 3 ./build/verifying/blocking/nonlinear_mutex --strategy random --rounds 100000
+          ./scripts/check.sh 3 ./build/verifying/blocking/nonlinear_mutex --strategy random --rounds 100000 --threads 4
       - name: Run nonlinear_mutex with pct strategy
         run: |
           ./scripts/check.sh 3 ./build/verifying/blocking/nonlinear_mutex --strategy pct ---rounds 100000

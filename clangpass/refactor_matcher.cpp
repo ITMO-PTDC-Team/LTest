@@ -3,9 +3,7 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/Frontend/CompilerInstance.h"
-#include "clang/Lex/Lexer.h"
 #include "clang/Rewrite/Core/Rewriter.h"
-#include "clang/Rewrite/Frontend/FixItRewriter.h"
 #include "clangpass.h"
 #include "llvm/Support/raw_ostream.h"
 

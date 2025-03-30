@@ -59,7 +59,7 @@ std::string_view CoroBase::GetName() const { return name; }
 bool CoroBase::IsReturned() const { return is_returned; }
 
 extern "C" void CoroYield() {
-  if (!__yield) [[unlikely]] {
+  if (!ltest_yield) [[unlikely]] {
     return;
   }
   assert(this_coro && sched_ctx);

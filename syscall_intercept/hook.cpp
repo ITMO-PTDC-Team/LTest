@@ -12,7 +12,7 @@
 
 static int hook(long syscall_number, long arg0, long arg1, long arg2, long arg3,
                 long arg4, long arg5, long *result) {
-  if (!__trap_syscall) {
+  if (!ltest_trap_syscall) {
     return 1;
   }
   if (syscall_number == SYS_sched_yield) {
@@ -29,7 +29,6 @@ static int hook(long syscall_number, long arg0, long arg1, long arg2, long arg3,
         this_coro->SetBlocked(fstate);
         futex_queues.Push(fstate, this_coro.get());
         CoroYield();
-        debug(stderr, "Returned\n");
         *result = 0;
       } else {
         errno = EAGAIN;

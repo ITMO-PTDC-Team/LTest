@@ -1,6 +1,6 @@
 #pragma once
 
-extern bool __yield;
+extern bool ltest_yield;
 
 namespace ltest {
 

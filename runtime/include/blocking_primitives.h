@@ -6,7 +6,7 @@
 namespace ltest {
 
 struct mutex {
-  ___atomic void lock() {
+  as_atomic void lock() {
     while (locked) {
       this_coro->SetBlocked(state);
       CoroYield();
@@ -14,7 +14,7 @@ struct mutex {
     locked = 1;
   }
 
-  ___atomic bool try_lock() {
+  as_atomic bool try_lock() {
     if (locked) {
       CoroYield();
       return false;
@@ -23,7 +23,7 @@ struct mutex {
     return true;
   }
 
-  ___atomic void unlock() {
+  as_atomic void unlock() {
     locked = 0;
     futex_queues.PopAll(
         state.addr);  // Two have the ability schedule any coroutine
@@ -35,25 +35,25 @@ struct mutex {
 };
 
 struct shared_mutex {
-  ___atomic void lock() {
+  as_atomic void lock() {
     while (locked != 0) {
       this_coro->SetBlocked(state);
       CoroYield();
     }
     locked = -1;
   }
-  ___atomic void unlock() {
+  as_atomic void unlock() {
     locked = 0;
     futex_queues.PopAll(state.addr);
   }
-  ___atomic void lock_shared() {
+  as_atomic void lock_shared() {
     while (locked == -1) {
       this_coro->SetBlocked(state);
       CoroYield();
     }
     ++locked;
   }
-  ___atomic void unlock_shared() {
+  as_atomic void unlock_shared() {
     --locked;
     futex_queues.PopAll(state.addr);
   }

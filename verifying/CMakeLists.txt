@@ -14,13 +14,14 @@ set(CLANG_TOOL_TMP_PREFIX "__tmp_")
 
 function(verify_target target)
     if (APPLY_CLANG_TOOL)
-        add_executable(${target} __tmp_${source_name})
+        set(SOURCE_FILE_NAME ${CLANG_TOOL_TMP_PREFIX}${source_name})
+        add_executable(${target} ${SOURCE_FILE_NAME})
         # apply clangpass to the ${source_name} file
         add_custom_command(
-            OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/__tmp_${source_name}
+            OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/${SOURCE_FILE_NAME}
             COMMAND ${CLANG_TOOL_EXECUTABLE}
                     -p=${CMAKE_BINARY_DIR}/compile_commands.json # passing compilation database, make sure CMAKE_EXPORT_COMPILE_COMMANDS flag is set
-                    --temp-prefix   ${CLANG_TOOL_TMP_PREFIX}
+                    --temp-prefix ${CLANG_TOOL_TMP_PREFIX}
                     --replace-names ::std::mutex,::std::shared_mutex
                     --insert-names  ltest::mutex,ltest::shared_mutex
                     ${CMAKE_CURRENT_SOURCE_DIR}/${source_name}
@@ -32,8 +33,8 @@ function(verify_target target)
         add_custom_command(
             TARGET ${target}
             POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E echo "Removing temporary file '${CMAKE_CURRENT_SOURCE_DIR}/${CLANG_TOOL_TMP_PREFIX}${source_name}' generated after building ${target}"
-            COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_CURRENT_SOURCE_DIR}/__tmp_${source_name}
+            COMMAND ${CMAKE_COMMAND} -E echo "Removing temporary file '${CMAKE_CURRENT_SOURCE_DIR}/${SOURCE_FILE_NAME}' generated after building ${target}"
+            COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_CURRENT_SOURCE_DIR}/${SOURCE_FILE_NAME}
         )
     else()
         add_executable(${target} ${source_name})

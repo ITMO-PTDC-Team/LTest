@@ -1,5 +1,6 @@
 #pragma once
 #include "lib.h"
+#include "futex.h"
 #include "verifying_macro.h"
 
 namespace ltest {
@@ -7,7 +8,7 @@ namespace ltest {
 struct mutex {
   ___atomic void lock() {
     while (locked) {
-      this_coro->SetBlocked(locked_addr, locked);
+      this_coro->SetBlocked(state);
       CoroYield();
     }
     locked = 1;
@@ -22,33 +23,42 @@ struct mutex {
     return true;
   }
 
-  ___atomic void unlock() { locked = 0; }
+  ___atomic void unlock() {
+    locked = 0;
+    futex_queues.PopAll(state.addr); // Two have the ability schedule any coroutine
+  }
 
  private:
   int locked{0};
-  long locked_addr{reinterpret_cast<long>(&locked)};
+  FutexState state{reinterpret_cast<std::intptr_t>(&locked), locked};
 };
 
 struct shared_mutex {
   ___atomic void lock() {
     while (locked != 0) {
-      this_coro->SetBlocked(locked_addr, locked);
+      this_coro->SetBlocked(state);
       CoroYield();
     }
     locked = -1;
   }
-  ___atomic void unlock() { locked = 0; }
+  ___atomic void unlock() { 
+    locked = 0;
+    futex_queues.PopAll(state.addr);
+  }
   ___atomic void lock_shared() {
     while (locked == -1) {
-      this_coro->SetBlocked(locked_addr, locked);
+      this_coro->SetBlocked(state);
       CoroYield();
     }
     ++locked;
   }
-  ___atomic void unlock_shared() { --locked; }
+  ___atomic void unlock_shared() { 
+    --locked;
+    futex_queues.PopAll(state.addr);
+  }
 
  private:
   int locked{0};
-  long locked_addr{reinterpret_cast<long>(&locked)};
+  FutexState state{reinterpret_cast<std::intptr_t>(&locked), locked};
 };
 }  // namespace ltest

@@ -2,13 +2,12 @@
 #include <linux/futex.h>
 #include <sys/syscall.h>
 #include <syscall.h>
-#include <list>
+#include <cerrno>
 #include <vector>
+#include "runtime/include/futex.h"
 #include "runtime/include/logger.h"
 #include "runtime/include/lib.h"
 #include "runtime/include/syscall_trap.h"
-
-std::list<CoroBase*> queue;
 
 static int
 hook(long syscall_number,
@@ -26,22 +25,22 @@ hook(long syscall_number,
 		*result = 0;
 		return 0;
 	} else if (syscall_number == SYS_futex) {
-		debug(stderr, "caught futex(0x%lx, %ld), exp: %ld, cur: %d\n", (unsigned long)arg0, arg1, arg2, *((int*)arg0));
+		fprintf(stderr, "caught futex(0x%lx, %ld), exp: %ld, cur: %d\n", (unsigned long)arg0, arg1, arg2, *((int*)arg0));
 		if (arg1 == FUTEX_WAIT_PRIVATE || arg1 == FUTEX_WAIT_BITSET_PRIVATE) {
-			queue.push_back(this_coro.get());
-			debug(stderr, "Blocked: %d\n", this_coro->SetBlocked(arg0, arg2));
-			if (this_coro->SetBlocked(arg0, arg2)) {
+			auto fstate = FutexState{arg0, arg2};
+			if (fstate.CanBeBlocked()) {
+				this_coro->SetBlocked(fstate);
+				futex_queues.Push(fstate, this_coro.get());
 				CoroYield();
+				fprintf(stderr, "Returned\n");
+				*result = 0;
+			} else {
+				errno = EAGAIN;
+				*result = 1;
 			}
-			*result = 0;
 		} else if (arg1 == FUTEX_WAKE_PRIVATE || arg1 == FUTEX_WAKE_BITSET_PRIVATE) {
-			debug(stderr, "caught wake\n");
-			long count = 0;
-			std::erase_if(queue, [](auto coro){return !coro->IsBlocked();});
-			for (auto* coro : queue) {
-				count += !coro->IsBlocked();
-			}
-			*result = count;
+			fprintf(stderr, "caught wake\n");
+			*result = futex_queues.Pop(arg0, arg2);
 		} else {
 			assert(false && "unsupported futex call");
 		}

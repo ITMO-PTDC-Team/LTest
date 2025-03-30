@@ -8,14 +8,21 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "futex.h"
+
 #define panic() assert(false)
 
 struct CoroBase;
 
+struct FutexQueues;
+
 // Current executing coroutine.
 extern std::shared_ptr<CoroBase> this_coro;
 
+// Scheduler context
 extern boost::context::fiber_context sched_ctx;
+
+extern FutexQueues futex_queues;
 
 extern "C" void CoroYield();
 
@@ -59,30 +66,12 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   // Terminate the coroutine.
   void Terminate();
 
-  struct FutexState {
-    int* addr;
-    int value;
-
-    /// Check that value stored by futex addr isn't changed
-    bool IsBlocked() { return addr && *addr == value; }
-  };
-
-  bool SetBlocked(long uaddr, int value) {
-    auto state = FutexState{reinterpret_cast<int*>(uaddr), value};
-    if (!state.IsBlocked()) {
-      fstate = FutexState{nullptr, 0};
-      return false;
-    }
+  void SetBlocked(const FutexState& state) {
     fstate = state;
-    return true;
   }
 
   bool IsBlocked() {
-    auto is_blocked = fstate.IsBlocked();
-    if (!is_blocked) {
-      fstate = FutexState{nullptr, 0};
-    }
-    return is_blocked;
+    return futex_queues.IsBlocked(fstate, this);
   }
 
   // Checks if the coroutine is parked.

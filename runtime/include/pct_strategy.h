@@ -11,8 +11,7 @@
 // equivalent to the halt problem), k should be good approximation
 template <typename TargetObj, StrategyVerifier Verifier>
 struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
-  PctStrategy(size_t threads_count,
-                       std::vector<TaskBuilder> ctrs)
+  PctStrategy(size_t threads_count, std::vector<TaskBuilder> ctrs)
       : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count, ctrs),
         current_depth(1),
         current_schedule_length(0) {
@@ -25,7 +24,6 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     avg_k = avg_k / this->constructors.size();
 
     PrepareForDepth(current_depth, avg_k);
-    
   }
 
   // If there aren't any non returned tasks and the amount of finished tasks
@@ -94,11 +92,11 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   }
 
   // NOTE: `Next` version use heuristics for livelock avoiding, but not there
-  // refactor later to avoid copy-paste 
+  // refactor later to avoid copy-paste
   TaskWithMetaData NextSchedule() override {
     auto& round_schedule = this->round_schedule;
     auto& threads = this->threads;
-    
+
     size_t max = std::numeric_limits<size_t>::min();
     size_t index_of_max = 0;
     // Have to ignore waiting threads, so can't do it faster than O(n)
@@ -147,7 +145,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
       thread = StableVector<Task>();
     }
-    //this->state.Reset();
+    // this->state.Reset();
 
     UpdateStatistics();
   }

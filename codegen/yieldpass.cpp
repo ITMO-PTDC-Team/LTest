@@ -90,6 +90,7 @@ struct YieldInserter {
       }
     }
 
+#ifndef DEBUG
     for (auto &B : F) {
       for (auto &I : B) {
         if (auto call = dyn_cast<CallInst>(&I)) {
@@ -108,6 +109,7 @@ struct YieldInserter {
         }
       }
     }
+#endif
   }
 
   bool ItsYieldInst(Instruction *inst) {

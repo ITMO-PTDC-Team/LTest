@@ -46,7 +46,6 @@ concept StrategyVerifier = requires(T a) {
 // will be the next one it can be implemented by different strategies, such as:
 // randomized/tla/fair
 struct Strategy {
-
   virtual size_t NextThreadId() = 0;
 
   virtual TaskWithMetaData Next() = 0;
@@ -94,8 +93,8 @@ struct Strategy {
   virtual int GetThreadsCount() const = 0;
 
   // Called when the finished task must be reported to the verifier
-  // (Strategy is a pure interface, the templated subclass BaseStrategyWithThreads knows
-  // about the Verifier and will delegate to that)
+  // (Strategy is a pure interface, the templated subclass
+  // BaseStrategyWithThreads knows about the Verifier and will delegate to that)
   virtual void OnVerifierTaskFinish(TaskWithMetaData task) = 0;
 
   virtual ~Strategy() = default;
@@ -116,8 +115,11 @@ struct Strategy {
 
 template <typename TargetObj, StrategyVerifier Verifier>
 struct BaseStrategyWithThreads : public Strategy {
-
-  BaseStrategyWithThreads(size_t threads_count, std::vector<TaskBuilder> constructors) : state(std::make_unique<TargetObj>()), threads_count(threads_count), constructors(std::move(constructors)) {
+  BaseStrategyWithThreads(size_t threads_count,
+                          std::vector<TaskBuilder> constructors)
+      : state(std::make_unique<TargetObj>()),
+        threads_count(threads_count),
+        constructors(std::move(constructors)) {
     round_schedule.resize(threads_count, -1);
 
     constructors_distribution =
@@ -162,7 +164,7 @@ struct BaseStrategyWithThreads : public Strategy {
       size_t tasks_in_thread = thread.size();
       for (size_t i = 0; i < tasks_in_thread; ++i) {
         if (!IsTaskRemoved(thread[i]->GetId())) {
-          thread[i] = thread[i]->Restart(&state);
+          thread[i] = thread[i]->Restart(&*state);
         }
       }
     }
@@ -195,9 +197,7 @@ struct BaseStrategyWithThreads : public Strategy {
     sched_checker.OnFinished(task);
   }
 
-  TaskWithMetaData Next() override {
-    return NextVerifiedFor(NextThreadId());
-  }
+  TaskWithMetaData Next() override { return NextVerifiedFor(NextThreadId()); }
 
   TaskWithMetaData NextVerifiedFor(size_t thread_index) {
     // it's the first task if the queue is empty
@@ -209,7 +209,7 @@ struct BaseStrategyWithThreads : public Strategy {
       for (size_t i = 0; i < this->constructors.size(); ++i) {
         TaskBuilder constructor = this->constructors.at(i);
         CreatedTaskMetaData next_task = {constructor.GetName(), true,
-          thread_index};
+                                         thread_index};
         if (this->sched_checker.Verify(next_task)) {
           verified_constructor = i;
           break;
@@ -221,8 +221,7 @@ struct BaseStrategyWithThreads : public Strategy {
       threads[thread_index].emplace_back(
           this->constructors[verified_constructor].Build(
               &*this->state, thread_index, this->new_task_id++));
-      TaskWithMetaData task{threads[thread_index].back(), true,
-        thread_index};
+      TaskWithMetaData task{threads[thread_index].back(), true, thread_index};
       return task;
     }
 
@@ -245,7 +244,8 @@ struct BaseStrategyWithThreads : public Strategy {
     while (has_nonterminated_threads) {
       has_nonterminated_threads = false;
 
-      for (size_t thread_index = 0; thread_index < this->threads.size(); ++thread_index) {
+      for (size_t thread_index = 0; thread_index < this->threads.size();
+           ++thread_index) {
         auto& thread = this->threads[thread_index];
         auto& task_index = task_indexes[thread_index];
 
@@ -255,7 +255,8 @@ struct BaseStrategyWithThreads : public Strategy {
         }
 
         if (task_index == thread.size()) {
-          std::optional<std::string> releaseTask = this->sched_checker.ReleaseTask(thread_index);
+          std::optional<std::string> releaseTask =
+              this->sched_checker.ReleaseTask(thread_index);
           // Check if we should schedule release task to unblock other tasks
           if (releaseTask) {
             auto constructor =
@@ -263,11 +264,12 @@ struct BaseStrategyWithThreads : public Strategy {
                               [=](const TaskBuilder& b) {
                                 return b.GetName() == *releaseTask;
                               });
-            auto task = constructor.Build(&*state, thread_index, task_index);
-            auto verified = this->sched_checker.Verify(CreatedTaskMetaData{std::string(task->GetName()), true, thread_index});
+            auto task = constructor.Build(&*this->state, thread_index, task_index);
+            auto verified = this->sched_checker.Verify(CreatedTaskMetaData{
+                std::string(task->GetName()), true, thread_index});
             assert(verified && "wrong release task at termination");
             thread.emplace_back(task);
-          } 
+          }
         }
 
         if (task_index < thread.size() && !thread[task_index]->IsBlocked()) {
@@ -615,7 +617,7 @@ struct TLAScheduler : Scheduler {
       if (frame.is_new) {
         // It was a new task.
         // So restart it from the beginning with the same args.
-        *task = (*task)->Restart(&state);
+        *task = (*task)->Restart(&*state);
       } else {
         // It was a not new task, hence, we recreated in early.
       }

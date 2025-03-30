@@ -48,53 +48,53 @@ jobs:
               verifying/blocking/simple_mutex verifying/blocking/bank verifying/blocking/mutexed_register verifying/blocking/shared_mutexed_register
       - name: Run nonlinear_queue with random strategy
         run: |
-          ! ./build/verifying/targets/nonlinear_queue --rounds 10000 --strategy random --switches 1
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --rounds 10000 --strategy random --switches 1
       - name: Run nonlinear_queue with pct strategy
         run: |
-          ! ./build/verifying/targets/nonlinear_queue --strategy pct --tasks 10 --rounds 240
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --rounds 10000 --strategy pct --switches 1
       - name: Run nonlinear_queue with random strategy (minimization)
         run: |
-          ! ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy random --minimize
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy random --minimize
       - name: Run nonlinear_queue with pct strategy (minimization)
         run: |
-          ! ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy pct --minimize
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy pct --minimize
       - name: Run nonlinear_mutex with random strategy
         run: |
-          ! LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy random --rounds 1000
+          ./scripts/check.sh 3 ./build/verifying/blocking/nonlinear_mutex --strategy random --rounds 1000
       - name: Run nonlinear_mutex with pct strategy
         run: |
-          ! LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy pct --rounds 1000
+          ./scripts/check.sh 3 ./build/verifying/blocking/nonlinear_mutex --strategy pct --rounds 1000
       - name: Run simple_mutex with random strategy
         run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy random --rounds 100
+          ./scripts/check.sh 0 ./build/verifying/blocking/simple_mutex --strategy random --rounds 100
       - name: Run simple_mutex with pct strategy
         run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy pct --rounds 100
+          ./scripts/check.sh 0 ./build/verifying/blocking/simple_mutex --strategy pct --rounds 100
       - name: Run bank with pct strategy
         run: |
-          ./build/verifying/blocking/bank --strategy pct --rounds 100
+          ./scripts/check.sh 0 ./build/verifying/blocking/bank --strategy pct --rounds 100
       - name: Run bank with random strategy
         run: |
-          ./build/verifying/blocking/bank --strategy random --rounds 100
+          ./scripts/check.sh 0 ./build/verifying/blocking/bank --strategy random --rounds 100
       - name: Run shared_mutexed_register with pct strategy
         run: |
-          ./build/verifying/blocking/shared_mutexed_register --strategy pct --rounds 100
+          ./scripts/check.sh 0 ./build/verifying/blocking/shared_mutexed_register --strategy pct --rounds 100
       - name: Run shared_mutexed_register with random strategy
         run: |
-          ./build/verifying/blocking/shared_mutexed_register --strategy random --rounds 100
+          ./scripts/check.sh 0 ./build/verifying/blocking/shared_mutexed_register --strategy random --rounds 100
       - name: Run mutexed_register with pct strategy
         run: |
-          ./build/verifying/blocking/mutexed_register --strategy pct --rounds 100
+          ./scripts/check.sh 0 ./build/verifying/blocking/mutexed_register --strategy pct --rounds 100
       - name: Run mutexed_register with random strategy
         run: |
-          ./build/verifying/blocking/mutexed_register --strategy random --rounds 100
+          ./scripts/check.sh 0 ./build/verifying/blocking/mutexed_register --strategy random --rounds 100
   verifying-test-release:
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
     container: 
-      image: silkeh/clang:18
+      image: silkeh/clang:19
       options: --user root
     steps:
       - name: Install deps
@@ -112,58 +112,58 @@ jobs:
               verifying/blocking/simple_mutex verifying/blocking/bank verifying/blocking/mutexed_register verifying/blocking/shared_mutexed_register
       - name: Run nonlinear_queue with random strategy (minimization)
         run: |
-          ! ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy random --minimize
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy random --minimize
       - name: Run nonlinear_queue with pct strategy (minimization)
         run: |
-          ! ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy pct --minimize
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy pct --minimize
       - name: Run nonlinear_ms_queue with random strategy (minimization)
         run: |
-          ! ./build/verifying/targets/nonlinear_ms_queue --tasks 40 --rounds 100000 --strategy random --minimize
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_ms_queue --tasks 40 --rounds 100000 --strategy random --minimize
       - name: Run nonlinear_ms_queue with pct strategy (minimization)
         run: |
-          ! ./build/verifying/targets/nonlinear_ms_queue --tasks 40 --rounds 100000 --strategy pct --minimize
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_ms_queue --tasks 40 --rounds 100000 --strategy pct --minimize
       - name: Run nonlinear_treiber_stack with random strategy (minimization)
         run: |
-          ! ./build/verifying/targets/nonlinear_treiber_stack --tasks 40 --rounds 100000 --strategy random --minimize
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_treiber_stack --tasks 40 --rounds 100000 --strategy random --minimize
       - name: Run nonlinear_treiber_stack with pct strategy (minimization)
         run: |
-          ! ./build/verifying/targets/nonlinear_treiber_stack --tasks 40 --rounds 100000 --strategy pct --minimize
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_treiber_stack --tasks 40 --rounds 100000 --strategy pct --minimize
       - name: Run nonlinear_set with random strategy (minimization)
         run: |
-          ! ./build/verifying/targets/nonlinear_set --tasks 40 --rounds 200000 --strategy random --minimize
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_set --tasks 40 --rounds 200000 --strategy random --minimize
       - name: Run nonlinear_set with pct strategy (minimization)
         run: |
-          ! ./build/verifying/targets/nonlinear_set --tasks 40 --rounds 200000 --strategy pct --minimize
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_set --tasks 40 --rounds 200000 --strategy pct --minimize
       - name: Run nonlinear_mutex with random strategy
         run: |
-          ! LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy random --rounds 10000
+          ./scripts/check.sh 3 ./build/verifying/blocking/nonlinear_mutex --strategy random --rounds 100000
       - name: Run nonlinear_mutex with pct strategy
         run: |
-          ! LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy pct ---rounds 10000
+          ./scripts/check.sh 3 ./build/verifying/blocking/nonlinear_mutex --strategy pct ---rounds 100000
       - name: Run simple_mutex with random strategy
         run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy random --rounds 1000
+          ./scripts/check.sh 0 ./build/verifying/blocking/simple_mutex --strategy random --rounds 10000
       - name: Run simple_mutex with pct strategy
         run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy pct --rounds 1000
+          ./scripts/check.sh 0 ./build/verifying/blocking/simple_mutex --strategy pct --rounds 10000
       - name: Run bank with pct strategy
         run: |
-          ./build/verifying/blocking/bank --strategy pct --rounds 1000
+          ./scripts/check.sh 0 ./build/verifying/blocking/bank --strategy pct --rounds 10000
       - name: Run bank with random strategy
         run: |
-          ./build/verifying/blocking/bank --strategy random --rounds 1000
+          ./scripts/check.sh 0 ./build/verifying/blocking/bank --strategy random --rounds 10000
       - name: Run shared_mutexed_register with pct strategy
         run: |
-          ./build/verifying/blocking/shared_mutexed_register --strategy pct --rounds 1000
+          ./scripts/check.sh 0 ./build/verifying/blocking/shared_mutexed_register --strategy pct --rounds 10000
       - name: Run shared_mutexed_register with random strategy
         run: |
-          ./build/verifying/blocking/shared_mutexed_register --strategy random --rounds 1000
+          ./scripts/check.sh 0 ./build/verifying/blocking/shared_mutexed_register --strategy random --rounds 10000
       - name: Run mutexed_register with pct strategy
         run: |
-          ./build/verifying/blocking/mutexed_register --strategy pct --rounds 1000
+          ./scripts/check.sh 0 ./build/verifying/blocking/mutexed_register --strategy pct --rounds 10000
       - name: Run mutexed_register with random strategy
         run: |
-          ./build/verifying/blocking/mutexed_register --strategy random --rounds 1000
+          ./scripts/check.sh 0 ./build/verifying/blocking/mutexed_register --strategy random --rounds 10000
   verifying-folly-release:
     runs-on: ubuntu-latest
     env:
@@ -200,14 +200,14 @@ jobs:
         run: |
           cmake --build build --target verifying/blocking/folly_rwspinlock verifying/blocking/folly_sharedmutex \
             verifying/blocking/folly_flatcombining_queue
-      - name: Run folly rwspinlock with random strategy
+      - name: Run folly rwspinlock with pct strategy
         run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/folly_rwspinlock --strategy random
-      - name: Run folly shared_mutex with random strategy
+          ./scripts/check.sh 0 ./build/verifying/blocking/folly_rwspinlock --strategy random --rounds 10000
+      - name: Run folly shared_mutex with pct strategy
         run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/folly_sharedmutex --strategy random
+          ./scripts/check.sh 0 ./build/verifying/blocking/folly_sharedmutex --strategy pct --rounds 10000
       - name: Run folly flatcombining queue with pct strategy
         run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/folly_flatcombining_queue --strategy pct
+          ./scripts/check.sh 0 ./build/verifying/blocking/folly_flatcombining_queue --strategy pct --rounds 10000
 
       

@@ -59,8 +59,9 @@ struct TargetMethod<int, Target, Args...> {
                     method = std::move(method)](
                        void *this_ptr, size_t thread_num, int task_id) -> Task {
       auto args = std::shared_ptr<void>(new std::tuple(gen(thread_num)));
-      auto coro = Coro<Target, Args...>::New(
-          method, this_ptr, args, &ltest::toStringArgs<Args...>, method_name, task_id);
+      auto coro = Coro<Target, Args...>::New(method, this_ptr, args,
+                                             &ltest::toStringArgs<Args...>,
+                                             method_name, task_id);
       return coro;
     };
     ltest::task_builders.push_back(
@@ -90,8 +91,9 @@ struct TargetMethod<void, Target, Args...> {
                        void *this_ptr, size_t thread_num, int task_id) -> Task {
       auto wrapper = Wrapper<Target, decltype(method), Args...>{method};
       auto args = std::shared_ptr<void>(new std::tuple(gen(thread_num)));
-      auto coro = Coro<Target, Args...>::New(
-          wrapper, this_ptr, args, &ltest::toStringArgs<Args...>, method_name, task_id);
+      auto coro = Coro<Target, Args...>::New(wrapper, this_ptr, args,
+                                             &ltest::toStringArgs<Args...>,
+                                             method_name, task_id);
       return coro;
     };
     ltest::task_builders.push_back(

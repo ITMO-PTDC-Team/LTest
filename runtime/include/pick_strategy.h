@@ -14,12 +14,10 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
   explicit PickStrategy(size_t threads_count,
                         std::vector<TaskBuilder> constructors)
-      : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count, constructors) {
-  }
+      : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count,
+                                                     constructors) {}
 
-  size_t NextThreadId() override {
-    return Pick();
-  }
+  size_t NextThreadId() override { return Pick(); }
 
   TaskWithMetaData NextSchedule() override {
     auto& round_schedule = this->round_schedule;

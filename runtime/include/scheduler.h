@@ -240,7 +240,6 @@ struct BaseStrategyWithThreads : public Strategy {
 
     std::vector<size_t> task_indexes(this->threads.size(), 0);
     bool has_nonterminated_threads = true;
-
     while (has_nonterminated_threads) {
       has_nonterminated_threads = false;
 
@@ -264,7 +263,8 @@ struct BaseStrategyWithThreads : public Strategy {
                               [=](const TaskBuilder& b) {
                                 return b.GetName() == *releaseTask;
                               });
-            auto task = constructor.Build(&*this->state, thread_index, task_index);
+            auto task =
+                constructor.Build(&*this->state, thread_index, task_index);
             auto verified = this->sched_checker.Verify(CreatedTaskMetaData{
                 std::string(task->GetName()), true, thread_index});
             assert(verified && "wrong release task at termination");

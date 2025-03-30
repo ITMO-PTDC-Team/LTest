@@ -15,7 +15,6 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count, ctrs),
         current_depth(1),
         current_schedule_length(0) {
-    debug(stderr, "%ld:", this->constructors.size());
     // We have information about potential number of resumes
     // but because of the implementation, it's only available in the task.
     // In fact, it doesn't depend on the task, it only depends on the
@@ -40,7 +39,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     // Have to ignore waiting threads, so can't do it faster than O(n)
     for (size_t i = 0; i < threads.size(); ++i) {
       // Ignore waiting tasks
-      // debug(stderr, "prior: %d, number %d\n", priorities[i], i);
+      debug(stderr, "prior: %d, number %d\n", priorities[i], i);
       if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
         // debug(stderr, "blocked\n", priorities[i], i);
         // dual waiting if request finished, but follow up isn't
@@ -62,7 +61,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     }
 
     // TODO: Choose wiser constant
-    if (count_chosen_same == 100 && index_of_max == last_chosen && 
+    if (count_chosen_same == 100 && index_of_max == last_chosen &&
         snd_max != std::numeric_limits<ssize_t>::min()) {
       priorities[index_of_max] = snd_max - 1;
       index_of_max = index_of_snd_max;
@@ -85,8 +84,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
     }
 
-    // debug(stderr, "Chosen thread: %d, cnt_count: %d\n", index_of_max,
-    //       count_chosen_same);
+    debug(stderr, "Chosen thread: %d, cnt_count: %d\n", index_of_max,
+          count_chosen_same);
     last_chosen = index_of_max;
     return index_of_max;
   }

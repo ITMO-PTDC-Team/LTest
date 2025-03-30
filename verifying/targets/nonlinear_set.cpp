@@ -5,7 +5,7 @@
 
 struct SlotsSet {
  public:
-  SlotsSet() { 
+  SlotsSet() {
     for (size_t i = 0; i < N; ++i) {
       slots[i].store(0);
     }

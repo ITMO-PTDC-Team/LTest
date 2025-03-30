@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+
 #include "futex.h"
 
 #define panic() assert(false)
@@ -66,13 +67,9 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   // Terminate the coroutine.
   void Terminate();
 
-  void SetBlocked(const FutexState& state) {
-    fstate = state;
-  }
+  void SetBlocked(const FutexState& state) { fstate = state; }
 
-  bool IsBlocked() {
-    return futex_queues.IsBlocked(fstate, this);
-  }
+  bool IsBlocked() { return futex_queues.IsBlocked(fstate, this); }
 
   // Checks if the coroutine is parked.
   bool IsParked() const;

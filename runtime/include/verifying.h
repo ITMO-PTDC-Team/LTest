@@ -73,7 +73,6 @@ std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
     }
     case PCT: {
       std::cout << "pct\n";
-      debug(stderr, "%ld:", l.size());
       return std::make_unique<PctStrategy<TargetObj, Verifier>>(opts.threads,
                                                                 std::move(l));
     }
@@ -134,7 +133,7 @@ inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
   if (result.has_value()) {
     std::cout << "non linearized:\n";
     pretty_printer.PrettyPrint(result.value().second, std::cout);
-    return 3; //see https://tldp.org/LDP/abs/html/exitcodes.html
+    return 3;  // see https://tldp.org/LDP/abs/html/exitcodes.html
   } else {
     std::cout << "success!\n";
     return 0;

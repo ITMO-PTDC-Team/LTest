@@ -1,6 +1,6 @@
 #pragma once
-#include "lib.h"
 #include "futex.h"
+#include "lib.h"
 #include "verifying_macro.h"
 
 namespace ltest {
@@ -25,7 +25,8 @@ struct mutex {
 
   ___atomic void unlock() {
     locked = 0;
-    futex_queues.PopAll(state.addr); // Two have the ability schedule any coroutine
+    futex_queues.PopAll(
+        state.addr);  // Two have the ability schedule any coroutine
   }
 
  private:
@@ -41,7 +42,7 @@ struct shared_mutex {
     }
     locked = -1;
   }
-  ___atomic void unlock() { 
+  ___atomic void unlock() {
     locked = 0;
     futex_queues.PopAll(state.addr);
   }
@@ -52,7 +53,7 @@ struct shared_mutex {
     }
     ++locked;
   }
-  ___atomic void unlock_shared() { 
+  ___atomic void unlock_shared() {
     --locked;
     futex_queues.PopAll(state.addr);
   }

@@ -46,21 +46,21 @@ jobs:
           cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Debug
           cmake --build build --target verifying/targets/nonlinear_queue verifying/targets/nonlinear_ms_queue verifying/targets/nonlinear_treiber_stack verifying/targets/nonlinear_set verifying/blocking/nonlinear_mutex \
               verifying/blocking/simple_mutex verifying/blocking/bank verifying/blocking/mutexed_register verifying/blocking/shared_mutexed_register
-      # - name: Run nonlinear_queue with random strategy
-      #   run: |
-      #     ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --rounds 10000 --strategy random --switches 1
+      - name: Run nonlinear_queue with random strategy
+        run: |
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --rounds 10000 --strategy random --switches 1
       - name: Run nonlinear_queue with pct strategy
         run: |
           ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --rounds 10000 --strategy pct --switches 1
-      # - name: Run nonlinear_queue with random strategy (minimization)
-      #   run: |
-      #     ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy random --minimize
+      - name: Run nonlinear_queue with random strategy (minimization)
+        run: |
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy random --minimize
       - name: Run nonlinear_queue with pct strategy (minimization)
         run: |
           ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy pct --minimize
-      # - name: Run nonlinear_mutex with random strategy
-      #   run: |
-      #     ./scripts/check.sh 3 ./build/verifying/blocking/nonlinear_mutex --strategy random --rounds 1000
+      - name: Run nonlinear_mutex with random strategy
+        run: |
+          ./scripts/check.sh 3 ./build/verifying/blocking/nonlinear_mutex --strategy random --rounds 1000
       - name: Run nonlinear_mutex with pct strategy
         run: |
           ./scripts/check.sh 3 ./build/verifying/blocking/nonlinear_mutex --strategy pct --rounds 1000

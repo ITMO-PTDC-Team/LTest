@@ -3,7 +3,7 @@
 #include "../specs/stack.h"
 
 struct TreiberStack {
-  TreiberStack() : nodes(N), head(-1), free_list(0) { 
+  TreiberStack() : nodes(N), head(-1), free_list(0) {
     for (size_t i = 0; i < nodes.size() - 1; ++i) {
       nodes[i].next.store(i + 1);
     }

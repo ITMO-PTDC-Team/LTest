@@ -48,10 +48,10 @@ jobs:
               verifying/blocking/simple_mutex verifying/blocking/bank verifying/blocking/mutexed_register verifying/blocking/shared_mutexed_register
       - name: Run nonlinear_queue with random strategy
         run: |
-          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --rounds 10000 --strategy random --switches 1
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --rounds 10000 --strategy random
       - name: Run nonlinear_queue with pct strategy
         run: |
-          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --rounds 10000 --strategy pct --switches 1
+          ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --rounds 10000 --strategy pct
       - name: Run nonlinear_queue with random strategy (minimization)
         run: |
           ./scripts/check.sh 3 ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy random --minimize

@@ -95,9 +95,9 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   TaskWithMetaData NextSchedule() override {
     auto& round_schedule = this->round_schedule;
     auto& threads = this->threads;
-
-    size_t max = std::numeric_limits<size_t>::min();
-    size_t index_of_max = 0;
+    ssize_t max = std::numeric_limits<ssize_t>::min();
+    ssize_t snd_max = std::numeric_limits<ssize_t>::min();
+    size_t index_of_max = 0, index_of_snd_max = 0;
     // Have to ignore waiting threads, so can't do it faster than O(n)
     for (size_t i = 0; i < threads.size(); ++i) {
       int task_index = this->GetNextTaskInThread(i);
@@ -112,18 +112,30 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
 
       if (max <= priorities[i]) {
+        index_of_snd_max = index_of_max;
+        snd_max = max;
         max = priorities[i];
         index_of_max = i;
-      }
-    }
-    // Check whether the priority change is required
-    current_schedule_length++;
-    for (size_t i = 0; i < priority_change_points.size(); ++i) {
-      if (current_schedule_length == priority_change_points[i]) {
-        priorities[index_of_max] = current_depth - i;
+      } else if (snd_max <= priorities[i]) {
+        snd_max = priorities[i];
+        index_of_snd_max = i;
       }
     }
 
+    // TODO: Choose wiser constant
+    if (count_chosen_same == 100 && index_of_max == last_chosen &&
+        snd_max != std::numeric_limits<ssize_t>::min()) {
+      priorities[index_of_max] = snd_max - 1;
+      index_of_max = index_of_snd_max;
+    }
+
+    if (index_of_max == last_chosen) {
+      ++count_chosen_same;
+    } else {
+      count_chosen_same = 1;
+    }
+
+    last_chosen = index_of_max;
     // Picked thread is `index_of_max`
     int next_task_index = this->GetNextTaskInThread(index_of_max);
     bool is_new = round_schedule[index_of_max] != next_task_index;

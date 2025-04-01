@@ -5,7 +5,12 @@ project(lintest)
 
 set(CMAKE_CXX_STANDARD 20)
 
+# in order for clang tool to work, this must be ON (it will generate the compilation database)
+# see https://clang.llvm.org/docs/JSONCompilationDatabase.html
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# set this to ON in order to substitute std::atomic<T> with custom implementation
+set(APPLY_CLANG_TOOL OFF)
 
 # TODO(kmitkin): require to understand, what is it considered to be "optimized" build
 # set(CMAKE_CXX_FLAGS_RELEASE "???")
@@ -24,6 +29,7 @@ include(GoogleTest)
 fuzztest_setup_fuzzing_flags()
 enable_testing()
 
+add_subdirectory(clangpass)
 add_subdirectory(codegen)
 add_subdirectory(runtime)
 

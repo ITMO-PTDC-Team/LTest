@@ -14,6 +14,10 @@
 #include "strategy_verifier.h"
 #include "syscall_trap.h"
 #include "verifying_macro.h"
+// This include is important, because when clangpass substitutes std::atomic<T> usages with
+// LTestAtomic<T>, the new class should be included into the target source files.
+// It will be guaranteed, since verifying.h is included in all targets.
+#include "ltest_atomic.h"
 
 namespace ltest {
 

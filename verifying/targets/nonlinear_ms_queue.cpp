@@ -130,7 +130,7 @@ using spec_t =
     ltest::Spec<MSQueue, spec::Queue<>, spec::QueueHash<>, spec::QueueEquals<>>;
 
 LTEST_ENTRYPOINT(spec_t);
-
+  
 target_method(generateInt, void, MSQueue, Push, int);
 
 target_method(ltest::generators::genEmpty, int, MSQueue, Pop);

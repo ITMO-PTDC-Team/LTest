@@ -3,10 +3,17 @@
 #include <optional>
 #include <random>
 #include <utility>
+#include <random>
+#include <utility>
 
 #include "lib.h"
 #include "lincheck.h"
 #include "logger.h"
+#include "minimization.h"
+#include "minimization_smart.h"
+#include "pretty_print.h"
+#include "scheduler_fwd.h"
+#include "stable_vector.h"
 #include "minimization.h"
 #include "minimization_smart.h"
 #include "pretty_print.h"

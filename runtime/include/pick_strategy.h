@@ -76,6 +76,27 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
                             is_new, current_thread};
   }
 
+  // TODO: same implementation for pct
+  std::optional<std::tuple<Task&, int>> GetTask(int task_id) override {
+    // TODO: can this be optimized?
+    int thread_id = 0;
+    for (auto& thread : this->threads) {
+      size_t tasks = thread.size();
+
+      for (size_t i = 0; i < tasks; ++i) {
+        Task& task = thread[i];
+        if (task->GetId() == task_id) {
+          std::tuple<Task&, int> result = { task, thread_id };
+          return result;
+          // return std::make_tuple(task, thread_id);
+        }
+      }
+
+      thread_id++;
+    }
+    return std::nullopt;
+  }
+
   void StartNextRound() override {
     this->new_task_id = 0;
 

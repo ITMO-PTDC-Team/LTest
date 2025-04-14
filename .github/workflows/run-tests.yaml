@@ -17,81 +17,10 @@ jobs:
         uses: actions/checkout@v4
       - name: Build
         run: |
-          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=RelWithAssert
           cmake --build build --target lin_check_test
       - name: Run lin check test
         run: ./build/test/runtime/lin_check_test
-  verifying-test-debug:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-    container: 
-      image: silkeh/clang:18
-      options: --user root
-    steps:
-      - name: Install deps
-        run: |
-          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev protobuf-compiler libboost-context-dev pkg-config libcapstone-dev && \
-          git clone https://github.com/Kirillog/syscall_intercept.git &&  \
-          cmake syscall_intercept -G Ninja -B syscall_intercept/build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang && \
-          cmake --build syscall_intercept/build --target install
-      - name: Check out repository code
-        uses: actions/checkout@v4
-      - name: Build
-        run: |
-          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Debug
-          cmake --build build --target verifying/targets/nonlinear_queue verifying/blocking/nonlinear_mutex verifying/blocking/simple_mutex
-      # Does not work, see issue: https://github.com/ITMO-PTDC-Team/LTest/issues/13
-      # - name: Run nonlinear_mutex with random strategy
-      #   run: |
-      #     LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy random || error_code=$?
-      #     if [ "${error_code}" -ne 1 ]; then 
-      #       exit 1
-      #     fi
-      # - name: Run nonlinear_mutex with pct strategy
-      #   run: |
-      #     LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy pct --tasks 10 --rounds 240 || error_code=$?
-      #     if [ "${error_code}" -ne 1 ]; then 
-      #       exit 1
-      #     fi
-      - name: Run simple_mutex with random strategy
-        run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy random || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
-      # Does not work, see issue: https://github.com/ITMO-PTDC-Team/LTest/issues/12
-      # - name: Run simple_mutex with pct strategy
-      #   run: |
-      #     LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy pct --tasks 10 --rounds 240 || error_code=$?
-      #     if [ "${error_code}" -ne 1 ]; then 
-      #       exit 1
-      #     fi
-      - name: Run nonlinear_queue with random strategy
-        run: |
-          ./build/verifying/targets/nonlinear_queue --tasks 4 --rounds 100000 --strategy random --switches 1 || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
-      - name: Run nonlinear_queue with pct strategy
-        run: |
-          ./build/verifying/targets/nonlinear_queue --strategy pct --tasks 10 --rounds 240 || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
-      - name: Run nonlinear_queue with random strategy (minimization)
-        run: |
-          ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy random --minimize || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
-      - name: Run nonlinear_queue with pct strategy (minimization)
-        run: |
-          ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy pct --minimize || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
   verifying-test-release:
     runs-on: ubuntu-latest
     defaults:
@@ -111,8 +40,9 @@ jobs:
         uses: actions/checkout@v4
       - name: Build
         run: |
-          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --target verifying/targets/nonlinear_queue verifying/targets/nonlinear_ms_queue verifying/targets/nonlinear_treiber_stack verifying/targets/nonlinear_set verifying/blocking/nonlinear_mutex verifying/blocking/simple_mutex
+          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=RelWithAssert
+          cmake --build build --target verifying/targets/nonlinear_queue verifying/targets/nonlinear_ms_queue verifying/targets/nonlinear_treiber_stack \
+          verifying/targets/nonlinear_set verifying/targets/unique_args verifying/blocking/nonlinear_mutex verifying/blocking/simple_mutex
       - name: Run nonlinear_queue with random strategy (minimization)
         run: |
           ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy random --minimize || error_code=$?
@@ -162,8 +92,30 @@ jobs:
             exit 1
           fi
       - name: Run unique args with tla strategy
+        run: ./build/verifying/targets/unique_args 
+      # Does not work, see issue: https://github.com/ITMO-PTDC-Team/LTest/issues/13
+      # - name: Run nonlinear_mutex with random strategy
+      #   run: |
+      #     LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy random || error_code=$?
+      #     if [ "${error_code}" -ne 1 ]; then 
+      #       exit 1
+      #     fi
+      # - name: Run nonlinear_mutex with pct strategy
+      #   run: |
+      #     LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/nonlinear_mutex --strategy pct --tasks 10 --rounds 240 || error_code=$?
+      #     if [ "${error_code}" -ne 1 ]; then 
+      #       exit 1
+      #     fi
+      - name: Run simple_mutex with random strategy
         run: |
-          ./build/verifying/targets/unique_args || error_code=$?
+          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy random || error_code=$?
           if [ "${error_code}" -ne 1 ]; then 
             exit 1
           fi
+      # Does not work, see issue: https://github.com/ITMO-PTDC-Team/LTest/issues/12
+      # - name: Run simple_mutex with pct strategy
+      #   run: |
+      #     LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy pct --tasks 10 --rounds 240 || error_code=$?
+      #     if [ "${error_code}" -ne 1 ]; then 
+      #       exit 1
+      #     fi

@@ -7,4 +7,5 @@ jobs:
     clang-format:
       uses: ./.github/workflows/clang-format.yaml
     run-tests:
+      needs: clang-format
       uses: ./.github/workflows/run-tests.yaml

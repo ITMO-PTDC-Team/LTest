@@ -7,7 +7,7 @@ struct SlotsSet {
  public:
   SlotsSet() { Reset(); }
 
-  non_atomic bool Insert(int value) {
+  non_atomic int Insert(int value) {
     assert(value != 0);  // zero should never be added
 
     size_t hash = value % N;
@@ -26,7 +26,7 @@ struct SlotsSet {
     return false;
   }
 
-  non_atomic bool Erase(int value) {
+  non_atomic int Erase(int value) {
     assert(value != 0);
 
     size_t hash = value % N;

@@ -2,6 +2,7 @@ name: run-tests
 on:
   workflow_call:
 jobs:
+  #TODO: made a seperate build job to build only one time
   unit-tests:
     runs-on: ubuntu-latest
     defaults:
@@ -10,6 +11,7 @@ jobs:
     container: 
       image: silkeh/clang:18
       options: --user root
+    timeout-minutes: 30
     steps:
       - name: Install deps
         run: apt update && apt install -y git ninja-build valgrind libboost-context-dev libgflags-dev
@@ -21,7 +23,7 @@ jobs:
           cmake --build build --target lin_check_test
       - name: Run lin check test
         run: ./build/test/runtime/lin_check_test
-  verifying-test-release:
+  verifying-test:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -29,6 +31,7 @@ jobs:
     container: 
       image: silkeh/clang:18
       options: --user root
+    timeout-minutes: 30
     steps:
       - name: Install deps
         run: |

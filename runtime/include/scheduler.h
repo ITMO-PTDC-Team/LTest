@@ -92,8 +92,8 @@ struct Strategy {
   virtual int GetThreadsCount() const = 0;
 
   // Called when the finished task must be reported to the verifier
-  // (Strategy is a pure interface, the templated subclass BaseStrategyWithThreads knows
-  // about the Verifier and will delegate to that)
+  // (Strategy is a pure interface, the templated subclass
+  // BaseStrategyWithThreads knows about the Verifier and will delegate to that)
   virtual void OnVerifierTaskFinish(TaskWithMetaData task) = 0;
 
   virtual ~Strategy() = default;
@@ -139,7 +139,7 @@ struct BaseStrategyWithThreads : public Strategy {
 
   void ResetCurrentRound() override {
     TerminateTasks();
-    //state.Reset();
+    // state.Reset();
     for (auto& thread : threads) {
       size_t tasks_in_thread = thread.size();
       for (size_t i = 0; i < tasks_in_thread; ++i) {
@@ -181,7 +181,8 @@ struct BaseStrategyWithThreads : public Strategy {
   // Terminates all running tasks.
   // We do it in a dangerous way: in random order.
   // Actually, we assume obstruction free here.
-  // TODO: for locks we need to figure out how to properly terminate: see https://github.com/ITMO-PTDC-Team/LTest/issues/13
+  // TODO: for locks we need to figure out how to properly terminate: see
+  // https://github.com/ITMO-PTDC-Team/LTest/issues/13
   void TerminateTasks() {
     auto& round_schedule = this->round_schedule;
     assert(round_schedule.size() == this->threads.size() &&
@@ -194,7 +195,8 @@ struct BaseStrategyWithThreads : public Strategy {
     while (has_nonterminated_threads) {
       has_nonterminated_threads = false;
 
-      for (size_t thread_index = 0; thread_index < this->threads.size(); ++thread_index) {
+      for (size_t thread_index = 0; thread_index < this->threads.size();
+           ++thread_index) {
         auto& thread = this->threads[thread_index];
         auto& task_index = task_indexes[thread_index];
 
@@ -206,14 +208,16 @@ struct BaseStrategyWithThreads : public Strategy {
         if (task_index < thread.size()) {
           auto& task = thread[task_index];
 
-          // if task is blocked and it is the last one, then just increment the task index
+          // if task is blocked and it is the last one, then just increment the
+          // task index
           if (task->IsBlocked()) {
-            assert(task_index == thread.size() - 1 && "Trying to terminate blocked task, which is not last in the thread.");
+            assert(task_index == thread.size() - 1 &&
+                   "Trying to terminate blocked task, which is not last in the "
+                   "thread.");
             if (task_index == thread.size() - 1) {
               task_index++;
             }
-          }
-          else {
+          } else {
             has_nonterminated_threads = true;
             // do a single step in this task
             task->Resume();
@@ -476,14 +480,16 @@ struct StrategyScheduler : public SchedulerWithReplay {
 template <typename TargetObj>
 struct TLAScheduler : Scheduler {
   TLAScheduler(size_t max_tasks, size_t max_rounds, size_t threads_count,
-               size_t max_switches, std::vector<TaskBuilder> constructors,
-               ModelChecker& checker, PrettyPrinter& pretty_printer)
+               size_t max_switches, size_t max_depth,
+               std::vector<TaskBuilder> constructors, ModelChecker& checker,
+               PrettyPrinter& pretty_printer)
       : max_tasks{max_tasks},
         max_rounds{max_rounds},
         max_switches{max_switches},
         constructors{std::move(constructors)},
         checker{checker},
-        pretty_printer{pretty_printer} {
+        pretty_printer{pretty_printer},
+        max_depth(max_depth) {
     for (size_t i = 0; i < threads_count; ++i) {
       threads.emplace_back(Thread{
           .id = i,
@@ -544,7 +550,7 @@ struct TLAScheduler : Scheduler {
     // Firstly, terminate all running tasks.
     TerminateTasks();
     // In histories we store references, so there's no need to update it.
-    //state.Reset();
+    state.Reset();
     for (size_t step = 0; step < step_end; ++step) {
       auto& frame = frames[step];
       auto task = frame.task;
@@ -630,6 +636,7 @@ struct TLAScheduler : Scheduler {
     }
     if (is_new) {
       // inv.
+      --started_tasks;
       sequential_history.pop_back();
     }
 
@@ -666,24 +673,26 @@ struct TLAScheduler : Scheduler {
 
       all_parked = false;
       // Choose constructor to create task.
-      for (size_t cons_num = 0; auto cons : constructors) {
-        frame.is_new = true;
-        auto size_before = tasks.size();
-        tasks.emplace_back(cons.Build(&state, i, -1 /* TODO: fix task id for tla, because it is Scheduler and not Strategy class for some reason */));
+      bool stop = started_tasks == max_tasks;
+      if (!stop && threads[i].tasks.size() < max_depth) {
+        for (auto cons : constructors) {
+          frame.is_new = true;
+          auto size_before = tasks.size();
+          tasks.emplace_back(cons.Build(&state, i, -1/* TODO: fix task id for tla, because it is Scheduler and not Strategy class for some reason */));
+          started_tasks++;
+          auto [is_over, res] = ResumeTask(frame, step, switches, thread, true);
+          if (is_over || res.has_value()) {
+            return {is_over, res};
+          }
 
-        auto [is_over, res] = ResumeTask(frame, step, switches, thread, true);
-        if (is_over || res.has_value()) {
-          return {is_over, res};
+          tasks.back()->Terminate();
+          tasks.pop_back();
+          auto size_after = thread.tasks.size();
+          assert(size_before == size_after);
+          // As we can't return to the past in coroutine, we need to replay all
+          // tasks from the beginning.
+          Replay(step);
         }
-
-        tasks.back()->Terminate();
-        tasks.pop_back();
-        auto size_after = thread.tasks.size();
-        assert(size_before == size_after);
-        // As we can't return to the past in coroutine, we need to replay all
-        // tasks from the beginning.
-        Replay(step);
-        ++cons_num;
       }
     }
 
@@ -696,10 +705,13 @@ struct TLAScheduler : Scheduler {
   size_t max_tasks;
   size_t max_rounds;
   size_t max_switches;
+  size_t max_depth;
+
   std::vector<TaskBuilder> constructors;
   ModelChecker& checker;
 
   // Running state.
+  size_t started_tasks{};
   size_t finished_tasks{};
   size_t finished_rounds{};
   TargetObj state{};

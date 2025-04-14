@@ -4,6 +4,7 @@
 #include <map>
 
 #include "../../runtime/include/verifying.h"
+#include "runtime/include/value_wrapper.h"
 
 namespace spec {
 
@@ -21,7 +22,7 @@ struct Stack {
     return res;
   }
 
-  using method_t = std::function<int(Stack *l, void *args)>;
+  using method_t = std::function<ValueWrapper(Stack *l, void *args)>;
   static auto GetMethods() {
     method_t push_func = [](Stack *l, void *args) -> int {
       auto real_args = reinterpret_cast<PushArgTuple *>(args);

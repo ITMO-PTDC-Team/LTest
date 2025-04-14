@@ -2,12 +2,13 @@
 #include <functional>
 #include <map>
 #include <string>
+#include "runtime/include/value_wrapper.h"
 
 namespace spec {
 
 struct LinearMutex;
 
-using mutex_method_t = std::function<int(LinearMutex *l, void *)>;
+using mutex_method_t = std::function<ValueWrapper(LinearMutex *l, void *)>;
 
 struct LinearMutex {
  private:
@@ -54,7 +55,7 @@ struct LinearMutexEquals {
 
 struct SharedLinearMutex;
 
-using shared_mutex_method_t = std::function<int(SharedLinearMutex *l, void *)>;
+using shared_mutex_method_t = std::function<ValueWrapper(SharedLinearMutex *l, void *)>;
 
 struct SharedLinearMutex {
  private:

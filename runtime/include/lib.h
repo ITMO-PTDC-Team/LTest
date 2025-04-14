@@ -8,9 +8,11 @@
 #include <functional>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include "value_wrapper.h"
+
 #define panic() assert(false)
 
 struct CoroBase;
@@ -58,7 +60,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   int GetId() const;
 
   // Returns return value of the coroutine.
-  virtual int GetRetVal() const;
+  virtual ValueWrapper GetRetVal() const;
 
   // Returns the name of the coroutine.
   virtual std::string_view GetName() const;
@@ -114,7 +116,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   // Task id.
   int id;
   // Return value.
-  int ret{};
+  ValueWrapper ret{};
   // Is coroutine returned.
   bool is_returned{};
   // Futex state on which coroutine is blocked.
@@ -129,7 +131,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
 template <typename Target, typename... Args>
 struct Coro final : public CoroBase {
   // CoroF is a target class method.
-  using CoroF = std::function<int(Target*, Args...)>;
+  using CoroF = std::function<ValueWrapper(Target*, Args...)>;
   // ArgsToStringF converts arguments to the strings for pretty printing.
   using ArgsToStringsF =
       std::function<std::vector<std::string>(std::shared_ptr<void>)>;

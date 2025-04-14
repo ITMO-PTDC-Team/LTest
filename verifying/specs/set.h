@@ -17,7 +17,7 @@ struct Set {
     return how_many != 0;
   }
 
-  using method_t = std::function<int(Set *l, void *args)>;
+  using method_t = std::function<ValueWrapper(Set *l, void *args)>;
   static auto GetMethods() {
     method_t insert_func = [](Set *l, void *args) -> int {
       auto real_args = reinterpret_cast<ArgTuple *>(args);

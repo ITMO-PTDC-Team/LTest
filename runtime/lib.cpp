@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include "value_wrapper.h"
 
 // See comments in the lib.h.
 Task this_coro{};
@@ -33,7 +34,7 @@ void CoroBase::Resume() {
 
 int CoroBase::GetId() const { return id; }
 
-int CoroBase::GetRetVal() const {
+ValueWrapper CoroBase::GetRetVal() const {
   assert(IsReturned());
   return ret;
 }

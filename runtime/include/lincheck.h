@@ -7,13 +7,14 @@
 #include <variant>
 
 #include "lib.h"
+#include "value_wrapper.h"
 
 struct Response {
-  Response(const Task& task, int result, int thread_id);
+  Response(const Task& task, ValueWrapper result, int thread_id);
 
   [[nodiscard]] const Task& GetTask() const;
 
-  int result;
+  ValueWrapper result;
   int thread_id;
 
  private:
@@ -63,7 +64,7 @@ template <class LinearSpecificationObject,
           class SpecificationObjectEqual =
               std::equal_to<LinearSpecificationObject>>
 struct LinearizabilityChecker : ModelChecker {
-  using Method = std::function<int(LinearSpecificationObject*, void*)>;
+  using Method = std::function<ValueWrapper(LinearSpecificationObject*, void*)>;
   using MethodMap = std::map<MethodName, Method, std::less<>>;
 
   LinearizabilityChecker() = delete;
@@ -166,7 +167,7 @@ bool LinearizabilityChecker<
       bool was_checked = false;
       LinearSpecificationObject data_structure_state_copy =
           data_structure_state;
-      int res = method(&data_structure_state_copy, inv.GetTask()->GetArgs());
+      ValueWrapper res = method(&data_structure_state_copy, inv.GetTask()->GetArgs());
 
       // If invoke doesn't have a response we can't check the response
       bool doesnt_have_response =

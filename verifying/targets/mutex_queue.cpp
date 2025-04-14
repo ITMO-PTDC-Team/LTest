@@ -1,6 +1,5 @@
 /**
- * ./verify.py build --src ./targets/mutex_queue.cpp
- * ./verify.py run --tasks 4 --switches 1 --rounds 100000 --strategy tla
+ * ./build/verifying/targets/mutex_queue --tasks 4 --switches 1 --rounds 100000 --strategy tla
  */
 #include <atomic>
 #include <cstring>

@@ -2,6 +2,7 @@
 #include <gflags/gflags.h>
 
 #include <memory>
+#include <type_traits>
 
 #include "lib.h"
 #include "lincheck_recursive.h"
@@ -21,32 +22,53 @@ enum StrategyType { RR, RND, TLA, PCT };
 
 constexpr const char *GetLiteral(StrategyType t);
 
+class NoOverride {};
+
 template <class TargetObj, class LinearSpec,
           class LinearSpecHash = std::hash<LinearSpec>,
-          class LinearSpecEquals = std::equal_to<LinearSpec>>
+          class LinearSpecEquals = std::equal_to<LinearSpec>,
+          class OptionsOverride = NoOverride>
 struct Spec {
   using target_obj_t = TargetObj;
   using linear_spec_t = LinearSpec;
   using linear_spec_hash_t = LinearSpecHash;
   using linear_spec_equals_t = LinearSpecEquals;
+  using options_override_t = OptionsOverride;
 };
 
 struct Opts {
   size_t threads;
-  size_t forbid_all_same;
   size_t tasks;
   size_t switches;
   size_t rounds;
   bool minimize;
   size_t exploration_runs;
   size_t minimization_runs;
+  size_t depth;
+  bool forbid_all_same;
   bool verbose;
   bool syscall_trap;
   StrategyType typ;
   std::vector<int> thread_weights;
 };
 
-Opts parse_opts();
+struct DefaultOptions {
+  size_t threads;
+  size_t tasks;
+  size_t switches;
+  size_t rounds;
+  size_t depth;
+  bool forbid_all_same;
+  bool verbose;
+  const char *strategy;
+  const char *weights;
+  size_t minimization_runs;
+  size_t exploration_runs;
+};
+
+void SetOpts(const DefaultOptions &def);
+
+Opts ParseOpts();
 
 std::vector<std::string> split(const std::string &s, char delim);
 
@@ -116,8 +138,8 @@ std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
     case TLA: {
       std::cout << "tla\n";
       auto scheduler = std::make_unique<TLAScheduler<TargetObj>>(
-          opts.tasks, opts.rounds, opts.threads, opts.switches, std::move(l),
-          checker, pretty_printer);
+          opts.tasks, opts.rounds, opts.threads, opts.switches, opts.depth,
+          std::move(l), checker, pretty_printer);
       return scheduler;
     }
     default: {
@@ -142,8 +164,12 @@ inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
 
 template <class Spec, StrategyVerifier Verifier = DefaultStrategyVerifier>
 int Run(int argc, char *argv[]) {
+  if constexpr (!std::is_same_v<typename Spec::options_override_t,
+                                ltest::NoOverride>) {
+    SetOpts(Spec::options_override_t::GetOptions());
+  }
   gflags::ParseCommandLineFlags(&argc, &argv, true);
-  Opts opts = parse_opts();
+  Opts opts = ParseOpts();
 
   logger_init(opts.verbose);
   std::cout << "verbose: " << opts.verbose << "\n";

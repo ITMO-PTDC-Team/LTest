@@ -1,6 +1,5 @@
 /**
- * ./verify.py build --src ./targets/atomic_register.cpp
- * ./verify.py run --tasks 3 --strategy tla --rounds 100000
+ * ./build/verifying/targets/atomic_register --tasks 3 --strategy tla --rounds 100000
  */
 #include <atomic>
 

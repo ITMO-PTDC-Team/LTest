@@ -5,6 +5,4 @@ on:
     branches: [ "master" ]
 jobs:
     call-workflow:
-      uses: .github/workflows/clang-format.yaml
-    call-workflow:
-      uses: .github/workflows/run-tests.yaml
+      uses: ./.github/workflows/clang-format.yaml

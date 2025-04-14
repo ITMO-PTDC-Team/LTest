@@ -7,6 +7,7 @@
 #include <cassert>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -16,11 +17,19 @@
 #define panic() assert(false)
 
 struct CoroBase;
+struct CoroutineStatus;
 
 // Current executing coroutine.
 extern std::shared_ptr<CoroBase> this_coro;
 
 extern boost::context::fiber_context sched_ctx;
+
+extern std::optional<CoroutineStatus> coroutine_status;
+
+struct CoroutineStatus{
+  std::string_view name;
+  bool has_started;
+};
 
 // Runtime token.
 // Target method could use token generator.
@@ -40,6 +49,8 @@ struct Token {
 };
 
 extern "C" void CoroYield();
+
+extern "C" void CoroutineStatusChange(char* coroutine, bool start);
 
 struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   CoroBase(const CoroBase&) = delete;

@@ -569,6 +569,14 @@ struct TLAScheduler : Scheduler {
     }
   }
 
+  void handleCoroutineChange(size_t thread_id) {
+    if (coroutine_status.has_value()) {
+      if (coroutine_status->has_started) {
+      }
+      full_history.emplace_back(thread_id, coroutine_status.value());
+      coroutine_status.reset();
+    }
+  }
   // Resumes choosed task.
   // If task is finished and finished tasks == max_tasks, stops.
   std::tuple<bool, typename Scheduler::Result> ResumeTask(
@@ -599,9 +607,11 @@ struct TLAScheduler : Scheduler {
 
     assert(!task->IsParked());
     task->Resume();
+    handleCoroutineChange(thread_id);
     bool is_finished = task->IsReturned();
     if (is_finished) {
       finished_tasks++;
+      verifier.OnFinished(TaskWithMetaData{task, false, thread.id});
       auto result = task->GetRetVal();
       sequential_history.emplace_back(Response(task, result, thread_id));
     }
@@ -631,6 +641,12 @@ struct TLAScheduler : Scheduler {
     }
 
     thread_id_history.pop_back();
+    if (full_history.back().second.index() == 1) {
+      auto thread = full_history.back().first;
+      full_history.pop_back();
+      assert(full_history.back().second.index() == 0);
+      assert(full_history.back().first == thread);
+    }
     full_history.pop_back();
     if (is_finished) {
       --finished_tasks;
@@ -662,6 +678,10 @@ struct TLAScheduler : Scheduler {
           continue;
         }
         all_parked = false;
+        if (!verifier.Verify(CreatedTaskMetaData{
+                std::string{tasks.back()->GetName()}, false, i})) {
+          continue;
+        }
         // Task exists.
         frame.is_new = false;
         auto [is_over, res] = ResumeTask(frame, step, switches, thread, false);
@@ -679,6 +699,9 @@ struct TLAScheduler : Scheduler {
       bool stop = started_tasks == max_tasks;
       if (!stop && threads[i].tasks.size() < max_depth) {
         for (auto cons : constructors) {
+          if (!verifier.Verify(CreatedTaskMetaData{cons.GetName(), true, i})) {
+            continue;
+          }
           frame.is_new = true;
           auto size_before = tasks.size();
           tasks.emplace_back(cons.Build(&state, i, -1/* TODO: fix task id for tla, because it is Scheduler and not Strategy class for some reason */));
@@ -687,8 +710,6 @@ struct TLAScheduler : Scheduler {
           if (is_over || res.has_value()) {
             return {is_over, res};
           }
-
-          tasks.back()->Terminate();
           tasks.pop_back();
           auto size_after = thread.tasks.size();
           assert(size_before == size_after);
@@ -719,7 +740,7 @@ struct TLAScheduler : Scheduler {
   size_t finished_rounds{};
   TargetObj state{};
   std::vector<std::variant<Invoke, Response>> sequential_history;
-  std::vector<std::pair<int, std::reference_wrapper<Task>>> full_history;
+  FullHistoryWithThreads full_history;
   std::vector<size_t> thread_id_history;
   StableVector<Thread> threads;
   StableVector<Frame> frames;

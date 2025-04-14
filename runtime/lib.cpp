@@ -4,12 +4,14 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
 #include "value_wrapper.h"
 
 // See comments in the lib.h.
 Task this_coro{};
 
 boost::context::fiber_context sched_ctx;
+std::optional<CoroutineStatus> coroutine_status;
 
 std::unordered_map<long, int> futex_state{};
 
@@ -58,6 +60,12 @@ extern "C" void CoroYield() {
     this_coro->ctx = std::move(ctx);
     return std::move(sched_ctx);
   }).resume();
+}
+
+extern "C" void CoroutineStatusChange(char* name, bool start) {
+  // assert(!coroutine_status.has_value());
+  coroutine_status.emplace(name, start);
+  CoroYield();
 }
 
 void CoroBase::Terminate() {

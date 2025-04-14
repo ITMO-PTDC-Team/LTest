@@ -11,7 +11,8 @@
 
 using std::string;
 using std::to_string;
-
+using FullHistoryWithThreads = std::vector<std::pair<
+    int, std::variant<std::reference_wrapper<Task>, CoroutineStatus>>>;
 struct PrettyPrinter {
   PrettyPrinter(size_t threads_num);
 
@@ -120,9 +121,7 @@ struct PrettyPrinter {
 
   // Helps to debug full histories.
   template <typename Out_t>
-  void PrettyPrint(
-      const std::vector<std::pair<int, std::reference_wrapper<Task>>>& result,
-      Out_t& out) {
+  void PrettyPrint(FullHistoryWithThreads& result, Out_t& out) {
     int cell_width = 20;  // Up it if necessary. Enough for now.
 
     auto print_separator = [&out, this, cell_width]() {
@@ -169,35 +168,53 @@ struct PrettyPrinter {
 
     // Rows.
     for (const auto& i : result) {
-      auto base = i.second.get().get();
-      if (index.find(base) == index.end()) {
-        int sz = index.size();
-        index[base] = sz;
-      }
-      int length = std::to_string(index[base]).size();
-      log() << index[base];
-      assert(spaces - length >= 0);
-      print_spaces(7 - length);
       int num = i.first;
-      out << "|";
-      for (int j = 0; j < num; ++j) {
-        print_empty_cell();
-      }
-
       FitPrinter fp{out, cell_width};
-      fp.Out(" ");
-      fp.Out(std::string{i.second.get()->GetName()});
-      fp.Out("(");
-      const auto& args = i.second.get()->GetStrArgs();
-      for (int i = 0; i < args.size(); ++i) {
-        if (i > 0) {
-          fp.Out(", ");
+      if (i.second.index() == 0) {
+        auto act = std::get<0>(i.second);
+        auto base = act.get().get();
+        if (index.find(base) == index.end()) {
+          int sz = index.size();
+          index[base] = sz;
         }
-        fp.Out(args[i]);
+        int length = std::to_string(index[base]).size();
+        std::cout << index[base];
+        assert(spaces - length >= 0);
+        print_spaces(7 - length);
+        out << "|";
+        for (int j = 0; j < num; ++j) {
+          print_empty_cell();
+        }
+        fp.Out(" ");
+        fp.Out(std::string{act.get()->GetName()});
+        fp.Out("(");
+        const auto& args = act.get()->GetStrArgs();
+        for (int i = 0; i < args.size(); ++i) {
+          if (i > 0) {
+            fp.Out(", ");
+          }
+          fp.Out(args[i]);
+        }
+        fp.Out(")");
+      } else if (i.second.index() == 1) {
+        print_spaces(7);
+        out << "|";
+        for (int j = 0; j < num; ++j) {
+          print_empty_cell();
+        }
+        auto cor = std::get<1>(i.second);
+        fp.Out(cor.has_started ? ">" : "<");
+        auto start = cor.name.find_last_of("::");
+        auto end = cor.name.find_last_of("(");
+        // to handle namespace in args
+        while (start > end) {
+          start = cor.name.find_last_of("::", end);
+        }
+        auto name = std::string(cor.name.substr(start + 1, end - start - 1));
+        fp.Out(name);
+        // std::cerr << cor.name << "\n";
+        assert(fp.rest > 0 && "increase cell_width in pretty printer");
       }
-      fp.Out(")");
-
-      assert(fp.rest > 0 && "increase cell_width in pretty printer");
       print_spaces(fp.rest);
       out << "|";
 

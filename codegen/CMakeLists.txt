@@ -1,4 +1,3 @@
-include_directories(include)
 
 find_package(LLVM REQUIRED CONFIG)
 
@@ -17,3 +16,8 @@ add_custom_target(plugin_pass
     COMMAND ${CMAKE_COMMAND} -E echo "Plugin dependency set"
 )
 add_dependencies(plugin_pass YieldPass)
+
+llvm_add_library(CoYieldPass 
+    SHARED 
+    PARTIAL_SOURCES_INTENDED 
+    coyieldpass.cpp)

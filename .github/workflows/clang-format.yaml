@@ -1,8 +1,6 @@
 name: clang-format
 on:
-  push:
-  pull_request:
-    branches: [ "master" ]
+  workflow_call:
 jobs:
   clang-format:
     runs-on: ubuntu-latest

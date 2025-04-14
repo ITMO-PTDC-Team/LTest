@@ -23,17 +23,20 @@ enum StrategyType { RR, RND, TLA, PCT };
 constexpr const char *GetLiteral(StrategyType t);
 
 class NoOverride {};
-
+struct DefaultCanceler {
+  static void Cancel() {};
+};
 template <class TargetObj, class LinearSpec,
           class LinearSpecHash = std::hash<LinearSpec>,
           class LinearSpecEquals = std::equal_to<LinearSpec>,
-          class OptionsOverride = NoOverride>
+          class OptionsOverride = NoOverride, class Canceler = DefaultCanceler>
 struct Spec {
   using target_obj_t = TargetObj;
   using linear_spec_t = LinearSpec;
   using linear_spec_hash_t = LinearSpecHash;
   using linear_spec_equals_t = LinearSpecEquals;
   using options_override_t = OptionsOverride;
+  using cancel_t = Canceler;
 };
 
 struct Opts {
@@ -122,8 +125,9 @@ struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
 
 template <typename TargetObj, StrategyVerifier Verifier>
 std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
-                                         std::vector<TaskBuilder> l,
-                                         PrettyPrinter &pretty_printer) {
+                                         const std::vector<TaskBuilder> &l,
+                                         PrettyPrinter &pretty_printer,
+                                         const std::function<void()> &cancel) {
   std::cout << "strategy = ";
   switch (opts.typ) {
     case RR:
@@ -137,9 +141,9 @@ std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
     }
     case TLA: {
       std::cout << "tla\n";
-      auto scheduler = std::make_unique<TLAScheduler<TargetObj>>(
+      auto scheduler = std::make_unique<TLAScheduler<TargetObj, Verifier>>(
           opts.tasks, opts.rounds, opts.threads, opts.switches, opts.depth,
-          std::move(l), checker, pretty_printer);
+          std::move(l), checker, pretty_printer, cancel);
       return scheduler;
     }
     default: {
@@ -194,7 +198,8 @@ int Run(int argc, char *argv[]) {
                      typename Spec::linear_spec_t{}};
 
   auto scheduler = MakeScheduler<typename Spec::target_obj_t, Verifier>(
-      checker, opts, std::move(task_builders), pretty_printer);
+      checker, opts, std::move(task_builders), pretty_printer,
+      &Spec::cancel_t::Cancel);
   std::cout << "\n\n";
   std::cout.flush();
   return TrapRun(std::move(scheduler), pretty_printer);

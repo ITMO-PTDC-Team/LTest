@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <limits>
 #include <optional>
 #include <random>
@@ -477,19 +478,20 @@ struct StrategyScheduler : public SchedulerWithReplay {
 };
 
 // TLAScheduler generates all executions satisfying some conditions.
-template <typename TargetObj>
+template <typename TargetObj, StrategyVerifier Verifier>
 struct TLAScheduler : Scheduler {
   TLAScheduler(size_t max_tasks, size_t max_rounds, size_t threads_count,
                size_t max_switches, size_t max_depth,
                std::vector<TaskBuilder> constructors, ModelChecker& checker,
-               PrettyPrinter& pretty_printer)
+               PrettyPrinter& pretty_printer, std::function<void()> cancel_func)
       : max_tasks{max_tasks},
         max_rounds{max_rounds},
         max_switches{max_switches},
         constructors{std::move(constructors)},
         checker{checker},
         pretty_printer{pretty_printer},
-        max_depth(max_depth) {
+        max_depth(max_depth),
+        cancel(cancel_func) {
     for (size_t i = 0; i < threads_count; ++i) {
       threads.emplace_back(Thread{
           .id = i,
@@ -533,8 +535,9 @@ struct TLAScheduler : Scheduler {
   // Terminates all running tasks.
   // We do it in a dangerous way: in random order.
   // Actually, we assume obstruction free here.
-  // TODO: for non obstruction-free we need to take into account dependencies.
+  // cancel() func takes care for graceful shutdown
   void TerminateTasks() {
+    cancel();
     for (size_t i = 0; i < threads.size(); ++i) {
       for (size_t j = 0; j < threads[i].tasks.size(); ++j) {
         auto& task = threads[i].tasks[j];
@@ -720,4 +723,6 @@ struct TLAScheduler : Scheduler {
   std::vector<size_t> thread_id_history;
   StableVector<Thread> threads;
   StableVector<Frame> frames;
+  Verifier verifier;
+  std::function<void()> cancel;
 };

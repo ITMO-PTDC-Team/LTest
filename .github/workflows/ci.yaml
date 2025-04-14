@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [ "master" ]
 jobs:
-    call-workflow:
+    clang-format:
       uses: ./.github/workflows/clang-format.yaml
-    call-workflow:
+    run-tests:
       uses: ./.github/workflows/run-tests.yaml

@@ -45,4 +45,18 @@ struct UniqueArgsEquals {
     return lhs.called == rhs.called;
   }
 };
+struct UniqueArgsOptionsOverride {
+  static ltest::DefaultOptions GetOptions() {
+    return {.threads = limit,
+            .tasks = limit,
+            .switches = 100000000,
+            .rounds = 10000,
+            .depth = 1,
+            .forbid_all_same = false,
+            .verbose = false,
+            .strategy = "tla",
+            .weights = ""};
+  }
+};
+
 }  // namespace spec

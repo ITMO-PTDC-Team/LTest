@@ -1,5 +1,8 @@
 #pragma once
+#include <algorithm>
+#include <cassert>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <random>
@@ -567,14 +570,19 @@ struct TLAScheduler : Scheduler {
       }
       (*task)->Resume();
     }
+    coroutine_status.reset();
   }
 
-  void handleCoroutineChange(size_t thread_id) {
+  void updateFullHistory(size_t thread_id, Task& task, bool is_new) {
     if (coroutine_status.has_value()) {
-      if (coroutine_status->has_started) {
+      if (is_new) {
+        assert(coroutine_status->has_started);
+        full_history.emplace_back(thread_id, task);
       }
       full_history.emplace_back(thread_id, coroutine_status.value());
       coroutine_status.reset();
+    } else {
+      full_history.emplace_back(thread_id, task);
     }
   }
   // Resumes choosed task.
@@ -599,7 +607,6 @@ struct TLAScheduler : Scheduler {
     auto& task = thread.tasks.back();
     frame.task = &task;
 
-    full_history.push_back({thread_id, task});
     thread_id_history.push_back(thread_id);
     if (is_new) {
       sequential_history.emplace_back(Invoke(task, thread_id));
@@ -607,7 +614,7 @@ struct TLAScheduler : Scheduler {
 
     assert(!task->IsParked());
     task->Resume();
-    handleCoroutineChange(thread_id);
+    updateFullHistory(thread_id, task, is_new);
     bool is_finished = task->IsReturned();
     if (is_finished) {
       finished_tasks++;
@@ -641,11 +648,20 @@ struct TLAScheduler : Scheduler {
     }
 
     thread_id_history.pop_back();
+    // Removing combination of start of task + coroutine start
     if (full_history.back().second.index() == 1) {
-      auto thread = full_history.back().first;
-      full_history.pop_back();
-      assert(full_history.back().second.index() == 0);
-      assert(full_history.back().first == thread);
+      auto& cor = std::get<1>(full_history.back().second);
+      auto& prev = full_history[full_history.size() - 2];
+      int thread = full_history.back().first;
+      auto first_ind =
+          std::find_if(full_history.begin(), --full_history.end(),
+                       [&thread](auto& a) { return a.first == thread; });
+      if (cor.has_started &&
+          std::distance(full_history.begin(), first_ind) ==
+              full_history.size() - 2 &&
+          prev.second.index() == 0) {
+        full_history.pop_back();
+      }
     }
     full_history.pop_back();
     if (is_finished) {

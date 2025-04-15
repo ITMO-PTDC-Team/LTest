@@ -1,5 +1,5 @@
-#include <llvm-18/llvm/ADT/StringRef.h>
-#include <llvm-18/llvm/Support/ErrorHandling.h>
+#include <llvm/ADT/StringRef.h>
+#include <llvm/Support/ErrorHandling.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -87,7 +87,7 @@ struct CoYieldInserter {
   void ReplaceCall(CallInst *call, StringRef co_name, Builder &builder,
                    bool start) {
     auto par = demangle(call->getParent()->getParent()->getName());
-    if (!white_list.contains(par)) {
+        if (!white_list.contains(par)) {
       return;
     }
     errs() << "replaced " << par <<"\n";

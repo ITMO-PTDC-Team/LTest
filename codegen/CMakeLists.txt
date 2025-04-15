@@ -21,3 +21,8 @@ llvm_add_library(CoYieldPass
     SHARED 
     PARTIAL_SOURCES_INTENDED 
     coyieldpass.cpp)
+
+add_custom_target(coplugin_pass
+    COMMAND ${CMAKE_COMMAND} -E echo "Plugin dependency set"
+)
+add_dependencies(coplugin_pass CoYieldPass)

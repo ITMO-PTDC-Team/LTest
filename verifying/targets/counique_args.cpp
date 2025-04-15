@@ -1,9 +1,24 @@
-#include "../specs/unique_args.h"
-
 #include <cassert>
+#include <coroutine>
 #include <cstring>
 #include <functional>
 #include <optional>
+
+#include "../specs/unique_args.h"
+
+struct promise;
+
+struct coroutine : std::coroutine_handle<promise> {
+  using promise_type = ::promise;
+};
+
+struct promise {
+  coroutine get_return_object() { return {coroutine::from_promise(*this)}; }
+  std::suspend_always initial_suspend() noexcept { return {}; }
+  std::suspend_always final_suspend() noexcept { return {}; }
+  void return_void() {}
+  void unhandled_exception() {}
+};
 
 static std::vector<size_t> used(limit, false);
 static std::vector<size_t> done(limit, false);
@@ -13,12 +28,17 @@ struct CoUniqueArgsTest {
   ValueWrapper Get(size_t i) {
     assert(!used[i]);
     used[i] = true;
-    CoroYield();
     auto l = [this]() {
       Reset();
       return limit;
     };
-    done[i] = true;
+
+    coroutine h = [](int i) -> coroutine {
+      done[i] = true;
+      co_return;
+    }(i);
+    h.resume();
+    h.destroy();
     return {std::count(done.begin(), done.end(), false) == 0
                 ? l()
                 : std::optional<int>(),

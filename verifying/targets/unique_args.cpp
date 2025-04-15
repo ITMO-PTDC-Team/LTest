@@ -4,7 +4,6 @@
 #include <cstring>
 #include <functional>
 #include <optional>
-#include <set>
 
 
  std::vector<size_t> used(limit, false);

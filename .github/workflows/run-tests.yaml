@@ -75,18 +75,3 @@ jobs:
       #     if [ "${error_code}" -ne 1 ]; then 
       #       exit 1
       #     fi
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ctest-results
-          path: build/test-results.xml
-      # to bypass fatal: detected dubious ownership in repository
-      - name: Mark repo as safe
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Annotate tests
-        uses: dorny/test-reporter@v1
-        with:
-          name: CTest
-          path: build/test-results.xml
-          reporter: jest-junit

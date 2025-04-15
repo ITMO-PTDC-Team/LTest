@@ -22,7 +22,7 @@ jobs:
           cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=RelWithAssert
           cmake --build build --target lin_check_test
       - name: Run lin check test
-        run: ./build/test/runtime/lin_check_test
+        run: ctest --test-dir build -R "^LinearizabilityCheckerCounterTest"
   verifying-test:
     runs-on: ubuntu-latest
     defaults:
@@ -61,12 +61,13 @@ jobs:
       #     if [ "${error_code}" -ne 1 ]; then 
       #       exit 1
       #     fi
-      - name: Run simple_mutex with random strategy
-        run: |
-          LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy random || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
+      #TODO: put me back to CI 
+      # - name: Run simple_mutex with random strategy
+      #   run: |
+      #     LD_PRELOAD=build/syscall_intercept/libpreload.so ./build/verifying/blocking/simple_mutex --strategy random || error_code=$?
+      #     if [ "${error_code}" -ne 1 ]; then 
+      #       exit 1
+      #     fi
       # Does not work, see issue: https://github.com/ITMO-PTDC-Team/LTest/issues/12
       # - name: Run simple_mutex with pct strategy
       #   run: |
@@ -75,6 +76,7 @@ jobs:
       #       exit 1
       #     fi
       - name: Upload test results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ctest-results

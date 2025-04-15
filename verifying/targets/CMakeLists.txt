@@ -23,3 +23,41 @@ foreach(source_name ${SOURCE_TARGET_WITHOUT_PLUGIN_LIST})
     get_filename_component(target ${source_name} NAME_WE)
     verify_target_without_plugin(${target})
 endforeach(source_name ${SOURCE_TARGET_WITHOUT_PLUGIN_LIST})
+
+enable_testing()
+
+add_unit_test("nonlinear_queue_random_minimization" "verifying_targets" TRUE 
+    nonlinear_queue --tasks 40 --rounds 100000 --strategy random --minimize
+)
+
+add_unit_test("nonlinear_queue_pct_minimization" "verifying_targets" TRUE 
+    nonlinear_queue --tasks 40 --rounds 100000 --strategy pct --minimize
+)
+
+add_unit_test("nonlinear_ms_queue_random_minimization" "verifying_targets" TRUE 
+    nonlinear_ms_queue --tasks 40 --rounds 100000 --strategy random --minimize
+)
+
+add_unit_test("nonlinear_ms_queue_pct_minimization" "verifying_targets" TRUE 
+    nonlinear_ms_queue --tasks 40 --rounds 100000 --strategy pct --minimize
+)
+
+add_unit_test("nonlinear_treiber_stack_random_minimization" "verifying_targets" TRUE 
+    nonlinear_treiber_stack --tasks 40 --rounds 100000 --strategy random --minimize
+)
+
+add_unit_test("nonlinear_treiber_stack_pct_minimization" "verifying_targets" TRUE 
+    nonlinear_treiber_stack --tasks 40 --rounds 100000 --strategy pct --minimize
+)
+
+add_unit_test("nonlinear_set_random_minimization" "verifying_targets" TRUE 
+    nonlinear_set --tasks 40 --rounds 100000 --strategy random --minimize
+)
+
+add_unit_test("nonlinear_set_pct_minimization" "verifying_targets" TRUE 
+    nonlinear_set --tasks 40 --rounds 100000 --strategy pct --minimize
+)
+
+add_unit_test("unique_args" "verifying_targets" FALSE 
+    unique_args
+)

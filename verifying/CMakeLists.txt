@@ -23,5 +23,18 @@ function(verify_target_without_plugin target)
     target_link_libraries(${target} PRIVATE runtime ${PASS} gflags ${Boost_LIBRARIES})
 endfunction()
 
+function(add_unit_test test_name label fail)
+    set(full_name "${label}_${test_name}")
+    set(test_command ${ARGN})
+    add_test(
+        NAME "${full_name}"
+        COMMAND ${test_command}
+    )
+    set_tests_properties("${full_name}"
+        PROPERTIES
+        WILL_FAIL ${fail}
+        LABELS "${label}")
+endfunction()
+
 add_subdirectory(targets)
 add_subdirectory(blocking)

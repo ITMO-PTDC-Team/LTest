@@ -46,56 +46,8 @@ jobs:
           cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=RelWithAssert
           cmake --build build --target verifying/targets/nonlinear_queue verifying/targets/nonlinear_ms_queue verifying/targets/nonlinear_treiber_stack \
           verifying/targets/nonlinear_set verifying/targets/unique_args verifying/blocking/nonlinear_mutex verifying/blocking/simple_mutex
-      - name: Run nonlinear_queue with random strategy (minimization)
-        run: |
-          ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy random --minimize || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
-      - name: Run nonlinear_queue with pct strategy (minimization)
-        run: |
-          ./build/verifying/targets/nonlinear_queue --tasks 40 --rounds 100000 --strategy pct --minimize || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
-      - name: Run nonlinear_ms_queue with random strategy (minimization)
-        run: |
-          ./build/verifying/targets/nonlinear_ms_queue --tasks 40 --rounds 100000 --strategy random --minimize || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
-      - name: Run nonlinear_ms_queue with pct strategy (minimization)
-        run: |
-          ./build/verifying/targets/nonlinear_ms_queue --tasks 40 --rounds 100000 --strategy pct --minimize || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
-      - name: Run nonlinear_treiber_stack with random strategy (minimization)
-        run: |
-          ./build/verifying/targets/nonlinear_treiber_stack --tasks 40 --rounds 100000 --strategy random --minimize || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
-      - name: Run nonlinear_treiber_stack with pct strategy (minimization)
-        run: |
-          ./build/verifying/targets/nonlinear_treiber_stack --tasks 40 --rounds 100000 --strategy pct --minimize || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
-      - name: Run nonlinear_set with random strategy (minimization)
-        run: |
-          ./build/verifying/targets/nonlinear_set --tasks 40 --rounds 200000 --strategy random --minimize || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
-      - name: Run nonlinear_set with pct strategy (minimization)
-        run: |
-          ./build/verifying/targets/nonlinear_set --tasks 40 --rounds 200000 --strategy pct --minimize || error_code=$?
-          if [ "${error_code}" -ne 1 ]; then 
-            exit 1
-          fi
-      - name: Run unique args with tla strategy
-        run: ./build/verifying/targets/unique_args 
+      - name: "Tests"
+        run: ctest --test-dir build -L "verifying_targets" -V
       # Does not work, see issue: https://github.com/ITMO-PTDC-Team/LTest/issues/13
       # - name: Run nonlinear_mutex with random strategy
       #   run: |

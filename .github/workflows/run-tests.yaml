@@ -74,3 +74,15 @@ jobs:
       #     if [ "${error_code}" -ne 1 ]; then 
       #       exit 1
       #     fi
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-results
+          path: build/test-results.xml
+
+      - name: Annotate tests
+        uses: dorny/test-reporter@v1
+        with:
+          name: CTest
+          path: build/test-results.xml
+          reporter: jest-junit

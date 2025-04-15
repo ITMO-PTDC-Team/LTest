@@ -87,11 +87,10 @@ struct CoYieldInserter {
   void ReplaceCall(CallInst *call, StringRef co_name, Builder &builder,
                    bool start) {
     auto par = demangle(call->getParent()->getParent()->getName());
-    errs() << "replacing is:" << par << "\n";
     if (!white_list.contains(par)) {
       return;
     }
-    errs() << "changed\n";
+    errs() << "replaced " << par <<"\n";
     errs().flush();
     auto llvm_start =
         ConstantInt::get(Type::getInt1Ty(builder.getContext()), start);
@@ -128,7 +127,9 @@ struct CoYieldInsertPass final : public PassInfoMixin<CoYieldInsertPass> {
     std::string line;
     std::set<std::string> white_list;
     while (std::getline(input, line)) {
-      white_list.insert(line);
+      if (!line.starts_with("//")) {
+        white_list.insert(line);
+      }
     }
     input.close();
     CoYieldInserter gen{M, std::move(white_list)};

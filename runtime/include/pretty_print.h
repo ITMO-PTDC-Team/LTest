@@ -139,7 +139,7 @@ struct PrettyPrinter {
         out << " ";
       }
     };
-
+    
     int spaces = 7;
     print_spaces(spaces);
     print_separator();
@@ -165,7 +165,7 @@ struct PrettyPrinter {
     };
 
     std::map<CoroBase*, int> index;
-
+    std::vector<int> co_depth(threads_num, 0);
     // Rows.
     for (const auto& i : result) {
       int num = i.first;
@@ -203,7 +203,20 @@ struct PrettyPrinter {
           print_empty_cell();
         }
         auto cor = std::get<1>(i.second);
-        fp.Out(cor.has_started ? ">" : "<");
+        auto print_formated_spaces = [&fp](int count) {
+          for (int i = 0; i < count; ++i) {
+            fp.Out(" ");
+          }
+        };
+        if (cor.has_started) {
+          print_formated_spaces(co_depth[num] + 1);
+          fp.Out(">");
+          co_depth[num]++;
+        } else {
+          print_formated_spaces(co_depth[num]);
+          fp.Out("<");
+          co_depth[num]--;
+        }
         auto start = cor.name.find_last_of("::");
         auto end = cor.name.find_last_of("(");
         // to handle namespace in args

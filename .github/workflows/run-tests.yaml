@@ -47,4 +47,4 @@ jobs:
           cmake --build build --target verifying/targets/nonlinear_queue verifying/targets/nonlinear_ms_queue verifying/targets/nonlinear_treiber_stack \
           verifying/targets/nonlinear_set verifying/targets/unique_args verifying/blocking/nonlinear_mutex verifying/blocking/simple_mutex
       - name: "Tests"
-        run: ctest --test-dir build -L "verifying"
+        run: ctest --test-dir build -L "verify"

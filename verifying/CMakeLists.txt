@@ -20,11 +20,13 @@ endfunction()
 
 function(verify_target target)
     verify_target_without_plugin(${target})
+    add_dependencies(${target} runtime plugin_pass)
     target_compile_options(${target} PRIVATE -fpass-plugin=${PASS_PATH} ${CMAKE_ASAN_FLAGS})
 endfunction()
 
 function(verify_cotarget target)
     verify_target_without_plugin(${target})
+    add_dependencies(${target} runtime coplugin_pass)
     target_compile_options(${target} PRIVATE  -fplugin=${COPASS_PATH} 
     -fpass-plugin=${COPASS_PATH} -mllvm -coroutine-file=${CMAKE_CURRENT_SOURCE_DIR}/${target}.txt
      ${CMAKE_ASAN_FLAGS})

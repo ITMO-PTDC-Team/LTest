@@ -44,6 +44,6 @@ jobs:
       - name: Build
         run: |
           cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=RelWithAssert
-          cmake --build build --target verify-targets verify-targets
+          cmake --build build --target verify-targets verify-blocking
       - name: "Tests"
         run: ctest --test-dir build -L "verify"

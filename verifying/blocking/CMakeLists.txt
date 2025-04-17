@@ -9,8 +9,10 @@ foreach(source_name ${SOURCE_TARGET_LIST})
     get_filename_component(target ${source_name} NAME_WE)
     verify_target(${target})
     add_dependencies(${target} preload)
-    list(APPEND VERIFY_BLOCKING_LIST ${target})
 endforeach(source_name ${SOURCE_TARGET_LIST})
+
+#Worlaround due no folly
+list(APPEND VERIFY_BLOCKING_LIST simple_mutex)
 
 add_custom_target(verify-blocking 
     DEPENDS
@@ -26,12 +28,12 @@ function (add_unit_test_blocking test_name label fail)
 endfunction()
 
 # Does not work, see issue: https://github.com/ITMO-PTDC-Team/LTest/issues/12
-# add_unit_test_blocking("simple_mutex_random" "verify" TRUE 
-#     simple_mutex --strategy random
+# add_unit_test_blocking("simple_mutex_pct" "verify" TRUE 
+#     simple_mutex --strategy pct
 # )
 
 add_unit_test_blocking("simple_mutex_random" "verify" FALSE 
-    simple_mutex --strategy pct
+    simple_mutex --strategy random
 )
 
 # Does not work, see issue: https://github.com/ITMO-PTDC-Team/LTest/issues/13

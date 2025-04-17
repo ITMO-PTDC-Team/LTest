@@ -21,19 +21,25 @@ set (SOURCE_TARGET_CO_LIST
 foreach(source_name ${SOURCE_TARGET_LIST})
     get_filename_component(target ${source_name} NAME_WE)
     verify_target(${target})
+    list(APPEND VERIFY_TARGET_LIST ${target})
 endforeach(source_name ${SOURCE_TARGET_LIST})
 
 foreach(source_name ${SOURCE_TARGET_WITHOUT_PLUGIN_LIST})
     get_filename_component(target ${source_name} NAME_WE)
     verify_target_without_plugin(${target})
+    list(APPEND VERIFY_TARGET_LIST ${target})
 endforeach(source_name ${SOURCE_TARGET_WITHOUT_PLUGIN_LIST})
 
 foreach(source_name ${SOURCE_TARGET_CO_LIST})
     get_filename_component(target ${source_name} NAME_WE)
     verify_cotarget(${target})
+    list(APPEND VERIFY_TARGET_LIST ${target})
 endforeach(source_name ${SOURCE_TARGET_CO_LIST})
 
-enable_testing()
+add_custom_target(verify-targets 
+    DEPENDS
+    ${VERIFY_TARGET_LIST}
+)
 
 add_unit_test("nonlinear_queue_random_minimization" "verify" TRUE 
     nonlinear_queue --tasks 40 --rounds 100000 --strategy random --minimize

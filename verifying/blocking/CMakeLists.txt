@@ -9,14 +9,20 @@ foreach(source_name ${SOURCE_TARGET_LIST})
     get_filename_component(target ${source_name} NAME_WE)
     verify_target(${target})
     add_dependencies(${target} preload)
+    list(APPEND VERIFY_BLOCKING_LIST ${target})
 endforeach(source_name ${SOURCE_TARGET_LIST})
+
+add_custom_target(verify-blocking 
+    DEPENDS
+    ${VERIFY_BLOCKING_LIST}
+)
 
 function (add_unit_test_blocking test_name label fail)
     set(full_name "${label}_${test_name}")
     add_unit_test(${test_name} ${label} ${fail} ${ARGN})
     set_tests_properties("${full_name}"
         PROPERTIES
-        ENVIROMENT "LD_PRELOAD=build/syscall_intercept/libpreload.so")
+        ENVIRONMENT_MODIFICATION "LD_PRELOAD=string_append:${CMAKE_BINARY_DIR}/syscall_intercept/libpreload.so")
 endfunction()
 
 # Does not work, see issue: https://github.com/ITMO-PTDC-Team/LTest/issues/12
@@ -24,7 +30,7 @@ endfunction()
 #     simple_mutex --strategy random
 # )
 
-add_unit_test_blocking("simple_mutex_pct" "verify" TRUE 
+add_unit_test_blocking("simple_mutex_random" "verify" FALSE 
     simple_mutex --strategy pct
 )
 

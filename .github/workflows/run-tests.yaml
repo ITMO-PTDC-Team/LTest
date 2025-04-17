@@ -44,7 +44,6 @@ jobs:
       - name: Build
         run: |
           cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=RelWithAssert
-          cmake --build build --target verifying/targets/nonlinear_queue verifying/targets/nonlinear_ms_queue verifying/targets/nonlinear_treiber_stack \
-          verifying/targets/nonlinear_set verifying/targets/unique_args verifying/blocking/nonlinear_mutex verifying/blocking/simple_mutex
+          cmake --build build --target verify-targets verify-targets
       - name: "Tests"
         run: ctest --test-dir build -L "verify"

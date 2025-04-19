@@ -6,6 +6,7 @@
 #include <limits>
 #include <optional>
 #include <random>
+#include <string_view>
 #include <utility>
 
 #include "lib.h"
@@ -44,6 +45,7 @@ concept StrategyVerifier = requires(T a) {
     a.OnFinished(TaskWithMetaData(std::declval<Task&>(), bool(), int()))
   } -> std::same_as<void>;
   { a.Reset() } -> std::same_as<void>;
+  { a.UpdateState(std::string_view(), int()) } -> std::same_as<void>;
 };
 
 // Strategy is the general strategy interface which decides which task
@@ -578,6 +580,19 @@ struct TLAScheduler : Scheduler {
       if (is_new) {
         assert(coroutine_status->has_started);
         full_history.emplace_back(thread_id, task);
+      }
+      else{
+        //To prevent cases like this
+        // +--------+--------+
+        // |   T1   |   T2   |
+        // +--------+--------+
+        // |        | Recv   |
+        // | Send   |        |
+        // |        | >read  |
+        // | >flush |        |
+        // +--------+--------+
+                
+        verifier.UpdateState(coroutine_status->name, thread_id);
       }
       full_history.emplace_back(thread_id, coroutine_status.value());
       coroutine_status.reset();

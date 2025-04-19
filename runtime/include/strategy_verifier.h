@@ -7,4 +7,5 @@ struct DefaultStrategyVerifier {
   inline void OnFinished(TaskWithMetaData task) {}
 
   inline void Reset() {}
+  inline void UpdateState(std::string_view, int){}
 };

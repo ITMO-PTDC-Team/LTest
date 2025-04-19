@@ -139,7 +139,7 @@ struct PrettyPrinter {
         out << " ";
       }
     };
-    
+
     int spaces = 7;
     print_spaces(spaces);
     print_separator();
@@ -217,14 +217,7 @@ struct PrettyPrinter {
           fp.Out("<");
           co_depth[num]--;
         }
-        auto start = cor.name.find_last_of("::");
-        auto end = cor.name.find_last_of("(");
-        // to handle namespace in args
-        while (start > end) {
-          start = cor.name.find_last_of("::", end);
-        }
-        auto name = std::string(cor.name.substr(start + 1, end - start - 1));
-        fp.Out(name);
+        fp.Out(cor.name);
         // std::cerr << cor.name << "\n";
         assert(fp.rest > 0 && "increase cell_width in pretty printer");
       }
@@ -249,7 +242,7 @@ struct PrettyPrinter {
     int rest;
     FitPrinter(Out_t& out, int rest) : out(out), rest(rest) {}
 
-    void Out(const std::string& msg) {
+    void Out(const std::string_view& msg) {
       rest -= msg.size();
       out << msg;
     }

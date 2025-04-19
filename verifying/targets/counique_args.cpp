@@ -6,15 +6,15 @@
 
 #include "../specs/unique_args.h"
 
-struct promise;
+struct Promise;
 
-struct coroutine : std::coroutine_handle<promise> {
-  using promise_type = ::promise;
+struct Coroutine : std::coroutine_handle<Promise> {
+  using promise_type = ::Promise;
 };
 
-struct promise {
-  coroutine get_return_object() { return {coroutine::from_promise(*this)}; }
-  std::suspend_always initial_suspend() noexcept { return {}; }
+struct Promise {
+  Coroutine get_return_object() { return {Coroutine::from_promise(*this)}; }
+  std::suspend_never initial_suspend() noexcept { return {}; }
   std::suspend_always final_suspend() noexcept { return {}; }
   void return_void() {}
   void unhandled_exception() {}
@@ -23,6 +23,10 @@ struct promise {
 static std::vector<size_t> used(limit, false);
 static std::vector<size_t> done(limit, false);
 
+Coroutine CoFun(int i) {
+  done[i] = true;
+  co_return;
+}
 struct CoUniqueArgsTest {
   CoUniqueArgsTest() {}
   ValueWrapper Get(size_t i) {
@@ -32,13 +36,7 @@ struct CoUniqueArgsTest {
       Reset();
       return limit;
     };
-
-    coroutine h = [](int i) -> coroutine {
-      done[i] = true;
-      co_return;
-    }(i);
-    h.resume();
-    h.destroy();
+    CoFun(i);
     return {std::count(done.begin(), done.end(), false) == 0
                 ? l()
                 : std::optional<int>(),

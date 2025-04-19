@@ -176,7 +176,7 @@ int Run(int argc, char *argv[]) {
   Opts opts = ParseOpts();
 
   logger_init(opts.verbose);
-  std::cout << "verbose: " << opts.verbose << "\n";
+  std::cout << "verbose: " << std::boolalpha << opts.verbose << "\n";
   std::cout << "threads  = " << opts.threads << "\n";
   std::cout << "tasks    = " << opts.tasks << "\n";
   std::cout << "switches = " << opts.switches << "\n";

@@ -575,7 +575,7 @@ struct TLAScheduler : Scheduler {
     coroutine_status.reset();
   }
 
-  void updateFullHistory(size_t thread_id, Task& task, bool is_new) {
+  void UpdateFullHistory(size_t thread_id, Task& task, bool is_new) {
     if (coroutine_status.has_value()) {
       if (is_new) {
         assert(coroutine_status->has_started);
@@ -629,7 +629,7 @@ struct TLAScheduler : Scheduler {
 
     assert(!task->IsParked());
     task->Resume();
-    updateFullHistory(thread_id, task, is_new);
+    UpdateFullHistory(thread_id, task, is_new);
     bool is_finished = task->IsReturned();
     if (is_finished) {
       finished_tasks++;

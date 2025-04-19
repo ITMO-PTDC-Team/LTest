@@ -21,7 +21,7 @@ struct UniqueArgsRef {
   ValueWrapper Get(size_t i) {
     called++;
     return {called == limit ? std::exchange(called, 0) : std::optional<int>(),
-            get_default_compator<std::optional<int>>(), print};
+            GetDefaultCompator<std::optional<int>>(), print};
   }
 
   using method_t = std::function<ValueWrapper(UniqueArgsRef *l, void *args)>;

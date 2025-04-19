@@ -22,7 +22,7 @@ struct CoUniqueArgsTest {
     return {std::count(done.begin(), done.end(), false) == 0
                 ? l()
                 : std::optional<int>(),
-            get_default_compator<std::optional<int>>(), print};
+            GetDefaultCompator<std::optional<int>>(), print};
   }
   void Reset() {
     std::fill(used.begin(), used.end(), false);

@@ -42,42 +42,42 @@ add_custom_target(verify-targets
 )
 
 #With minimization rounds set 100000 as before it fails randomly with assert
-add_unit_test("nonlinear_queue_random_minimization" "verify" TRUE 
+add_integration_test("nonlinear_queue_random_minimization" "verify" TRUE 
     nonlinear_queue --tasks 40 --rounds 1000000 --strategy random --minimize
 )
 
-add_unit_test("nonlinear_queue_pct_minimization" "verify" TRUE 
+add_integration_test("nonlinear_queue_pct_minimization" "verify" TRUE 
     nonlinear_queue --tasks 40 --rounds 1000000 --strategy pct --minimize
 )
 
-add_unit_test("nonlinear_ms_queue_random_minimization" "verify" TRUE 
+add_integration_test("nonlinear_ms_queue_random_minimization" "verify" TRUE 
     nonlinear_ms_queue --tasks 40 --rounds 1000000 --strategy random --minimize
 )
 
-add_unit_test("nonlinear_ms_queue_pct_minimization" "verify" TRUE 
+add_integration_test("nonlinear_ms_queue_pct_minimization" "verify" TRUE 
     nonlinear_ms_queue --tasks 40 --rounds 1000000 --strategy pct --minimize
 )
 
-add_unit_test("nonlinear_treiber_stack_random_minimization" "verify" TRUE 
+add_integration_test("nonlinear_treiber_stack_random_minimization" "verify" TRUE 
     nonlinear_treiber_stack --tasks 40 --rounds 1000000 --strategy random --minimize
 )
 
-add_unit_test("nonlinear_treiber_stack_pct_minimization" "verify" TRUE 
+add_integration_test("nonlinear_treiber_stack_pct_minimization" "verify" TRUE 
     nonlinear_treiber_stack --tasks 40 --rounds 1000000 --strategy pct --minimize
 )
 
-add_unit_test("nonlinear_set_random_minimization" "verify" TRUE 
+add_integration_test("nonlinear_set_random_minimization" "verify" TRUE 
     nonlinear_set --tasks 40 --rounds 1000000 --strategy random --minimize
 )
 
-add_unit_test("nonlinear_set_pct_minimization" "verify" TRUE 
+add_integration_test("nonlinear_set_pct_minimization" "verify" TRUE 
     nonlinear_set --tasks 40 --rounds 1000000 --strategy pct --minimize
 )
 
-add_unit_test("unique_args" "verify" FALSE 
+add_integration_test("unique_args" "verify" FALSE 
     unique_args
 )
 
-add_unit_test("counique_args" "verify" FALSE 
+add_integration_test("counique_args" "verify" FALSE 
     counique_args
 )

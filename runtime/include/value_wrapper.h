@@ -5,46 +5,47 @@
 #include <string>
 class ValueWrapper;
 
-using to_string_func = std::function<std::string(const ValueWrapper&)>;
-using comp_func = std::function<bool(const ValueWrapper&, const ValueWrapper&)>;
+using ToStringFunc = std::function<std::string(const ValueWrapper&)>;
+using CompFunc = std::function<bool(const ValueWrapper&, const ValueWrapper&)>;
 
 template <typename T>
-to_string_func get_default_to_string();
+ToStringFunc GetDefaultToString();
 template <typename T>
-comp_func get_default_compator();
+CompFunc GetDefaultCompator();
 
 class ValueWrapper {
-  std::any value_;
-  comp_func compare_;
-  to_string_func to_str_;
+  std::any value;
+  CompFunc compare;
+  ToStringFunc to_str;
 
  public:
   ValueWrapper() = default;
 
   template <typename T>
-  ValueWrapper(const T& t, const comp_func& cmp = get_default_compator<T>(),
-               const to_string_func& str = get_default_to_string<T>())
-      : value_(t), compare_(cmp), to_str_(str) {}
+  ValueWrapper(const T& t, const CompFunc& cmp = GetDefaultCompator<T>(),
+               const ToStringFunc& str = GetDefaultToString<T>())
+      : value(t), compare(cmp), to_str(str) {}
   bool operator==(const ValueWrapper& other) const {
-    return compare_(*this, other);
+    return compare(*this, other);
   }
-  friend std::string to_string(const ValueWrapper& wrapper) {
-    return wrapper.to_str_(wrapper);
+  //using std::to_string
+  friend std::string to_string(const ValueWrapper& wrapper) { // NOLINT
+    return wrapper.to_str(wrapper);
   }
-  bool HasValue() const { return value_.has_value(); }
+  bool HasValue() const { return value.has_value(); }
   template <typename T>
   T GetValue() const {
-    return std::any_cast<T>(value_);
+    return std::any_cast<T>(value);
   }
 };
 template <typename T>
-to_string_func get_default_to_string() {
+ToStringFunc GetDefaultToString() {
   using std::to_string;
   return [](const ValueWrapper& a) { return to_string(a.GetValue<T>()); };
 }
 
 template <typename T>
-comp_func get_default_compator() {
+CompFunc GetDefaultCompator() {
   return [](const ValueWrapper& a, const ValueWrapper& b) {
     if (a.HasValue() != b.HasValue()) {
       return false;

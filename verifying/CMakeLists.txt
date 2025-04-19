@@ -28,11 +28,11 @@ function(verify_cotarget target)
     verify_target_without_plugin(${target})
     add_dependencies(${target} runtime coplugin_pass)
     target_compile_options(${target} PRIVATE  -fplugin=${COPASS_PATH} 
-    -fpass-plugin=${COPASS_PATH} -mllvm -coroutine-file=${CMAKE_CURRENT_SOURCE_DIR}/${target}.txt
+    -fpass-plugin=${COPASS_PATH} -mllvm -coroutine-file=${CMAKE_CURRENT_SOURCE_DIR}/${target}.yml
      ${CMAKE_ASAN_FLAGS})
 endfunction()
 
-function(add_unit_test test_name label fail)
+function(add_integration_test test_name label fail)
     set(full_name "${label}_${test_name}")
     set(test_command ${ARGN})
     add_test(

@@ -13,6 +13,7 @@
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/raw_ostream.h>
 
+#include <cassert>
 #include <fstream>
 #include <ios>
 #include <optional>
@@ -35,11 +36,8 @@ constexpr std::string_view costatus_change = "CoroutineStatusChange";
 constexpr std::string_view co_expr_start = "::await_ready";
 
 constexpr std::string_view co_expr_end = "::await_resume";
+constexpr std::string_view co_initial_suspend = "::initial_suspend()";
 constexpr std::string_view co_final_suspend = "::final_suspend()";
-
-constexpr std::string_view coroutines_list = "coroutines_list.txt";
-
-constexpr std::string_view parent_list = "parent_list.txt";
 
 constexpr std::string_view no_filter = "any";
 
@@ -47,13 +45,6 @@ static cl::opt<std::string> input_list(
     "coroutine-file", cl::desc("Specify path to file with coroutines to check"),
     llvm::cl::Required);
 ;
-static cl::opt<bool> print_all(
-    "print-all",
-    cl::desc("Print list of all parent of coroutines to" +
-             std::string(parent_list) + " and coroutines to" +
-             std::string(coroutines_list)),
-    cl::init(true));
-
 struct ConfigEntry {
   ConfigEntry(const std::optional<std::string> &parent_name,
               const std::optional<std::string> &co_name,
@@ -64,9 +55,8 @@ struct ConfigEntry {
   std::string print_name;
 };
 struct CoYieldInserter {
-  CoYieldInserter(Module &M, std::vector<ConfigEntry> &&white_list,
-                  std::optional<std::pair<std::fstream, std::fstream>> &&out)
-      : M(M), config(std::move(white_list)), files_with_list(std::move(out)) {
+  CoYieldInserter(Module &M, std::vector<ConfigEntry> &&config)
+      : M(M), config(std::move(config)) {
     auto &context = M.getContext();
     CoroYieldF = M.getOrInsertFunction(
         costatus_change,
@@ -93,6 +83,15 @@ struct CoYieldInserter {
  private:
   void InsertYields(auto filtered_config, Function &f) {
     Builder builder(&*f.begin());
+    /*
+    In fact co_await expr when expr is coroutine is
+    co_await initial_suspend()
+    coro body...
+    co_await_final_suspend()
+    And in fact we are interested to insert only before initial_suspend and
+    after final_suspend
+    */
+    int skip_insert_points = 0;
     for (auto &b : f) {
       for (auto &i : b) {
         CallInst *call = dyn_cast<CallInst>(&i);
@@ -106,29 +105,40 @@ struct CoYieldInserter {
           if (files_with_list.has_value()) {
             files_with_list->second << co_name << "\n";
           }
+          auto initial = co_name.find(co_initial_suspend);
+          if (initial != std::string::npos) {
+            builder.SetInsertPoint(call);
+            InsertCall(filtered_config, co_name, builder, true, initial);
+            skip_insert_points = 2;
+            continue;
+          }
+          auto final = co_name.find(co_final_suspend);
+          if (final != std::string::npos) {
+            builder.SetInsertPoint(call->getNextNode());
+            InsertCall(filtered_config, co_name, builder, false, final);
+            skip_insert_points = 2;
+            continue;
+          }
           auto start = co_name.find(co_expr_start);
           if (start != std::string::npos) {
-            if (i.getPrevNode()) {
-              auto prev = dyn_cast<CallInst>(i.getPrevNode());
-              if (prev) {
-                auto p = prev->getCalledFunction();
-                if (p != nullptr) {
-                  auto raw_prev_name = p->getName();
-                  std::string prev_name = demangle(raw_prev_name);
-                  if (prev_name.find(co_final_suspend) != std::string::npos) {
-                    continue;
-                  }
-                }
-              }
+            if (skip_insert_points != 0) {
+              assert(skip_insert_points == 2);
+              skip_insert_points--;
+              continue;
             }
-            builder.SetInsertPoint(call->getNextNode());
-            ReplaceCall(filtered_config, co_name, builder, true, start);
+            builder.SetInsertPoint(call);
+            InsertCall(filtered_config, co_name, builder, true, start);
             continue;
           }
           auto end_pos = co_name.find(co_expr_end);
           if (end_pos != std::string::npos) {
-            builder.SetInsertPoint(call);
-            ReplaceCall(filtered_config, co_name, builder, false, end_pos);
+            if (skip_insert_points != 0) {
+              assert(skip_insert_points == 1);
+              skip_insert_points--;
+              continue;
+            }
+            builder.SetInsertPoint(call->getNextNode());
+            InsertCall(filtered_config, co_name, builder, false, end_pos);
             continue;
           }
         }
@@ -136,8 +146,8 @@ struct CoYieldInserter {
     }
   }
 
-  void ReplaceCall(auto filtered_config, StringRef co_name, Builder &builder,
-                   bool start, int end_pos) {
+  void InsertCall(auto filtered_config, StringRef co_name, Builder &builder,
+                  bool start, int end_pos) {
     auto res_config =
         filtered_config |
         std::ranges::views::filter(
@@ -149,7 +159,7 @@ struct CoYieldInserter {
     }
     // First in the config will match
     auto first_match = res_config.front();
-    errs() << "replaced " << co_name.str() << "\n";
+    errs() << "inserted " << co_name.str() << "\n";
     auto llvm_start =
         ConstantInt::get(Type::getInt1Ty(builder.getContext()), start);
     Constant *str_const = ConstantDataArray::getString(
@@ -216,15 +226,8 @@ struct CoYieldInsertPass final : public PassInfoMixin<CoYieldInsertPass> {
     }
     assert(state == 0);
     input.close();
-    std::optional<std::pair<std::fstream, std::fstream>> out_files;
-    if (print_all) {
-      auto mode = std::ios_base::in | std::ios_base::out | std::ios_base::app;
-      out_files = {std::fstream(parent_list.data(), mode),
-                   std::fstream(coroutines_list.data(), mode)};
-    }
-    CoYieldInserter gen{M, std::move(config), std::move(out_files)};
+    CoYieldInserter gen{M, std::move(config)};
     gen.Run(M);
-
     return PreservedAnalyses::none();
   };
 };

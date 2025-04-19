@@ -181,7 +181,7 @@ int Run(int argc, char *argv[]) {
   std::cout << "tasks    = " << opts.tasks << "\n";
   std::cout << "switches = " << opts.switches << "\n";
   std::cout << "rounds   = " << opts.rounds << "\n";
-  std::cout << "minimize = " << opts.minimize << "\n";
+  std::cout << "minimize = " << std::boolalpha << opts.minimize << "\n";
   if (opts.minimize) {
     std::cout << "exploration runs = " << opts.exploration_runs << "\n";
     std::cout << "minimization runs = " << opts.minimization_runs << "\n";

@@ -47,7 +47,7 @@ struct SharedMutexVerifier {
 
   void Reset() { status.clear(); }
 
-  void UpdateState(std::string_view, int) {}
+  void UpdateState(std::string_view, int, bool) {}
 
   std::unordered_map<size_t, size_t> status;
 };

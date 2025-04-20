@@ -45,7 +45,7 @@ concept StrategyVerifier = requires(T a) {
     a.OnFinished(TaskWithMetaData(std::declval<Task&>(), bool(), int()))
   } -> std::same_as<void>;
   { a.Reset() } -> std::same_as<void>;
-  { a.UpdateState(std::string_view(), int()) } -> std::same_as<void>;
+  { a.UpdateState(std::string_view(), int(), bool()) } -> std::same_as<void>;
 };
 
 // Strategy is the general strategy interface which decides which task
@@ -581,22 +581,20 @@ struct TLAScheduler : Scheduler {
         assert(coroutine_status->has_started);
         full_history.emplace_back(thread_id, task);
       }
-      else{
-        //To prevent cases like this
-        // +--------+--------+
-        // |   T1   |   T2   |
-        // +--------+--------+
-        // |        | Recv   |
-        // | Send   |        |
-        // |        | >read  |
-        // | >flush |        |
-        // +--------+--------+
-                
-        verifier.UpdateState(coroutine_status->name, thread_id);
-      }
+      //To prevent cases like this
+      // +--------+--------+
+      // |   T1   |   T2   |
+      // +--------+--------+
+      // |        | Recv   |
+      // | Send   |        |
+      // |        | >read  |
+      // | >flush |        |
+      // +--------+--------+
+      verifier.UpdateState(coroutine_status->name, thread_id, coroutine_status->has_started);
       full_history.emplace_back(thread_id, coroutine_status.value());
       coroutine_status.reset();
     } else {
+      verifier.UpdateState(task->GetName(), thread_id, is_new);
       full_history.emplace_back(thread_id, task);
     }
   }

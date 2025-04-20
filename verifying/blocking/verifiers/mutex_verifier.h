@@ -36,7 +36,7 @@ struct MutexVerifier {
 
   void Reset() { status.clear(); }
 
-  void UpdateState(std::string_view, int){}
+  void UpdateState(std::string_view, int, bool){}
 
   // NOTE(kmitkin): we cannot just store number of thread that holds mutex
   //                because Lock can finish before Unlock!

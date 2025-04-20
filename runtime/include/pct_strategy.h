@@ -54,8 +54,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     // Have to ignore waiting threads, so can't do it faster than O(n)
     for (size_t i = 0; i < threads.size(); ++i) {
       // Ignore waiting tasks
-      if (!threads[i].empty() &&
-          (threads[i].back()->IsParked() || threads[i].back()->IsBlocked())) {
+      if (!threads[i].Empty() &&
+          (threads[i].Back()->IsParked() || threads[i].Back()->IsBlocked())) {
         // dual waiting if request finished, but follow up isn't
         // skip dual tasks that already have finished the request
         // section(follow-up will be executed in another task, so we can't
@@ -80,8 +80,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
     }
 
-    if (threads[index_of_max].empty() ||
-        threads[index_of_max].back()->IsReturned()) {
+    if (threads[index_of_max].Empty() ||
+        threads[index_of_max].Back()->IsReturned()) {
       auto constructor =
           this->constructors.at(this->constructors_distribution(rng));
       if (forbid_all_same) {
@@ -100,12 +100,12 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         }
       }
 
-      threads[index_of_max].emplace_back(
+      threads[index_of_max].EmplaceBack(
           constructor.Build(&this->state, index_of_max, this->new_task_id++));
-      return {threads[index_of_max].back(), true, index_of_max};
+      return {threads[index_of_max].Back(), true, index_of_max};
     }
 
-    return {threads[index_of_max].back(), false, index_of_max};
+    return {threads[index_of_max].Back(), false, index_of_max};
   }
 
   TaskWithMetaData NextSchedule() override {
@@ -118,7 +118,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     for (size_t i = 0; i < threads.size(); ++i) {
       int task_index = this->GetNextTaskInThread(i);
       // Ignore waiting tasks
-      if (task_index == threads[i].size() ||
+      if (task_index == threads[i].Size() ||
           threads[i][task_index]->IsParked()) {
         // dual waiting if request finished, but follow up isn't
         // skip dual tasks that already have finished the request
@@ -150,17 +150,17 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
   void StartNextRound() override {
     this->new_task_id = 0;
-    //    log() << "depth: " << current_depth << "\n";
+    //   Log() << "depth: " << current_depth << "\n";
     // Reconstruct target as we start from the beginning.
     this->TerminateTasks();
     for (auto& thread : this->threads) {
       // We don't have to keep references alive
-      while (thread.size() > 0) {
-        thread.pop_back();
+      while (thread.Size() > 0) {
+        thread.PopBack();
       }
       thread = StableVector<Task>();
     }
-    //this->state.Reset();
+    // this->state.Reset();
 
     UpdateStatistics();
   }
@@ -185,7 +185,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     // current_depth have been increased
     size_t new_k = std::reduce(k_statistics.begin(), k_statistics.end()) /
                    k_statistics.size();
-    log() << "k: " << new_k << "\n";
+    Log() << "k: " << new_k << "\n";
     PrepareForDepth(current_depth, new_k);
   }
 
@@ -194,11 +194,11 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
     for (size_t i = 0; i < this->threads.size(); ++i) {
       auto& thread = this->threads[i];
-      if (thread.empty() || i == except_thread) {
+      if (thread.Empty() || i == except_thread) {
         continue;
       }
 
-      auto& task = thread.back();
+      auto& task = thread.Back();
       names.insert(std::string{task->GetName()});
     }
 

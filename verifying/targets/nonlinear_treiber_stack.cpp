@@ -5,7 +5,7 @@
 struct TreiberStack {
   TreiberStack() : nodes(N), head(-1), free_list(0) { Reset(); }
 
-  non_atomic void Push(int value) {
+  NON_ATOMIC void Push(int value) {
     int node_index;
     do {
       node_index = free_list.load();
@@ -25,7 +25,7 @@ struct TreiberStack {
              !head.compare_exchange_strong(old_head, node_index));
   }
 
-  non_atomic int Pop() {
+  NON_ATOMIC int Pop() {
     int node_index;
     do {
       node_index = head.load();
@@ -73,16 +73,16 @@ struct TreiberStack {
 };
 
 // Arguments generator.
-auto generateInt(size_t thread_num) {
-  return ltest::generators::makeSingleArg(rand() % 10 + 1);
+auto GenerateInt(size_t thread_num) {
+  return ltest::generators::MakeSingleArg(rand() % 10 + 1);
 }
 
 // Specify target structure and it's sequential specification.
-using spec_t = ltest::Spec<TreiberStack, spec::Stack<>, spec::StackHash<>,
+using SpecT = ltest::Spec<TreiberStack, spec::Stack<>, spec::StackHash<>,
                            spec::StackEquals<>>;
 
-LTEST_ENTRYPOINT(spec_t);
+LTEST_ENTRYPOINT(SpecT);
 
-target_method(generateInt, void, TreiberStack, Push, int);
+TARGET_METHOD(GenerateInt, void, TreiberStack, Push, int);
 
-target_method(ltest::generators::genEmpty, int, TreiberStack, Pop);
+TARGET_METHOD(ltest::generators::GenEmpty, int, TreiberStack, Pop);

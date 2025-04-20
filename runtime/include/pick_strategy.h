@@ -34,11 +34,11 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   TaskWithMetaData Next() override {
     auto& threads = this->threads;
     auto current_thread = Pick();
-    debug(stderr, "Picked thread: %zu\n", current_thread);
+    DEBUG(stderr, "Picked thread: %zu\n", current_thread);
 
     // it's the first task if the queue is empty
-    if (threads[current_thread].empty() ||
-        threads[current_thread].back()->IsReturned()) {
+    if (threads[current_thread].Empty() ||
+        threads[current_thread].Back()->IsReturned()) {
       // a task has finished or the queue is empty, so we add a new task
       std::shuffle(this->constructors.begin(), this->constructors.end(), rng);
       size_t verified_constructor = -1;
@@ -54,15 +54,15 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       if (verified_constructor == -1) {
         assert(false && "Oops, possible deadlock or incorrect verifier\n");
       }
-      threads[current_thread].emplace_back(
+      threads[current_thread].EmplaceBack(
           this->constructors[verified_constructor].Build(
               &this->state, current_thread, this->new_task_id++));
-      TaskWithMetaData task{threads[current_thread].back(), true,
+      TaskWithMetaData task{threads[current_thread].Back(), true,
                             current_thread};
       return task;
     }
 
-    return {threads[current_thread].back(), false, current_thread};
+    return {threads[current_thread].Back(), false, current_thread};
   }
 
   TaskWithMetaData NextSchedule() override {
@@ -82,13 +82,13 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     this->TerminateTasks();
     for (auto& thread : this->threads) {
       // We don't have to keep references alive
-      while (thread.size() > 0) {
-        thread.pop_back();
+      while (thread.Size() > 0) {
+        thread.PopBack();
       }
     }
 
     // Reinitial target as we start from the beginning.
-    //this->state.Reset();
+    // this->state.Reset();
   }
 
   ~PickStrategy() { this->TerminateTasks(); }

@@ -2,9 +2,9 @@
 #include <iostream>
 
 #ifdef DEBUG
-#define debug(...) fprintf(__VA_ARGS__)
+#define DEBUG(...) fprintf(__VA_ARGS__)
 #else
-#define debug(...)
+#define DEBUG(...)
 #endif
 
 struct Logger {
@@ -18,9 +18,9 @@ struct Logger {
     return *this;
   }
 
-  void flush();
+  void Flush();
 };
 
-void logger_init(bool verbose);
+void LoggerInit(bool verbose);
 
-Logger& log();
+Logger& Log();

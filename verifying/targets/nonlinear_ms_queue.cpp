@@ -30,11 +30,11 @@ struct MSQueue {
   std::atomic<int> index;
 
   // Helper function to get the next available node from the pool
-  non_atomic Node* allocateNode(int value) {
-    int currentIndex = index.fetch_add(1);  // Atomically increment the index
-    assert(currentIndex < nodes.size() && "Node pool exhausted");
+  NON_ATOMIC Node* AllocateNode(int value) {
+    int current_index = index.fetch_add(1);  // Atomically increment the index
+    assert(current_index < nodes.size() && "Node pool exhausted");
 
-    Node* node = &nodes[currentIndex];
+    Node* node = &nodes[current_index];
     node->value = value;
     node->next.store(nullptr);
     return node;
@@ -46,62 +46,62 @@ struct MSQueue {
     tail.store(&dummyNode);
   }
 
-  non_atomic void Push(int value) {
-    Node* newNode = allocateNode(value);
-    Node* currentTail = nullptr;
-    Node* currentNext = nullptr;
+  NON_ATOMIC void Push(int value) {
+    Node* new_node = AllocateNode(value);
+    Node* current_tail = nullptr;
+    Node* current_next = nullptr;
 
     while (true) {
-      currentTail = tail.load();
-      currentNext = currentTail->next.load();
+      current_tail = tail.load();
+      current_next = current_tail->next.load();
 
       // Check if tail is still consistent
-      if (currentTail == tail.load()) {
-        if (currentNext == nullptr) {
+      if (current_tail == tail.load()) {
+        if (current_next == nullptr) {
           // Try to link the new node at the end
-          if (currentTail->next.compare_exchange_strong(currentNext, newNode)) {
+          if (current_tail->next.compare_exchange_strong(current_next, new_node)) {
             // Successfully added the new node
             break;
           }
         } else {
           // Tail was not pointing to the last node, try to advance it
-          tail.compare_exchange_strong(currentTail, currentNext);
+          tail.compare_exchange_strong(current_tail, current_next);
         }
       }
     }
 
     // Try to move tail to the new node
-    tail.compare_exchange_strong(currentTail, newNode);
+    tail.compare_exchange_strong(current_tail, new_node);
   }
 
-  non_atomic int Pop() {
-    Node* currentHead = nullptr;
-    Node* currentTail = nullptr;
-    Node* currentNext = nullptr;
+  NON_ATOMIC int Pop() {
+    Node* current_head = nullptr;
+    Node* current_tail = nullptr;
+    Node* current_next = nullptr;
     int value = 0;
 
     // MISTAKE
     int time = 0;
     while (time++ < 3 /* true */) {
-      currentHead = head.load();
-      currentTail = tail.load();
-      currentNext = currentHead->next.load();
+      current_head = head.load();
+      current_tail = tail.load();
+      current_next = current_head->next.load();
 
       // Check if head is still consistent
-      if (currentHead == head.load()) {
-        if (currentHead == currentTail) {
+      if (current_head == head.load()) {
+        if (current_head == current_tail) {
           // Queue might be empty or tail is lagging
-          if (currentNext == nullptr) {
+          if (current_next == nullptr) {
             return 0;  // Queue is empty
           }
           // Tail is lagging, try to advance it
-          tail.compare_exchange_strong(currentTail, currentNext);
+          tail.compare_exchange_strong(current_tail, current_next);
         } else {
           // Read the value before CAS to avoid use-after-free
-          value = currentNext->value;
+          value = current_next->value;
 
           // Try to move head to the next node
-          if (head.compare_exchange_strong(currentHead, currentNext)) {
+          if (head.compare_exchange_strong(current_head, current_next)) {
             break;
           }
         }
@@ -121,16 +121,16 @@ struct MSQueue {
 };
 
 // Arguments generator.
-auto generateInt(size_t unused) {
-  return ltest::generators::makeSingleArg(rand() % 10 + 1);
+auto GenerateInt(size_t unused) {
+  return ltest::generators::MakeSingleArg(rand() % 10 + 1);
 }
 
 // Specify target structure and it's sequential specification.
-using spec_t =
+using SpecT =
     ltest::Spec<MSQueue, spec::Queue<>, spec::QueueHash<>, spec::QueueEquals<>>;
 
-LTEST_ENTRYPOINT(spec_t);
+LTEST_ENTRYPOINT(SpecT);
 
-target_method(generateInt, void, MSQueue, Push, int);
+TARGET_METHOD(GenerateInt, void, MSQueue, Push, int);
 
-target_method(ltest::generators::genEmpty, int, MSQueue, Pop);
+TARGET_METHOD(ltest::generators::GenEmpty, int, MSQueue, Pop);

@@ -33,7 +33,7 @@ void GreedyRoundMinimizor::Minimize(
   for (auto& task : tasks) {
     if (strategy.IsTaskRemoved(task.get()->GetId())) continue;
 
-    // log() << "Try to remove task with id: " << task.get()->GetId() << "\n";
+    // Log() << "Try to remove task with id: " << task.get()->GetId() << "\n";
     auto new_histories =
         OnTasksRemoved(sched, nonlinear_history, {task.get()->GetId()});
 
@@ -55,9 +55,9 @@ void GreedyRoundMinimizor::Minimize(
       int task_j_id = task_j->GetId();
       if (strategy.IsTaskRemoved(task_j_id)) continue;
 
-      // log() << "Try to remove tasks with ids: " << task_i.get()->GetId() << "
-      // and "
-      //       << task_j.get()->GetId() << "\n";
+      // Log() << "Try to remove tasks with ids: " << task_i.get()->GetId() << "
+      //  and "
+      //        << task_j.get()->GetId() << "\n";
       auto new_histories =
           OnTasksRemoved(sched, nonlinear_history, {task_i_id, task_j_id});
 
@@ -94,8 +94,8 @@ Scheduler::Result SameInterleavingMinimizor::OnTasksRemoved(
 }
 
 // strategy exploration
-StrategyExplorationMinimizor::StrategyExplorationMinimizor(int runs_)
-    : runs(runs_) {}
+StrategyExplorationMinimizor::StrategyExplorationMinimizor(int runs)
+    : runs(runs) {}
 
 Scheduler::Result StrategyExplorationMinimizor::OnTasksRemoved(
     SchedulerWithReplay& sched,

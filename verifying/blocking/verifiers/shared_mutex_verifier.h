@@ -7,7 +7,7 @@ struct SharedMutexVerifier {
   /// Verify checks the state of a mutex on starting of `ctask`
   bool Verify(CreatedTaskMetaData ctask) {
     auto [taskName, is_new, thread_id] = ctask;
-    debug(stderr, "validating method %s, thread_id: %zu\n", taskName.data(),
+    DEBUG(stderr, "validating method %s, thread_id: %zu\n", taskName.data(),
           thread_id);
     if (status.count(thread_id) == 0) {
       status[thread_id] = FREE;
@@ -30,7 +30,7 @@ struct SharedMutexVerifier {
   void OnFinished(TaskWithMetaData ctask) {
     auto [task, is_new, thread_id] = ctask;
     auto taskName = task->GetName();
-    debug(stderr, "On finished method %s, thread_id: %zu\n", taskName.data(),
+    DEBUG(stderr, "On finished method %s, thread_id: %zu\n", taskName.data(),
           thread_id);
     if (taskName == "lock") {
       status[thread_id] = WRITER;

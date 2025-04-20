@@ -7,7 +7,7 @@ struct SlotsSet {
  public:
   SlotsSet() { Reset(); }
 
-  non_atomic int Insert(int value) {
+  NON_ATOMIC int Insert(int value) {
     assert(value != 0);  // zero should never be added
 
     size_t hash = value % N;
@@ -26,7 +26,7 @@ struct SlotsSet {
     return false;
   }
 
-  non_atomic int Erase(int value) {
+  NON_ATOMIC int Erase(int value) {
     assert(value != 0);
 
     size_t hash = value % N;
@@ -53,11 +53,11 @@ struct SlotsSet {
 
  private:
   static inline const int N = 100;
-  std::atomic<int> slots[N];
+  std::array<std::atomic<int>, N> slots;
 };
 
 // Arguments generator.
-auto generateInt(size_t unused_param) {
+auto GenerateInt(size_t unused_param) {
   // single value in arguments, because to find nonlinearizable
   // scenario we need 4 operations with the same argument
   // (which is pretty hard to find)
@@ -75,15 +75,15 @@ auto generateInt(size_t unused_param) {
       |                    | <-- 1              |
       *--------------------*--------------------*
   */
-  return ltest::generators::makeSingleArg(1);
+  return ltest::generators::MakeSingleArg(1);
 }
 
 // Specify target structure and it's sequential specification.
-using spec_t =
+using SpecT =
     ltest::Spec<SlotsSet, spec::Set<>, spec::SetHash<>, spec::SetEquals<>>;
 
-LTEST_ENTRYPOINT(spec_t);
+LTEST_ENTRYPOINT(SpecT);
 
-target_method(generateInt, int, SlotsSet, Insert, int);
+TARGET_METHOD(GenerateInt, int, SlotsSet, Insert, int);
 
-target_method(generateInt, int, SlotsSet, Erase, int);
+TARGET_METHOD(GenerateInt, int, SlotsSet, Erase, int);

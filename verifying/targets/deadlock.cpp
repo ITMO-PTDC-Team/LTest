@@ -15,7 +15,7 @@ struct Test {
   Test() {}
 
   // Lock(odd) in parallel with Lock(even) causes deadlock.
-  non_atomic void Lock(std::shared_ptr<Token> token, int v) {
+  NON_ATOMIC void Lock(std::shared_ptr<Token> token, int v) {
     if (v % 2 == 0) {
       mu1.Lock(token);
       CoroYield();
@@ -38,32 +38,32 @@ struct Test {
 
   Mutex mu1, mu2{};
 
-  using method_t = std::function<ValueWrapper(Test *t, void *args)>;
+  using MethodT = std::function<ValueWrapper(Test *t, void *args)>;
 
   static auto GetMethods() {
-    method_t lock_func = [](Test *l, void *args) -> int {
+    MethodT lock_func = [](Test *l, void *args) -> int {
       // `void` return type is always return 0 equivalent.
       return 0;
     };
 
-    return std::map<std::string, method_t>{
+    return std::map<std::string, MethodT>{
         {"Lock", lock_func},
     };
   }
 };
 
-auto generateInt(size_t thread_num) {
-  return ltest::generators::makeSingleArg(static_cast<int>(thread_num));
+auto GenerateInt(size_t thread_num) {
+  return ltest::generators::MakeSingleArg(static_cast<int>(thread_num));
 }
 
-auto generateArgs(size_t thread_num) {
-  auto token = ltest::generators::genToken(thread_num);
-  auto _int = generateInt(thread_num);
-  return std::tuple_cat(token, _int);
+auto GenerateArgs(size_t thread_num) {
+  auto token = ltest::generators::GenToken(thread_num);
+  auto gen_int = GenerateInt(thread_num);
+  return std::tuple_cat(token, gen_int);
 }
 
-using spec_t = ltest::Spec<Test, Test>;
+using SpecT = ltest::Spec<Test, Test>;
 
-LTEST_ENTRYPOINT(spec_t);
+LTEST_ENTRYPOINT(SpecT);
 
-target_method(generateArgs, void, Test, Lock, std::shared_ptr<Token>, int);
+TARGET_METHOD(GenerateArgs, void, Test, Lock, std::shared_ptr<Token>, int);

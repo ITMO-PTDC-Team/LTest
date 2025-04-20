@@ -7,20 +7,20 @@
 #include "../specs/register.h"
 
 struct Register {
-  non_atomic void add() { x.fetch_add(1); }
-  non_atomic int get() { return x.load(); }
+  NON_ATOMIC void Add() { x.fetch_add(1); }
+  NON_ATOMIC int Get() { return x.load(); }
 
   void Reset() { x.store(0); }
 
   std::atomic<int> x{};
 };
 
-using spec_t =
+using SpecT =
     ltest::Spec<Register, spec::LinearRegister, spec::LinearRegisterHash,
                 spec::LinearRegisterEquals>;
 
-LTEST_ENTRYPOINT(spec_t);
+LTEST_ENTRYPOINT(SpecT);
 
-target_method(ltest::generators::genEmpty, void, Register, add);
+TARGET_METHOD(ltest::generators::GenEmpty, void, Register, Add);
 
-target_method(ltest::generators::genEmpty, int, Register, get);
+TARGET_METHOD(ltest::generators::GenEmpty, int, Register, Get);

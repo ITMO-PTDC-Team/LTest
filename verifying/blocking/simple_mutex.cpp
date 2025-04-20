@@ -29,10 +29,10 @@ class Mutex {
   }
 
  public:
-  non_atomic int Lock() {
-    debug(stderr, "Lock\n");
+  NON_ATOMIC int Lock() {
+    DEBUG(stderr, "Lock\n");
     if (CompareExchange(0, 1) == 0) {
-      debug(stderr, "Lock finished\n");
+      DEBUG(stderr, "Lock finished\n");
       return 0;
     }
     while (CompareExchange(0, 2) != 0) {
@@ -42,17 +42,17 @@ class Mutex {
         }
       }
     }
-    debug(stderr, "Lock finished with %d\n", locked_.load());
+    DEBUG(stderr, "Lock finished with %d\n", locked_.load());
     return 0;
   }
 
-  non_atomic int Unlock() {
-    debug(stderr, "Unlock\n");
+  NON_ATOMIC int Unlock() {
+    DEBUG(stderr, "Unlock\n");
     if (locked_.fetch_sub(1) != 1) {
       locked_.store(0);
       FutexWake(Addr(locked_), 1);
     }
-    debug(stderr, "Unlock finished\n");
+    DEBUG(stderr, "Unlock finished\n");
     return 0;
   }
 
@@ -62,11 +62,11 @@ class Mutex {
   std::atomic_int32_t locked_{0};
 };
 
-using spec_t = ltest::Spec<Mutex, spec::LinearMutex, spec::LinearMutexHash,
-                           spec::LinearMutexEquals>;
+using SpecT = ltest::Spec<Mutex, spec::LinearMutex, spec::LinearMutexHash,
+                          spec::LinearMutexEquals>;
 
-LTEST_ENTRYPOINT_CONSTRAINT(spec_t, MutexVerifier);
+LTEST_ENTRYPOINT_CONSTRAINT(SpecT, MutexVerifier);
 
-target_method(ltest::generators::genEmpty, int, Mutex, Lock);
+TARGET_METHOD(ltest::generators::GenEmpty, int, Mutex, Lock);
 
-target_method(ltest::generators::genEmpty, int, Mutex, Unlock);
+TARGET_METHOD(ltest::generators::GenEmpty, int, Mutex, Unlock);

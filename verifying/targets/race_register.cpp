@@ -2,21 +2,21 @@
 #include "verifying/specs/register.h"
 
 struct Register {
-  non_atomic void add() { ++x; }
+  NON_ATOMIC void Add() { ++x; }
 
-  non_atomic int get() { return x; }
+  NON_ATOMIC int Get() { return x; }
 
   void Reset() { x = 0; }
 
   int x{};
 };
 
-using spec_t =
+using SpecT =
     ltest::Spec<Register, spec::LinearRegister, spec::LinearRegisterHash,
                 spec::LinearRegisterEquals>;
 
-LTEST_ENTRYPOINT(spec_t);
+LTEST_ENTRYPOINT(SpecT);
 
-target_method(ltest::generators::genEmpty, void, Register, add);
+TARGET_METHOD(ltest::generators::GenEmpty, void, Register, Add);
 
-target_method(ltest::generators::genEmpty, int, Register, get);
+TARGET_METHOD(ltest::generators::GenEmpty, int, Register, Get);

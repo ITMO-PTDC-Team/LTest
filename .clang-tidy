@@ -1,0 +1,75 @@
+#taken from https://gist.github.com/airglow923/1fa3bda42f2b193920d7f46ee8345e04
+CheckOptions:
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.ClassMemberCase
+    value: lower_case
+  - key: readability-identifier-naming.ConstexprVariableCase
+    value: lower_case
+  #no enforce
+  - key: readability-identifier-naming.ConstexprVariablePrefix
+    value: ""
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+  #no enforce
+  - key: readability-identifier-naming.EnumConstantPrefix
+    value: ""
+  - key: readability-identifier-naming.FunctionCase
+    value: CamelCase
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: CamelCase
+  #no enforce
+  - key: readability-identifier-naming.GlobalConstantPrefix
+    value: ""
+  - key: readability-identifier-naming.StaticConstantCase
+    value: CamelCase
+  #no enforce
+  - key: readability-identifier-naming.StaticConstantPrefix
+    value: ""
+  - key: readability-identifier-naming.StaticVariableCase
+    value: lower_case
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.MacroDefinitionIgnoredRegexp
+    value: "^[A-Z]+(_[A-Z]+)*_$"
+  # when enabling case it needs also suffix defined(and (_)? doesn't help)
+  # - key: readability-identifier-naming.MemberCase
+  #   value: lower_case
+  # - key: readability-identifier-naming.MemberSuffix
+  #   value: ""
+
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+  - key: readability-identifier-naming.TypeAliasCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypedefCase
+    value: CamelCase
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.IgnoreMainLikeFunctions
+    value: 1
+
+Checks: "
+  -*,
+  readability-identifier-naming,
+  -cppcoreguidelines-*,
+  cppcoreguidelines-avoid-goto,
+  cppcoreguidelines-explicit-virtual-functions,
+  cppcoreguidelines-no-malloc,
+  cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  cppcoreguidelines-pro-type-static-cast-downcast,
+  cppcoreguidelines-pro-type-union-access,
+  cppcoreguidelines-missing-std-forward,
+  -modernize-*,
+  modernize-use-override,
+  -misc-*,
+  misc-redundant-expression,
+  modernize-deprecated-headers,
+  modernize-use-constraints,
+  modernize-use-nullptr,
+  modernize-use-using"
+WarningsAsErrors: "*"

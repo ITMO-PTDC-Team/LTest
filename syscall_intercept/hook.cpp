@@ -17,11 +17,11 @@ hook(long syscall_number,
 		return 1;
 	}
 	if (syscall_number == SYS_sched_yield) {
-		debug(stderr, "caught sched_yield()\n");
+		DEBUG(stderr, "caught sched_yield()\n");
 		CoroYield();
 		return 0;
 	} else if (syscall_number == SYS_futex) {
-		debug(stderr, "caught futex(0x%lx, %ld, %ld)\n", (unsigned long)arg0, arg1, arg2);
+		DEBUG(stderr, "caught futex(0x%lx, %ld, %ld)\n", (unsigned long)arg0, arg1, arg2);
 		if (arg1 == FUTEX_WAIT_PRIVATE) {
 			this_coro->SetBlocked(arg0, arg2);
 		} else if (arg1 == FUTEX_WAKE_PRIVATE) {

@@ -54,7 +54,7 @@ bool LinearizabilityCheckerRecursive<
   if (history.empty()) {
     return true;
   }
-  std::map<size_t, size_t> inv_res = get_inv_res_mapping(history);
+  std::map<size_t, size_t> inv_res = GetInvResMapping(history);
 
   std::function<bool(const std::vector<HistoryEvent>&, std::vector<bool>&,
                      LinearSpecificationObject)>

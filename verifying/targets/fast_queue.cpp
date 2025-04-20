@@ -24,40 +24,40 @@ struct Node {
   }
 };
 
-const int size = 2;
+const int Size = 2;
 
-auto generateInt(size_t thread_num) {
-  return ltest::generators::makeSingleArg(rand() % 10 + 1);
+auto GenerateInt(size_t thread_num) {
+  return ltest::generators::MakeSingleArg(rand() % 10 + 1);
 }
 
 class MPMCBoundedQueue {
  public:
-  explicit MPMCBoundedQueue() : max_size_{size - 1} {
-    vec_.resize(size);
-    for (size_t i = 0; i < size; ++i) {
-      vec_[i].generation.store(i, std::memory_order_relaxed);
+  explicit MPMCBoundedQueue() : max_size{Size - 1} {
+    vec.resize(Size);
+    for (size_t i = 0; i < Size; ++i) {
+      vec[i].generation.store(i, std::memory_order_relaxed);
     }
   }
 
   void Reset() {
-    for (size_t i = 0; i < size; ++i) {
-      vec_[i].generation.store(i);
+    for (size_t i = 0; i < Size; ++i) {
+      vec[i].generation.store(i);
     }
-    head_.store(0);
-    tail_.store(0);
+    head.store(0);
+    tail.store(0);
   }
 
-  non_atomic int Push(int value) {
+  NON_ATOMIC int Push(int value) {
     while (true) {
-      auto h = head_.load(/*std::memory_order_relaxed*/);
-      auto hid = h & max_size_;
-      auto gen = vec_[hid].generation.load(/*std::memory_order_relaxed*/);
+      auto h = head.load(/*std::memory_order_relaxed*/);
+      auto hid = h & max_size;
+      auto gen = vec[hid].generation.load(/*std::memory_order_relaxed*/);
       if (gen == h) {
-        if (head_.compare_exchange_weak(
+        if (head.compare_exchange_weak(
                 h, h + 1 /*, std::memory_order_acquire*/)) {
           // I am owner of the element.
-          vec_[hid].val = value;
-          vec_[hid].generation.fetch_add(1 /*, std::memory_order_release*/);
+          vec[hid].val = value;
+          vec[hid].generation.fetch_add(1 /*, std::memory_order_release*/);
           return true;
         }
       } else if (gen < h) {
@@ -66,17 +66,17 @@ class MPMCBoundedQueue {
     }
   }
 
-  non_atomic int Pop() {
+  NON_ATOMIC int Pop() {
     while (true) {
-      auto t = tail_.load(/*std::memory_order_relaxed*/);
-      auto tid = t & max_size_;
-      auto gen = vec_[tid].generation.load(/*std::memory_order_relaxed*/);
+      auto t = tail.load(/*std::memory_order_relaxed*/);
+      auto tid = t & max_size;
+      auto gen = vec[tid].generation.load(/*std::memory_order_relaxed*/);
       if (gen == t + 1) {
-        if (tail_.compare_exchange_weak(
+        if (tail.compare_exchange_weak(
                 t, t + 1 /*, std::memory_order_acquire*/)) {
-          int ret = std::move(vec_[tid].val);
-          vec_[tid].generation.fetch_add(
-              max_size_ /*, std::memory_order_release*/);
+          int ret = std::move(vec[tid].val);
+          vec[tid].generation.fetch_add(
+              max_size /*, std::memory_order_release*/);
           return ret;
         }
       } else {
@@ -88,11 +88,11 @@ class MPMCBoundedQueue {
   }
 
  private:
-  size_t max_size_;
-  std::vector<Node<int>> vec_;
+  size_t max_size;
+  std::vector<Node<int>> vec;
 
-  std::atomic<size_t> head_{};
-  std::atomic<size_t> tail_{};
+  std::atomic<size_t> head{};
+  std::atomic<size_t> tail{};
 };
 
 // 0 1 2 3 4 5 6 7
@@ -103,11 +103,11 @@ class MPMCBoundedQueue {
 // POP
 // 1 == tail + 1? 1 == 1
 
-using spec_t = ltest::Spec<MPMCBoundedQueue, spec::Queue, spec::QueueHash,
+using SpecT = ltest::Spec<MPMCBoundedQueue, spec::Queue, spec::QueueHash,
                            spec::QueueEquals>;
 
-LTEST_ENTRYPOINT(spec_t);
+LTEST_ENTRYPOINT(SpecT);
 
-target_method(generateInt, int, MPMCBoundedQueue, Push, int);
+TARGET_METHOD(GenerateInt, int, MPMCBoundedQueue, Push, int);
 
-target_method(ltest::generators::genEmpty, int, MPMCBoundedQueue, Pop);
+TARGET_METHOD(ltest::generators::GenEmpty, int, MPMCBoundedQueue, Pop);

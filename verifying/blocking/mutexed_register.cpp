@@ -4,14 +4,14 @@
 #include "runtime/include/verifying.h"
 #include "verifying/specs/register.h"
 
-typedef folly::detail::lock_base_unique<std::mutex> lock_guard;
+using lock_guard = folly::detail::lock_base_unique<std::mutex> ;
 
 struct Register {
-  non_atomic void add() {
+  NON_ATOMIC void Add() {
     lock_guard lock{m_};
     ++x_;
   }
-  non_atomic int get() {
+  NON_ATOMIC int Get() {
     lock_guard lock{m_};
     return x_;
   }
@@ -25,12 +25,12 @@ struct Register {
   std::mutex m_;
 };
 
-using spec_t =
+using SpecT =
     ltest::Spec<Register, spec::LinearRegister, spec::LinearRegisterHash,
                 spec::LinearRegisterEquals>;
 
-LTEST_ENTRYPOINT(spec_t);
+LTEST_ENTRYPOINT(SpecT);
 
-target_method(ltest::generators::genEmpty, void, Register, add);
+TARGET_METHOD(ltest::generators::GenEmpty, void, Register, Add);
 
-target_method(ltest::generators::genEmpty, int, Register, get);
+TARGET_METHOD(ltest::generators::GenEmpty, int, Register, Get);

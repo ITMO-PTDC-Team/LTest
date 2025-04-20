@@ -31,12 +31,12 @@ template <class TargetObj, class LinearSpec,
           class LinearSpecEquals = std::equal_to<LinearSpec>,
           class OptionsOverride = NoOverride, class Canceler = DefaultCanceler>
 struct Spec {
-  using target_obj_t = TargetObj;
-  using linear_spec_t = LinearSpec;
-  using linear_spec_hash_t = LinearSpecHash;
-  using linear_spec_equals_t = LinearSpecEquals;
-  using options_override_t = OptionsOverride;
-  using cancel_t = Canceler;
+  using TargetObjT = TargetObj;
+  using LinearSpecT = LinearSpec;
+  using LinearSpecHashT = LinearSpecHash;
+  using LinearSpecEqualsT = LinearSpecEquals;
+  using OptionsOverrideT = OptionsOverride;
+  using CancelT = Canceler;
 };
 
 struct Opts {
@@ -73,7 +73,7 @@ void SetOpts(const DefaultOptions &def);
 
 Opts ParseOpts();
 
-std::vector<std::string> split(const std::string &s, char delim);
+std::vector<std::string> Split(const std::string &s, char delim);
 
 template <typename TargetObj, StrategyVerifier Verifier>
 std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
@@ -168,14 +168,14 @@ inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
 
 template <class Spec, StrategyVerifier Verifier = DefaultStrategyVerifier>
 int Run(int argc, char *argv[]) {
-  if constexpr (!std::is_same_v<typename Spec::options_override_t,
+  if constexpr (!std::is_same_v<typename Spec::OptionsOverrideT,
                                 ltest::NoOverride>) {
-    SetOpts(Spec::options_override_t::GetOptions());
+    SetOpts(Spec::OptionsOverrideT::GetOptions());
   }
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   Opts opts = ParseOpts();
 
-  logger_init(opts.verbose);
+  LoggerInit(opts.verbose);
   std::cout << "verbose: " << std::boolalpha << opts.verbose << "\n";
   std::cout << "threads  = " << opts.threads << "\n";
   std::cout << "tasks    = " << opts.tasks << "\n";
@@ -190,16 +190,16 @@ int Run(int argc, char *argv[]) {
 
   PrettyPrinter pretty_printer{opts.threads};
 
-  using lchecker_t =
-      LinearizabilityCheckerRecursive<typename Spec::linear_spec_t,
-                                      typename Spec::linear_spec_hash_t,
-                                      typename Spec::linear_spec_equals_t>;
-  lchecker_t checker{Spec::linear_spec_t::GetMethods(),
-                     typename Spec::linear_spec_t{}};
+  using LcheckerT =
+      LinearizabilityCheckerRecursive<typename Spec::LinearSpecT,
+                                      typename Spec::LinearSpecHashT,
+                                      typename Spec::LinearSpecEqualsT>;
+  LcheckerT checker{Spec::LinearSpecT::GetMethods(),
+                    typename Spec::LinearSpecT{}};
 
-  auto scheduler = MakeScheduler<typename Spec::target_obj_t, Verifier>(
+  auto scheduler = MakeScheduler<typename Spec::TargetObjT, Verifier>(
       checker, opts, std::move(task_builders), pretty_printer,
-      &Spec::cancel_t::Cancel);
+      &Spec::CancelT::Cancel);
   std::cout << "\n\n";
   std::cout.flush();
   return TrapRun(std::move(scheduler), pretty_printer);

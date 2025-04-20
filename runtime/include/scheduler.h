@@ -124,7 +124,7 @@ struct BaseStrategyWithThreads : public Strategy {
     // TODO: can this be optimized?
     int thread_id = 0;
     for (auto& thread : threads) {
-      size_t tasks = thread.size();
+      size_t tasks = thread.Size();
 
       for (size_t i = 0; i < tasks; ++i) {
         Task& task = thread[i];
@@ -147,7 +147,7 @@ struct BaseStrategyWithThreads : public Strategy {
     TerminateTasks();
     // state.Reset();
     for (auto& thread : threads) {
-      size_t tasks_in_thread = thread.size();
+      size_t tasks_in_thread = thread.Size();
       for (size_t i = 0; i < tasks_in_thread; ++i) {
         if (!IsTaskRemoved(thread[i]->GetId())) {
           thread[i] = thread[i]->Restart(&state);
@@ -159,7 +159,7 @@ struct BaseStrategyWithThreads : public Strategy {
   int GetValidTasksCount() const override {
     int non_removed_tasks = 0;
     for (auto& thread : threads) {
-      for (size_t i = 0; i < thread.size(); ++i) {
+      for (size_t i = 0; i < thread.Size(); ++i) {
         auto& task = thread[i];
         if (!IsTaskRemoved(task->GetId())) {
           non_removed_tasks++;
@@ -172,7 +172,7 @@ struct BaseStrategyWithThreads : public Strategy {
   int GetTotalTasksCount() const override {
     int total_tasks = 0;
     for (auto& thread : threads) {
-      total_tasks += thread.size();
+      total_tasks += thread.Size();
     }
     return total_tasks;
   }
@@ -207,20 +207,20 @@ struct BaseStrategyWithThreads : public Strategy {
         auto& task_index = task_indexes[thread_index];
 
         // find first non-finished task in the thread
-        while (task_index < thread.size() && thread[task_index]->IsReturned()) {
+        while (task_index < thread.Size() && thread[task_index]->IsReturned()) {
           task_index++;
         }
 
-        if (task_index < thread.size()) {
+        if (task_index < thread.Size()) {
           auto& task = thread[task_index];
 
           // if task is blocked and it is the last one, then just increment the
           // task index
           if (task->IsBlocked()) {
-            assert(task_index == thread.size() - 1 &&
+            assert(task_index == thread.Size() - 1 &&
                    "Trying to terminate blocked task, which is not last in the "
                    "thread.");
-            if (task_index == thread.size() - 1) {
+            if (task_index == thread.Size() - 1) {
               task_index++;
             }
           } else {
@@ -240,7 +240,7 @@ struct BaseStrategyWithThreads : public Strategy {
     auto& thread = threads[thread_index];
     int task_index = round_schedule[thread_index];
 
-    while (task_index < static_cast<int>(thread.size()) &&
+    while (task_index < static_cast<int>(thread.Size()) &&
            (task_index == -1 || thread[task_index].get()->IsReturned() ||
             IsTaskRemoved(thread[task_index].get()->GetId()))) {
       task_index++;
@@ -285,30 +285,30 @@ struct StrategyScheduler : public SchedulerWithReplay {
   // Resume operation on the corresponding task
   Scheduler::Result Run() override {
     for (size_t i = 0; i < max_rounds; ++i) {
-      log() << "run round: " << i << "\n";
-      debug(stderr, "run round: %d\n", i);
+      Log() << "run round: " << i << "\n";
+      DEBUG(stderr, "run round: %d\n", i);
       auto histories = RunRound();
 
       if (histories.has_value()) {
         auto& [full_history, sequential_history] = histories.value();
 
         if (should_minimize_history) {
-          log() << "Full nonlinear scenario: \n";
-          pretty_printer.PrettyPrint(sequential_history, log());
+          Log() << "Full nonlinear scenario: \n";
+          pretty_printer.PrettyPrint(sequential_history, Log());
 
-          log() << "Minimizing same interleaving...\n";
+          Log() << "Minimizing same interleaving...\n";
           Minimize(histories.value(), SameInterleavingMinimizor());
-          log() << "Minimized to:\n";
-          pretty_printer.PrettyPrint(sequential_history, log());
+          Log() << "Minimized to:\n";
+          pretty_printer.PrettyPrint(sequential_history, Log());
 
-          log() << "Minimizing with rescheduling (exploration runs: "
+          Log() << "Minimizing with rescheduling (exploration runs: "
                 << exploration_runs << ")...\n";
           Minimize(histories.value(),
                    StrategyExplorationMinimizor(exploration_runs));
-          log() << "Minimized to:\n";
-          pretty_printer.PrettyPrint(sequential_history, log());
+          Log() << "Minimized to:\n";
+          pretty_printer.PrettyPrint(sequential_history, Log());
 
-          log() << "Minimizing with smart minimizor (exploration runs: "
+          Log() << "Minimizing with smart minimizor (exploration runs: "
                 << exploration_runs
                 << ", minimization runs: " << minimization_runs << ")...\n";
           Minimize(histories.value(),
@@ -318,8 +318,8 @@ struct StrategyScheduler : public SchedulerWithReplay {
 
         return histories;
       }
-      log() << "===============================================\n\n";
-      log().flush();
+      Log() << "===============================================\n\n";
+      Log().Flush();
       strategy.StartNextRound();
     }
 
@@ -335,7 +335,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
     FullHistory full_history;
 
     for (size_t finished_tasks = 0; finished_tasks < max_tasks;) {
-      debug(stderr, "Tasks finished: %d\n", finished_tasks);
+      DEBUG(stderr, "Tasks finished: %d\n", finished_tasks);
 
       auto t = strategy.Next();
       auto& [next_task, is_new, thread_id] = t;
@@ -356,7 +356,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
       }
     }
 
-    pretty_printer.PrettyPrint(sequential_history, log());
+    pretty_printer.PrettyPrint(sequential_history, Log());
 
     if (!checker.Check(sequential_history)) {
       return std::make_pair(full_history, sequential_history);
@@ -368,7 +368,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
   // Runs different interleavings of the current round
   Result ExploreRound(int runs) override {
     for (int i = 0; i < runs; ++i) {
-      // log() << "Run " << i + 1 << "/" << runs << "\n";
+      // Log() << "Run " << i + 1 << "/" << runs << "\n";
       strategy.ResetCurrentRound();
       SeqHistory sequential_history;
       FullHistory full_history;
@@ -393,8 +393,8 @@ struct StrategyScheduler : public SchedulerWithReplay {
       }
 
       if (!checker.Check(sequential_history)) {
-        // log() << "New nonlinearized scenario:\n";
-        // pretty_printer.PrettyPrint(sequential_history, log());
+        // Log() << "New nonlinearized scenario:\n";
+        //  pretty_printer.PrettyPrint(sequential_history,Log());
         return std::make_pair(full_history, sequential_history);
       }
     }
@@ -453,7 +453,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
       }
     }
 
-    // pretty_printer.PrettyPrint(sequential_history, log());
+    // pretty_printer.PrettyPrint(sequential_history,Log());
 
     if (!checker.Check(sequential_history)) {
       return std::make_pair(full_history, sequential_history);
@@ -498,7 +498,7 @@ struct TLAScheduler : Scheduler {
         max_depth(max_depth),
         cancel(cancel_func) {
     for (size_t i = 0; i < threads_count; ++i) {
-      threads.emplace_back(Thread{
+      threads.EmplaceBack(Thread{
           .id = i,
           .tasks = StableVector<Task>{},
       });
@@ -510,7 +510,7 @@ struct TLAScheduler : Scheduler {
     return res;
   }
 
-  ~TLAScheduler() { TerminateTasks(); }
+  ~TLAScheduler() override { TerminateTasks(); }
 
  private:
   struct Thread {
@@ -543,8 +543,8 @@ struct TLAScheduler : Scheduler {
   // cancel() func takes care for graceful shutdown
   void TerminateTasks() {
     cancel();
-    for (size_t i = 0; i < threads.size(); ++i) {
-      for (size_t j = 0; j < threads[i].tasks.size(); ++j) {
+    for (size_t i = 0; i < threads.Size(); ++i) {
+      for (size_t j = 0; j < threads[i].tasks.Size(); ++j) {
         auto& task = threads[i].tasks[j];
         if (!task->IsReturned()) {
           task->Terminate();
@@ -581,16 +581,17 @@ struct TLAScheduler : Scheduler {
         assert(coroutine_status->has_started);
         full_history.emplace_back(thread_id, task);
       }
-      //To prevent cases like this
-      // +--------+--------+
-      // |   T1   |   T2   |
-      // +--------+--------+
-      // |        | Recv   |
-      // | Send   |        |
-      // |        | >read  |
-      // | >flush |        |
-      // +--------+--------+
-      verifier.UpdateState(coroutine_status->name, thread_id, coroutine_status->has_started);
+      // To prevent cases like this
+      //  +--------+--------+
+      //  |   T1   |   T2   |
+      //  +--------+--------+
+      //  |        | Recv   |
+      //  | Send   |        |
+      //  |        | >read  |
+      //  | >flush |        |
+      //  +--------+--------+
+      verifier.UpdateState(coroutine_status->name, thread_id,
+                           coroutine_status->has_started);
       full_history.emplace_back(thread_id, coroutine_status.value());
       coroutine_status.reset();
     } else {
@@ -617,7 +618,7 @@ struct TLAScheduler : Scheduler {
         return {false, {}};
       }
     }
-    auto& task = thread.tasks.back();
+    auto& task = thread.tasks.Back();
     frame.task = &task;
 
     thread_id_history.push_back(thread_id);
@@ -644,10 +645,10 @@ struct TLAScheduler : Scheduler {
         return {is_over, res};
       }
     } else {
-      log() << "run round: " << finished_rounds << "\n";
-      pretty_printer.PrettyPrint(full_history, log());
-      log() << "===============================================\n\n";
-      log().flush();
+      Log() << "run round: " << finished_rounds << "\n";
+      pretty_printer.PrettyPrint(full_history, Log());
+      Log() << "===============================================\n\n";
+      Log().Flush();
       // Stop, check if the the generated history is linearizable.
       ++finished_rounds;
       if (!checker.Check(sequential_history)) {
@@ -694,21 +695,21 @@ struct TLAScheduler : Scheduler {
   std::tuple<bool, typename Scheduler::Result> RunStep(size_t step,
                                                        size_t switches) {
     // Push frame to the stack.
-    frames.emplace_back(Frame{});
-    auto& frame = frames.back();
+    frames.EmplaceBack(Frame{});
+    auto& frame = frames.Back();
 
     bool all_parked = true;
     // Pick next task.
-    for (size_t i = 0; i < threads.size(); ++i) {
+    for (size_t i = 0; i < threads.Size(); ++i) {
       auto& thread = threads[i];
       auto& tasks = thread.tasks;
-      if (!tasks.empty() && !tasks.back()->IsReturned()) {
-        if (tasks.back()->IsParked()) {
+      if (!tasks.Empty() && !tasks.Back()->IsReturned()) {
+        if (tasks.Back()->IsParked()) {
           continue;
         }
         all_parked = false;
         if (!verifier.Verify(CreatedTaskMetaData{
-                std::string{tasks.back()->GetName()}, false, i})) {
+                std::string{tasks.Back()->GetName()}, false, i})) {
           continue;
         }
         // Task exists.
@@ -726,21 +727,21 @@ struct TLAScheduler : Scheduler {
       all_parked = false;
       // Choose constructor to create task.
       bool stop = started_tasks == max_tasks;
-      if (!stop && threads[i].tasks.size() < max_depth) {
+      if (!stop && threads[i].tasks.Size() < max_depth) {
         for (auto cons : constructors) {
           if (!verifier.Verify(CreatedTaskMetaData{cons.GetName(), true, i})) {
             continue;
           }
           frame.is_new = true;
-          auto size_before = tasks.size();
-          tasks.emplace_back(cons.Build(&state, i, -1/* TODO: fix task id for tla, because it is Scheduler and not Strategy class for some reason */));
+          auto size_before = tasks.Size();
+          tasks.EmplaceBack(cons.Build(&state, i, -1/* TODO: fix task id for tla, because it is Scheduler and not Strategy class for some reason */));
           started_tasks++;
           auto [is_over, res] = ResumeTask(frame, step, switches, thread, true);
           if (is_over || res.has_value()) {
             return {is_over, res};
           }
-          tasks.pop_back();
-          auto size_after = thread.tasks.size();
+          tasks.PopBack();
+          auto size_after = thread.tasks.Size();
           assert(size_before == size_after);
           // As we can't return to the past in coroutine, we need to replay all
           // tasks from the beginning.
@@ -750,7 +751,7 @@ struct TLAScheduler : Scheduler {
     }
 
     assert(!all_parked && "deadlock");
-    frames.pop_back();
+    frames.PopBack();
     return {false, {}};
   }
 

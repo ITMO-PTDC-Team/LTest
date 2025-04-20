@@ -69,7 +69,7 @@ struct GreedyRoundMinimizor : public RoundMinimizor {
  */
 struct SameInterleavingMinimizor : public GreedyRoundMinimizor {
  protected:
-  virtual Scheduler::Result OnTasksRemoved(
+  Scheduler::Result OnTasksRemoved(
       SchedulerWithReplay& sched,
       const Scheduler::BothHistories& nonlinear_history,
       const std::unordered_set<int>& task_ids) const override;
@@ -87,10 +87,10 @@ struct SameInterleavingMinimizor : public GreedyRoundMinimizor {
  */
 struct StrategyExplorationMinimizor : public GreedyRoundMinimizor {
   StrategyExplorationMinimizor() = delete;
-  explicit StrategyExplorationMinimizor(int runs_);
+  explicit StrategyExplorationMinimizor(int runs);
 
  protected:
-  virtual Scheduler::Result OnTasksRemoved(
+  Scheduler::Result OnTasksRemoved(
       SchedulerWithReplay& sched,
       const Scheduler::BothHistories& nonlinear_history,
       const std::unordered_set<int>& task_ids) const override;

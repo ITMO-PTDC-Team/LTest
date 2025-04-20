@@ -5,7 +5,7 @@
 
 // get_inv_res_mapping returns map (invoke_index -> corresponding
 // response_index)
-std::map<size_t, size_t> get_inv_res_mapping(
+std::map<size_t, size_t> GetInvResMapping(
     const std::vector<std::variant<Invoke, Response>> &history) {
   std::map<size_t, size_t> inv_res;     // inv -> corresponding response
   std::map<const Task *, size_t> uids;  // uid -> res

@@ -8,7 +8,7 @@ namespace spec {
 
 struct LinearMutex;
 
-using mutex_method_t = std::function<ValueWrapper(LinearMutex *l, void *)>;
+using MutexMethodT = std::function<ValueWrapper(LinearMutex *l, void *)>;
 
 struct LinearMutex {
  private:
@@ -28,15 +28,15 @@ struct LinearMutex {
   }
 
   static auto GetMethods() {
-    mutex_method_t lock_func = [](LinearMutex *l, void *) -> int {
+    MutexMethodT lock_func = [](LinearMutex *l, void *) -> int {
       return l->Lock();
     };
 
-    mutex_method_t unlock_func = [](LinearMutex *l, void *) -> int {
+    MutexMethodT unlock_func = [](LinearMutex *l, void *) -> int {
       return l->Unlock();
     };
 
-    return std::map<std::string, mutex_method_t>{
+    return std::map<std::string, MutexMethodT>{
         {"Lock", lock_func},
         {"Unlock", unlock_func},
     };
@@ -55,7 +55,7 @@ struct LinearMutexEquals {
 
 struct SharedLinearMutex;
 
-using shared_mutex_method_t = std::function<ValueWrapper(SharedLinearMutex *l, void *)>;
+using SharedMutexMethodT = std::function<ValueWrapper(SharedLinearMutex *l, void *)>;
 
 struct SharedLinearMutex {
  private:
@@ -63,19 +63,19 @@ struct SharedLinearMutex {
   int locked_state = FREE;
 
  public:
-  int lock() {
+  int Lock() {
     if (locked_state != FREE) {
       return 1;
     }
     locked_state = WRITER;
     return 0;
   }
-  int unlock() {
+  int Unlock() {
     locked_state = FREE;
     return 0;
   }
 
-  int lock_shared() {
+  int LockShared() {
     if (locked_state == WRITER) {
       return 1;
     }
@@ -83,26 +83,26 @@ struct SharedLinearMutex {
     return 0;
   }
 
-  int unlock_shared() {
+  int UnlockShared() {
     locked_state -= READER;
     return 0;
   }
 
   static auto GetMethods() {
-    shared_mutex_method_t lock_func = [](SharedLinearMutex *l, void *) -> int {
-      return l->lock();
+    SharedMutexMethodT lock_func = [](SharedLinearMutex *l, void *) -> int {
+      return l->Lock();
     };
 
-    shared_mutex_method_t unlock_func =
-        [](SharedLinearMutex *l, void *) -> int { return l->unlock(); };
+    SharedMutexMethodT unlock_func =
+        [](SharedLinearMutex *l, void *) -> int { return l->Unlock(); };
 
-    shared_mutex_method_t shared_lock_func =
-        [](SharedLinearMutex *l, void *) -> int { return l->lock_shared(); };
+    SharedMutexMethodT shared_lock_func =
+        [](SharedLinearMutex *l, void *) -> int { return l->LockShared(); };
 
-    shared_mutex_method_t shared_unlock_func =
-        [](SharedLinearMutex *l, void *) -> int { return l->unlock_shared(); };
+    SharedMutexMethodT shared_unlock_func =
+        [](SharedLinearMutex *l, void *) -> int { return l->UnlockShared(); };
 
-    return std::map<std::string, shared_mutex_method_t>{
+    return std::map<std::string, SharedMutexMethodT>{
         {"lock", lock_func},
         {"unlock", unlock_func},
         {"lock_shared", shared_lock_func},

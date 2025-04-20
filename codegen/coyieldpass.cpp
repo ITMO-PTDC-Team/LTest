@@ -60,10 +60,10 @@ namespace llvm {
 namespace yaml {
 template <>
 struct MappingTraits<CoroutineFilter> {
-  static void mapping(IO &io, CoroutineFilter &config) {//NOLINT
-    io.mapRequired("Name", config.print_name);
-    io.mapOptional("Coroutine", config.co_name);
-    io.mapOptional("Parent", config.parent_name);
+  static void mapping(IO &io, CoroutineFilter &cofilter) {  // NOLINT
+    io.mapRequired("Name", cofilter.print_name);
+    io.mapOptional("Coroutine", cofilter.co_name);
+    io.mapOptional("Parent", cofilter.parent_name);
   }
 };
 }  // namespace yaml
@@ -72,8 +72,8 @@ struct MappingTraits<CoroutineFilter> {
 LLVM_YAML_IS_SEQUENCE_VECTOR(CoroutineFilter);
 
 struct CoYieldInserter {
-  CoYieldInserter(Module &m, std::vector<CoroutineFilter> &&config)
-      : m(m), co_filter(std::move(config)) {
+  CoYieldInserter(Module &m, std::vector<CoroutineFilter> &&co_filter)
+      : m(m), co_filter(std::move(co_filter)) {
     auto &context = m.getContext();
     coroYieldF = m.getOrInsertFunction(
         costatus_change,
@@ -88,9 +88,9 @@ struct CoYieldInserter {
       std::string demangled = demangle(f.getName());
       auto filt =
           co_filter | std::ranges::views::filter(
-                       [&demangled](const CoroutineFilter &a) -> bool {
-                         return !a.parent_name || a.parent_name == demangled;
-                       });
+                          [&demangled](const CoroutineFilter &a) -> bool {
+                            return !a.parent_name || a.parent_name == demangled;
+                          });
       if (!filt.empty()) {
         InsertYields(filt, f);
       }
@@ -98,7 +98,7 @@ struct CoYieldInserter {
   }
 
  private:
-  void InsertYields(auto filtered_config, Function &f) {
+  void InsertYields(auto filt, Function &f) {
     Builder builder(&*f.begin());
     /*
     In fact co_await expr when expr is coroutine is
@@ -111,73 +111,106 @@ struct CoYieldInserter {
     int skip_insert_points = 0;
     for (auto &b : f) {
       for (auto &i : b) {
-        CallInst *call = dyn_cast<CallInst>(&i);
-        if (call) {
-          auto c_fn = call->getCalledFunction();
-          if (c_fn == nullptr) {
-            continue;
-          }
-          auto raw_fn_name = c_fn->getName();
-          std::string co_name = demangle(raw_fn_name);
-          auto initial = co_name.find(co_initial_suspend);
-          if (initial != std::string::npos) {
+        CallBase *call = dyn_cast<CallBase>(&i);
+        if (!call) {
+          continue;
+        }
+        auto c_fn = call->getCalledFunction();
+        if (c_fn == nullptr) {
+          continue;
+        }
+        auto raw_fn_name = c_fn->getName();
+        std::string co_name = demangle(raw_fn_name);
+        bool is_call_inst = isa<CallInst>(call);
+        InvokeInst *invoke = dyn_cast<InvokeInst>(call);
+        if (is_call_inst || invoke) {
+          auto res_filt =
+              filt | std::ranges::views::filter(
+                         [&co_name](const CoroutineFilter &a) -> bool {
+                           return !a.co_name || a.co_name == co_name;
+                         });
+          if (!res_filt.empty()) {
+            auto filt_entry = res_filt.front();
+            errs() << "inserted " << filt_entry.print_name << "\n";
             builder.SetInsertPoint(call);
-            InsertCall(filtered_config, co_name, builder, true, initial);
-            skip_insert_points = 2;
-            continue;
-          }
-          auto final = co_name.find(co_final_suspend);
-          if (final != std::string::npos) {
-            builder.SetInsertPoint(call->getNextNode());
-            InsertCall(filtered_config, co_name, builder, false, final);
-            skip_insert_points = 2;
-            continue;
-          }
-          auto start = co_name.find(co_expr_start);
-          if (start != std::string::npos) {
-            if (skip_insert_points != 0) {
-              assert(skip_insert_points == 2);
-              skip_insert_points--;
-              continue;
+            InsertCall(filt_entry, builder, true);
+            // Invoke instruction has unwind/normal ends so we need handle it
+            if (invoke) {
+              builder.SetInsertPoint(invoke->getNormalDest()->getFirstInsertionPt());
+              InsertCall(filt_entry, builder, false);
+              builder.SetInsertPoint(invoke->getUnwindDest()->getFirstInsertionPt());
+              InsertCall(filt_entry, builder, false);
+            } else {
+              builder.SetInsertPoint(call->getNextNode());
+              InsertCall(filt_entry, builder, false);
             }
-            builder.SetInsertPoint(call);
-            InsertCall(filtered_config, co_name, builder, true, start);
             continue;
           }
-          auto end_pos = co_name.find(co_expr_end);
-          if (end_pos != std::string::npos) {
-            if (skip_insert_points != 0) {
-              assert(skip_insert_points == 1);
-              skip_insert_points--;
-              continue;
-            }
-            builder.SetInsertPoint(call->getNextNode());
-            InsertCall(filtered_config, co_name, builder, false, end_pos);
+        }
+        if (!is_call_inst) {
+          continue;
+        }
+        auto initial = co_name.find(co_initial_suspend);
+        if (initial != std::string::npos) {
+          builder.SetInsertPoint(call);
+          InsertCallWithFilter(filt, co_name, builder, true, initial);
+          skip_insert_points = 2;
+          continue;
+        }
+        auto final = co_name.find(co_final_suspend);
+        if (final != std::string::npos) {
+          builder.SetInsertPoint(call->getNextNode());
+          InsertCallWithFilter(filt, co_name, builder, false, final);
+          skip_insert_points = 2;
+          continue;
+        }
+        auto start = co_name.find(co_expr_start);
+        if (start != std::string::npos) {
+          if (skip_insert_points != 0) {
+            assert(skip_insert_points == 2);
+            skip_insert_points--;
             continue;
           }
+          builder.SetInsertPoint(call);
+          InsertCallWithFilter(filt, co_name, builder, true, start);
+          continue;
+        }
+        auto end_pos = co_name.find(co_expr_end);
+        if (end_pos != std::string::npos) {
+          if (skip_insert_points != 0) {
+            assert(skip_insert_points == 1);
+            skip_insert_points--;
+            continue;
+          }
+          builder.SetInsertPoint(call->getNextNode());
+          InsertCallWithFilter(filt, co_name, builder, false, end_pos);
+          continue;
         }
       }
     }
   }
 
-  void InsertCall(auto filtered_config, StringRef co_name, Builder &builder,
-                  bool start, int end_pos) {
-    auto res_config =
-        filtered_config |
-        std::ranges::views::filter(
-            [&end_pos, &co_name](const CoroutineFilter &a) -> bool {
-              return !a.co_name || a.co_name == co_name.substr(0, end_pos);
-            });
-    if (res_config.empty()) {
+  void InsertCallWithFilter(auto filt, StringRef co_name, Builder &builder,
+                            bool start, int end_pos) {
+    auto res_filt =
+        filt | std::ranges::views::filter(
+                   [&end_pos, &co_name](const CoroutineFilter &a) -> bool {
+                     return !a.co_name ||
+                            a.co_name == co_name.substr(0, end_pos);
+                   });
+    if (res_filt.empty()) {
       return;
     }
-    // First in the config will match
-    auto first_match = res_config.front();
     errs() << "inserted " << co_name.str() << "\n";
+    // First in the config will match
+    InsertCall(res_filt.front(), builder, start);
+  }
+
+  void InsertCall(const CoroutineFilter &filt, Builder &builder, bool start) {
     auto llvm_start =
         ConstantInt::get(Type::getInt1Ty(builder.getContext()), start);
-    Constant *str_const = ConstantDataArray::getString(
-        m.getContext(), first_match.print_name, true);
+    Constant *str_const =
+        ConstantDataArray::getString(m.getContext(), filt.print_name, true);
     auto zero = ConstantInt::get(Type::getInt32Ty(m.getContext()), 0);
     Constant *ind[] = {zero, zero};
     GlobalVariable *global = new GlobalVariable(
@@ -195,7 +228,7 @@ struct CoYieldInserter {
 namespace {
 
 struct CoYieldInsertPass final : public PassInfoMixin<CoYieldInsertPass> {
-  PreservedAnalyses run(Module &m, ModuleAnalysisManager &am){//NOLINT
+  PreservedAnalyses run(Module &m, ModuleAnalysisManager &am) {  // NOLINT
     if (input_list.empty()) {
       report_fatal_error("No file  with coroutines list");
     }

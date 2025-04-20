@@ -5,7 +5,7 @@
 #include "../../runtime/include/verifying.h"
 
 constexpr int limit = 3;
-inline std::string print(const ValueWrapper &v) {
+inline std::string Print(const ValueWrapper &v) {
   auto val = v.GetValue<std::optional<int>>();
   if (!val.has_value()) {
     return "{}";
@@ -21,17 +21,17 @@ struct UniqueArgsRef {
   ValueWrapper Get(size_t i) {
     called++;
     return {called == limit ? std::exchange(called, 0) : std::optional<int>(),
-            GetDefaultCompator<std::optional<int>>(), print};
+            GetDefaultCompator<std::optional<int>>(), Print};
   }
 
-  using method_t = std::function<ValueWrapper(UniqueArgsRef *l, void *args)>;
+  using MethodT = std::function<ValueWrapper(UniqueArgsRef *l, void *args)>;
   static auto GetMethods() {
-    method_t get = [](UniqueArgsRef *l, void *args) {
+    MethodT get = [](UniqueArgsRef *l, void *args) {
       auto real_args = reinterpret_cast<std::tuple<size_t> *>(args);
       return l->Get(std::get<0>(*real_args));
     };
 
-    return std::map<std::string, method_t>{
+    return std::map<std::string, MethodT>{
         {"Get", get},
     };
   }

@@ -8,6 +8,8 @@
 
 struct Promise;
 
+
+// NOLINTBEGIN(readability-identifier-naming)
 struct Coroutine : std::coroutine_handle<Promise> {
   using promise_type = ::Promise;
 };
@@ -19,6 +21,7 @@ struct Promise {
   void return_void() {}
   void unhandled_exception() {}
 };
+// NOLINTEND(readability-identifier-naming)
 
 static std::vector<size_t> used(limit, false);
 static std::vector<size_t> done(limit, false);
@@ -40,7 +43,7 @@ struct CoUniqueArgsTest {
     return {std::count(done.begin(), done.end(), false) == 0
                 ? l()
                 : std::optional<int>(),
-            GetDefaultCompator<std::optional<int>>(), print};
+            GetDefaultCompator<std::optional<int>>(), Print};
   }
   void Reset() {
     std::fill(used.begin(), used.end(), false);
@@ -48,7 +51,7 @@ struct CoUniqueArgsTest {
   }
 };
 
-auto generateArgs(size_t thread_num) {
+auto GenerateArgs(size_t thread_num) {
   for (size_t i = 0; i < limit; i++) {
     if (!used[i]) {
       return ltest::generators::makeSingleArg(i);
@@ -57,10 +60,10 @@ auto generateArgs(size_t thread_num) {
   assert(false && "extra call");
 }
 
-target_method(generateArgs, int, CoUniqueArgsTest, Get, size_t);
+target_method(GenerateArgs, int, CoUniqueArgsTest, Get, size_t);
 
-using spec_t =
+using SpecT =
     ltest::Spec<CoUniqueArgsTest, spec::UniqueArgsRef, spec::UniqueArgsHash,
                 spec::UniqueArgsEquals, spec::UniqueArgsOptionsOverride>;
 
-LTEST_ENTRYPOINT(spec_t);
+LTEST_ENTRYPOINT(SpecT);

@@ -20,9 +20,9 @@ class RWSpinLock {
   RWSpinLock& operator=(RWSpinLock const&) = delete;
 
   // Lockable Concept
-  non_atomic int lock() {
+  NON_ATOMIC int Lock() {
     uint_fast32_t count = 0;
-    while (!LIKELY(try_lock())) {
+    while (!LIKELY(TryLock())) {
       if (++count > 1000) {
         std::this_thread::yield();
       }
@@ -31,16 +31,16 @@ class RWSpinLock {
   }
 
   // Writer is responsible for clearing up both the UPGRADED and WRITER bits.
-  non_atomic int unlock() {
+  NON_ATOMIC int Unlock() {
     static_assert(READER > WRITER + UPGRADED, "wrong bits!");
     bits_.fetch_and(~(WRITER | UPGRADED), std::memory_order_release);
     return 0;
   }
 
   // SharedLockable Concept
-  non_atomic int lock_shared() {
+  NON_ATOMIC int LockShared() {
     uint_fast32_t count = 0;
-    while (!LIKELY(try_lock_shared())) {
+    while (!LIKELY(TryLockShared())) {
       if (++count > 1000) {
         std::this_thread::yield();
       }
@@ -48,35 +48,35 @@ class RWSpinLock {
     return 0;
   }
 
-  non_atomic int unlock_shared() {
+  NON_ATOMIC int UnlockShared() {
     bits_.fetch_add(-READER, std::memory_order_release);
     return 0;
   }
 
   // Downgrade the lock from writer status to reader status.
-  void unlock_and_lock_shared() {
+  void UnlockAndLockShared() {
     bits_.fetch_add(READER, std::memory_order_acquire);
-    unlock();
+    Unlock();
   }
 
   // UpgradeLockable Concept
-  void lock_upgrade() {
+  void LockUpgrade() {
     uint_fast32_t count = 0;
-    while (!try_lock_upgrade()) {
+    while (!TryLockUpgrade()) {
       if (++count > 1000) {
         std::this_thread::yield();
       }
     }
   }
 
-  void unlock_upgrade() {
+  void UnlockUpgrade() {
     bits_.fetch_add(-UPGRADED, std::memory_order_acq_rel);
   }
 
   // unlock upgrade and try to acquire write lock
-  void unlock_upgrade_and_lock() {
+  void UnlockUpgradeAndLock() {
     int64_t count = 0;
-    while (!try_unlock_upgrade_and_lock()) {
+    while (!TryUnlockUpgradeAndLock()) {
       if (++count > 1000) {
         std::this_thread::yield();
       }
@@ -84,12 +84,12 @@ class RWSpinLock {
   }
 
   // unlock upgrade and read lock atomically
-  void unlock_upgrade_and_lock_shared() {
+  void UnlockUpgradeAndLockShared() {
     bits_.fetch_add(READER - UPGRADED, std::memory_order_acq_rel);
   }
 
   // write unlock and upgrade lock atomically
-  void unlock_and_lock_upgrade() {
+  void UnlockAndLockUpgrade() {
     // need to do it in two steps here -- as the UPGRADED bit might be OR-ed at
     // the same time when other threads are trying do try_lock_upgrade().
     bits_.fetch_or(UPGRADED, std::memory_order_acquire);
@@ -97,7 +97,7 @@ class RWSpinLock {
   }
 
   // Attempt to acquire writer permission. Return false if we didn't get it.
-  bool try_lock() {
+  bool TryLock() {
     int32_t expect = 0;
     return bits_.compare_exchange_strong(expect, WRITER,
                                          std::memory_order_acq_rel);
@@ -109,7 +109,7 @@ class RWSpinLock {
   // its intention to write and block any new readers while waiting
   // for existing readers to finish and release their read locks. This
   // helps avoid starving writers (promoted from upgraders).
-  bool try_lock_shared() {
+  bool TryLockShared() {
     // fetch_add is considerably (100%) faster than compare_exchange,
     // so here we are optimizing for the common (lock success) case.
     int32_t value = bits_.fetch_add(READER, std::memory_order_acquire);
@@ -121,14 +121,14 @@ class RWSpinLock {
   }
 
   // try to unlock upgrade and write lock atomically
-  bool try_unlock_upgrade_and_lock() {
+  bool TryUnlockUpgradeAndLock() {
     int32_t expect = UPGRADED;
     return bits_.compare_exchange_strong(expect, WRITER,
                                          std::memory_order_acq_rel);
   }
 
   // try to acquire an upgradable lock.
-  bool try_lock_upgrade() {
+  bool TryLockUpgrade() {
     int32_t value = bits_.fetch_or(UPGRADED, std::memory_order_acquire);
 
     // Note: when failed, we cannot flip the UPGRADED bit back,
@@ -139,7 +139,7 @@ class RWSpinLock {
   }
 
   // mainly for debugging purposes.
-  int32_t bits() const { return bits_.load(std::memory_order_acquire); }
+  int32_t Bits() const { return bits_.load(std::memory_order_acquire); }
 
   void Reset() { bits_.store(0); }
 
@@ -148,14 +148,14 @@ class RWSpinLock {
 };
 
 }  // namespace folly
-using spec_t =
+using SpecT =
 ltest::Spec<folly::RWSpinLock, spec::SharedLinearMutex,
 spec::SharedLinearMutexHash, spec::SharedLinearMutexEquals>;
 
-LTEST_ENTRYPOINT_CONSTRAINT(spec_t, SharedMutexVerifier);
+LTEST_ENTRYPOINT_CONSTRAINT(SpecT, SharedMutexVerifier);
 
-target_method(ltest::generators::genEmpty, int, folly::RWSpinLock, lock);
-target_method(ltest::generators::genEmpty, int, folly::RWSpinLock, lock_shared);
+TARGET_METHOD(ltest::generators::GenEmpty, int, folly::RWSpinLock, lock);
+TARGET_METHOD(ltest::generators::GenEmpty, int, folly::RWSpinLock, LockShared);
 
-target_method(ltest::generators::genEmpty, int, folly::RWSpinLock, unlock);
-target_method(ltest::generators::genEmpty, int, folly::RWSpinLock, unlock_shared);
+TARGET_METHOD(ltest::generators::GenEmpty, int, folly::RWSpinLock, Unlock);
+TARGET_METHOD(ltest::generators::GenEmpty, int, folly::RWSpinLock, unlock_shared);

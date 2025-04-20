@@ -21,17 +21,17 @@ struct Queue {
     return res;
   }
 
-  using method_t = std::function<ValueWrapper(Queue *l, void *args)>;
+  using MethodT = std::function<ValueWrapper(Queue *l, void *args)>;
   static auto GetMethods() {
-    method_t push_func = [](Queue *l, void *args) -> ValueWrapper {
+    MethodT push_func = [](Queue *l, void *args) -> ValueWrapper {
       auto real_args = reinterpret_cast<PushArgTuple *>(args);
       l->Push(std::get<ValueIndex>(*real_args));
       return void_v;
     };
 
-    method_t pop_func = [](Queue *l, void *args) -> int { return l->Pop(); };
+    MethodT pop_func = [](Queue *l, void *args) -> int { return l->Pop(); };
 
-    return std::map<std::string, method_t>{
+    return std::map<std::string, MethodT>{
         {"Push", push_func},
         {"Pop", pop_func},
     };

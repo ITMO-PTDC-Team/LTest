@@ -151,7 +151,7 @@ void SmartMinimizor::RemoveInvalidTasks(
     const auto& thread = tasks[thread_id];
     bool thread_exists = valid_threads.contains(thread_id);
 
-    for (int i = 0; i < thread.size(); ++i) {
+    for (int i = 0; i < thread.Size(); ++i) {
       if (thread_exists &&
           valid_threads.at(thread_id).contains(thread[i]->GetId())) {
         strategy.SetTaskRemoved(thread[i]->GetId(), false);
@@ -205,7 +205,7 @@ SmartMinimizor::Solution::Solution(const Strategy& strategy,
   // save valid task ids per thread
   const auto& threads = strategy.GetTasks();
   for (int i = 0; i < threads.size(); ++i) {
-    for (int j = 0; j < threads[i].size(); ++j) {
+    for (int j = 0; j < threads[i].Size(); ++j) {
       const auto& task = threads[i][j].get();
 
       if (!strategy.IsTaskRemoved(task->GetId())) {

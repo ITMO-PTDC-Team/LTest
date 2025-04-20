@@ -11,9 +11,9 @@ namespace spec {
 
 struct Queue;
 
-using mutex_method_t = std::function<ValueWrapper(Queue *l, void *)>;
+using MutexMethodT = std::function<ValueWrapper(Queue *l, void *)>;
 
-const int size = 2;
+constexpr int size = 2;
 
 struct Queue {
   std::deque<int> deq{};
@@ -32,16 +32,16 @@ struct Queue {
     return res;
   }
   static auto GetMethods() {
-    mutex_method_t push_func = [](Queue *l, void *args) -> int {
+    MutexMethodT push_func = [](Queue *l, void *args) -> int {
       auto real_args = reinterpret_cast<std::tuple<int> *>(args);
       return l->Push(std::get<0>(*real_args));
     };
 
-    mutex_method_t pop_func = [](Queue *l, void *args) -> int {
+    MutexMethodT pop_func = [](Queue *l, void *args) -> int {
       return l->Pop();
     };
 
-    return std::map<std::string, mutex_method_t>{
+    return std::map<std::string, MutexMethodT>{
         {"Push", push_func},
         {"Pop", pop_func},
     };

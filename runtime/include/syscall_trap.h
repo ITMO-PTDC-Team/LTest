@@ -1,6 +1,6 @@
 #pragma once
 
-extern bool __trap_syscall;
+extern bool __trap_syscall;  // NOLINT(readability-identifier-naming)
 
 namespace ltest {
 

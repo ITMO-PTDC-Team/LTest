@@ -32,7 +32,7 @@ struct Invoke {
   std::reference_wrapper<const Task> task;
 };
 
-typedef std::variant<Invoke, Response> HistoryEvent;
+using HistoryEvent = std::variant<Invoke, Response>;
 
 // ModelChecker is the general checker interface which is implemented by
 // different checkers, each of which checks its own consistency model
@@ -45,18 +45,18 @@ using MethodName = std::string;
 // get_inv_res_mapping returns map (invoke_index -> corresponding
 // response_index)
 
-std::map<size_t, size_t> get_inv_res_mapping(
+std::map<size_t, size_t> GetInvResMapping(
     const std::vector<HistoryEvent>& history);
 
-std::map<size_t, size_t> get_inv_res_full_mapping(
+std::map<size_t, size_t> GetInvResFullMapping(
     const std::vector<HistoryEvent>& history);
 
-std::map<size_t, size_t> get_followup_res_request_inv_mapping(
+std::map<size_t, size_t> GetFollowupResRequestInvMapping(
     const std::vector<HistoryEvent>& history);
 
 // fix_history deletes invokes that don't have corresponding responses,
 // this is allowed by the definition of the linearizability
-std::vector<std::variant<Invoke, Response>> fix_history(
+std::vector<std::variant<Invoke, Response>> FixHistory(
     const std::vector<std::variant<Invoke, Response>>& history);
 
 template <class LinearSpecificationObject,
@@ -138,7 +138,7 @@ bool LinearizabilityChecker<
   // TODO: Can replace it with stack of hashes and map: hash ->
   // LinearSpecificationObject contains previous states stack
   std::vector<LinearSpecificationObject> states_stack;
-  std::map<size_t, size_t> inv_res = get_inv_res_mapping(history);
+  std::map<size_t, size_t> inv_res = GetInvResMapping(history);
   std::vector<bool> linearized(history.size(), false);
   size_t linearized_entries_count = 0;
   std::unordered_set<
@@ -167,7 +167,8 @@ bool LinearizabilityChecker<
       bool was_checked = false;
       LinearSpecificationObject data_structure_state_copy =
           data_structure_state;
-      ValueWrapper res = method(&data_structure_state_copy, inv.GetTask()->GetArgs());
+      ValueWrapper res =
+          method(&data_structure_state_copy, inv.GetTask()->GetArgs());
 
       // If invoke doesn't have a response we can't check the response
       bool doesnt_have_response =

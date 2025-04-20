@@ -28,7 +28,7 @@ class Mutex {
   }
 
  public:
-  non_atomic int Lock() {
+  NON_ATOMIC int Lock() {
     if (CompareExchange(0, 1) == 0) {
       return 0;
     }
@@ -42,7 +42,7 @@ class Mutex {
     return 0;
   }
 
-  non_atomic int Unlock() {
+  NON_ATOMIC int Unlock() {
     if (locked_.fetch_sub(1) != 1) {
       locked_.store(0);
       FutexWake(Addr(locked_), 1);
@@ -56,11 +56,11 @@ class Mutex {
   std::atomic_int32_t locked_{0};
 };
 
-using spec_t = ltest::Spec<Mutex, spec::LinearMutex, spec::LinearMutexHash,
+using SpecT = ltest::Spec<Mutex, spec::LinearMutex, spec::LinearMutexHash,
                            spec::LinearMutexEquals>;
 
-LTEST_ENTRYPOINT_CONSTRAINT(spec_t, MutexVerifier);
+LTEST_ENTRYPOINT_CONSTRAINT(SpecT, MutexVerifier);
 
-target_method(ltest::generators::genEmpty, int, Mutex, Lock);
+TARGET_METHOD(ltest::generators::GenEmpty, int, Mutex, Lock);
 
-target_method(ltest::generators::genEmpty, int, Mutex, Unlock);
+TARGET_METHOD(ltest::generators::GenEmpty, int, Mutex, Unlock);

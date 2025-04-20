@@ -33,13 +33,13 @@ struct CoUniqueArgsTest {
 auto GenerateArgs(size_t thread_num) {
   for (size_t i = 0; i < limit; i++) {
     if (!used[i]) {
-      return ltest::generators::makeSingleArg(i);
+      return ltest::generators::MakeSingleArg(i);
     }
   }
   assert(false && "extra call");
 }
 
-target_method(GenerateArgs, int, CoUniqueArgsTest, Get, size_t);
+TARGET_METHOD(GenerateArgs, int, CoUniqueArgsTest, Get, size_t);
 
 using SpecT =
     ltest::Spec<CoUniqueArgsTest, spec::UniqueArgsRef, spec::UniqueArgsHash,

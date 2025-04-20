@@ -136,9 +136,11 @@ struct CoYieldInserter {
             InsertCall(filt_entry, builder, true);
             // Invoke instruction has unwind/normal ends so we need handle it
             if (invoke) {
-              builder.SetInsertPoint(invoke->getNormalDest()->getFirstInsertionPt());
+              builder.SetInsertPoint(
+                  invoke->getNormalDest()->getFirstInsertionPt());
               InsertCall(filt_entry, builder, false);
-              builder.SetInsertPoint(invoke->getUnwindDest()->getFirstInsertionPt());
+              builder.SetInsertPoint(
+                  invoke->getUnwindDest()->getFirstInsertionPt());
               InsertCall(filt_entry, builder, false);
             } else {
               builder.SetInsertPoint(call->getNextNode());
@@ -212,7 +214,7 @@ struct CoYieldInserter {
     Constant *str_const =
         ConstantDataArray::getString(m.getContext(), filt.print_name, true);
     auto zero = ConstantInt::get(Type::getInt32Ty(m.getContext()), 0);
-    Constant *ind[] = {zero, zero};
+    std::array<Constant *, 2> ind = {zero, zero};
     GlobalVariable *global = new GlobalVariable(
         m, str_const->getType(), true, GlobalValue::PrivateLinkage, str_const);
     auto ptr =

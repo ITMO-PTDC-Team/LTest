@@ -9,21 +9,21 @@ using Builder = IRBuilder<>;
 
 using FunIndex = std::set<std::pair<StringRef, StringRef>>;
 
-const StringRef nonatomic_attr = "ltest_nonatomic";
+const StringRef NonatomicAttr = "ltest_nonatomic";
 
-FunIndex CreateFunIndex(const Module &M) {
+FunIndex CreateFunIndex(const Module &m) {
   FunIndex index{};
-  for (auto it = M.global_begin(); it != M.global_end(); ++it) {
+  for (auto it = m.global_begin(); it != m.global_end(); ++it) {
     if (it->getName() != "llvm.global.annotations") {
       continue;
     }
-    auto *CA = dyn_cast<ConstantArray>(it->getOperand(0));
-    for (auto o_it = CA->op_begin(); o_it != CA->op_end(); ++o_it) {
-      auto *CS = dyn_cast<ConstantStruct>(o_it->get());
-      auto *fun = dyn_cast<Function>(CS->getOperand(0));
-      auto *AnnotationGL = dyn_cast<GlobalVariable>(CS->getOperand(1));
+    auto *ca = dyn_cast<ConstantArray>(it->getOperand(0));
+    for (auto o_it = ca->op_begin(); o_it != ca->op_end(); ++o_it) {
+      auto *cs = dyn_cast<ConstantStruct>(o_it->get());
+      auto *fun = dyn_cast<Function>(cs->getOperand(0));
+      auto *annotation_gl = dyn_cast<GlobalVariable>(cs->getOperand(1));
       auto annotation =
-          dyn_cast<ConstantDataArray>(AnnotationGL->getInitializer())
+          dyn_cast<ConstantDataArray>(annotation_gl->getInitializer())
               ->getAsCString();
       index.insert({annotation, fun->getName()});
     }
@@ -37,25 +37,25 @@ bool HasAttribute(const FunIndex &index, const StringRef name,
 }
 
 struct YieldInserter {
-  YieldInserter(Module &M) : M(M) {
-    CoroYieldF = M.getOrInsertFunction(
-        "CoroYield", FunctionType::get(Type::getVoidTy(M.getContext()), {}));
+  YieldInserter(Module &m) : M(m) {
+    CoroYieldF = m.getOrInsertFunction(
+        "CoroYield", FunctionType::get(Type::getVoidTy(m.getContext()), {}));
   }
 
   void Run(const FunIndex &index) {
-    for (auto &F : M) {
-      if (IsTarget(F.getName(), index)) {
-        InsertYields(F, index);
+    for (auto &f : M) {
+      if (IsTarget(f.getName(), index)) {
+        InsertYields(f, index);
 
-        errs() << "yields inserted to the " << F.getName() << "\n";
-        errs() << F << "\n";
+        errs() << "yields inserted to the " << f.getName() << "\n";
+        errs() << f << "\n";
       }
     }
   }
 
  private:
   bool IsTarget(const StringRef fun_name, const FunIndex &index) {
-    return HasAttribute(index, fun_name, nonatomic_attr);
+    return HasAttribute(index, fun_name, NonatomicAttr);
   }
 
   bool NeedInterrupt(Instruction *insn, const FunIndex &index) {
@@ -67,13 +67,13 @@ struct YieldInserter {
     return false;
   }
 
-  void InsertYields(Function &F, const FunIndex &index) {
-    Builder Builder(&*F.begin());
-    for (auto &B : F) {
-      for (auto it = B.begin(); std::next(it) != B.end(); ++it) {
+  void InsertYields(Function &f, const FunIndex &index) {
+    Builder builder(&*f.begin());
+    for (auto &b : f) {
+      for (auto it = b.begin(); std::next(it) != b.end(); ++it) {
         if (NeedInterrupt(&*it, index) && !ItsYieldInst(&*std::next(it))) {
-          Builder.SetInsertPoint(&*std::next(it));
-          Builder.CreateCall(CoroYieldF, {})->getIterator();
+          builder.SetInsertPoint(&*std::next(it));
+          builder.CreateCall(CoroYieldF, {})->getIterator();
           ++it;
         }
       }
@@ -99,7 +99,7 @@ struct YieldInserter {
 namespace {
 
 struct YieldInsertPass final : public PassInfoMixin<YieldInsertPass> {
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM) {
+  PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM) {  // NOLINT
     auto fun_index = CreateFunIndex(M);
 
     YieldInserter gen{M};
@@ -116,10 +116,10 @@ llvmGetPassPluginInfo() {
   return {.APIVersion = LLVM_PLUGIN_API_VERSION,
           .PluginName = "yield_insert",
           .PluginVersion = "v0.1",
-          .RegisterPassBuilderCallbacks = [](PassBuilder &PB) {
-            PB.registerPipelineStartEPCallback(
-                [](ModulePassManager &MPM, OptimizationLevel Level) {
-                  MPM.addPass(YieldInsertPass());
+          .RegisterPassBuilderCallbacks = [](PassBuilder &pb) {
+            pb.registerPipelineStartEPCallback(
+                [](ModulePassManager &mpm, OptimizationLevel level) {
+                  mpm.addPass(YieldInsertPass());
                 });
           }};
 }

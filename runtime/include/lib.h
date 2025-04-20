@@ -14,7 +14,7 @@
 
 #include "value_wrapper.h"
 
-#define panic() assert(false)
+#define PANIC() assert(false)
 
 struct CoroBase;
 struct CoroutineStatus;
@@ -26,7 +26,7 @@ extern boost::context::fiber_context sched_ctx;
 
 extern std::optional<CoroutineStatus> coroutine_status;
 
-struct CoroutineStatus{
+struct CoroutineStatus {
   std::string_view name;
   bool has_started;
 };

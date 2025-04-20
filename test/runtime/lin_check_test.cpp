@@ -42,7 +42,7 @@ std::shared_ptr<CoroBase> CreateMockTask(std::string name, int ret_val,
   return static_pointer_cast<CoroBase>(mock);
 }
 
-namespace LinearizabilityCheckerTest {
+namespace linearizability_checker_test {
 using ::testing::AnyNumber;
 using ::testing::Return;
 using ::testing::ReturnRefOfCopy;
@@ -158,7 +158,7 @@ TEST(LinearizabilityCheckerCounterTest, ExtendedLinearizableHistory) {
   EXPECT_EQ(checker.Check(history), true);
 }
 
-std::vector<Task> create_mocks(const std::vector<bool>& b_history) {
+std::vector<Task> CreateMocks(const std::vector<bool>& b_history) {
   std::vector<Task> mocks;
   mocks.reserve(b_history.size());
   size_t adds = 0;
@@ -179,7 +179,7 @@ std::vector<Task> create_mocks(const std::vector<bool>& b_history) {
   return mocks;
 }
 
-std::vector<HistoryEvent> create_history(const std::vector<Task>& mocks) {
+std::vector<HistoryEvent> CreateHistory(const std::vector<Task>& mocks) {
   std::vector<HistoryEvent> history;
   history.reserve(2 * mocks.size());
 
@@ -211,7 +211,7 @@ std::vector<HistoryEvent> create_history(const std::vector<Task>& mocks) {
   return history;
 }
 
-std::string draw_history(const std::vector<HistoryEvent>& history) {
+std::string DrawHistory(const std::vector<HistoryEvent>& history) {
   std::map<Task, size_t> numeration;
   size_t i = 0;
   for (auto& event : history) {
@@ -235,8 +235,8 @@ std::string draw_history(const std::vector<HistoryEvent>& history) {
       Response response = std::get<Response>(event);
       history_string << "[" << numeration[response.GetTask()]
                      << " res: " << response.GetTask()->GetName()
-                     << " returned: " << to_string(response.GetTask()->GetRetVal())
-                     << "]\n";
+                     << " returned: "
+                     << to_string(response.GetTask()->GetRetVal()) << "]\n";
     }
   }
 
@@ -260,11 +260,11 @@ void CheckersAreTheSame(const std::vector<bool>& b_history) {
       },
       c);
 
-  auto mocks = create_mocks(b_history);
-  auto history = create_history(mocks);
-  EXPECT_EQ(fast.Check(history), slow.Check(history)) << draw_history(history);
+  auto mocks = CreateMocks(b_history);
+  auto history = CreateHistory(mocks);
+  EXPECT_EQ(fast.Check(history), slow.Check(history)) << DrawHistory(history);
 }
 
 FUZZ_TEST(LinearizabilityCheckerCounterTest, CheckersAreTheSame);
 
-};  // namespace LinearizabilityCheckerTest
+};  // namespace linearizability_checker_test

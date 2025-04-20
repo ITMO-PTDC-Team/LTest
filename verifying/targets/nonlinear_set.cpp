@@ -7,12 +7,12 @@ struct SlotsSet {
  public:
   SlotsSet() { Reset(); }
 
-  non_atomic int Insert(int value) {
+  NON_ATOMIC int Insert(int value) {
     assert(value != 0);  // zero should never be added
 
-    size_t hash = value % N;
-    for (size_t i = 0; i < N; ++i) {
-      size_t idx = (hash + i) % N;
+    size_t hash = value % n;
+    for (size_t i = 0; i < n; ++i) {
+      size_t idx = (hash + i) % n;
       int current = slots[idx].load();
       if (current == value) break;
       if (current == 0) {
@@ -26,12 +26,12 @@ struct SlotsSet {
     return false;
   }
 
-  non_atomic int Erase(int value) {
+  NON_ATOMIC int Erase(int value) {
     assert(value != 0);
 
-    size_t hash = value % N;
-    for (size_t i = 0; i < N; ++i) {
-      size_t idx = (hash + i) % N;
+    size_t hash = value % n;
+    for (size_t i = 0; i < n; ++i) {
+      size_t idx = (hash + i) % n;
       int current = slots[idx].load();
       if (current == value) {
         if (slots[idx].compare_exchange_strong(current, 0)) {
@@ -46,18 +46,18 @@ struct SlotsSet {
   }
 
   void Reset() {
-    for (size_t i = 0; i < N; ++i) {
+    for (size_t i = 0; i < n; ++i) {
       slots[i].store(0);
     }
   }
 
  private:
-  static inline const int N = 100;
-  std::atomic<int> slots[N];
+  static  constexpr int n = 100;
+  std::array<std::atomic<int>, n> slots;
 };
 
 // Arguments generator.
-auto generateInt(size_t unused_param) {
+auto GenerateInt(size_t unused_param) {
   // single value in arguments, because to find nonlinearizable
   // scenario we need 4 operations with the same argument
   // (which is pretty hard to find)
@@ -75,15 +75,15 @@ auto generateInt(size_t unused_param) {
       |                    | <-- 1              |
       *--------------------*--------------------*
   */
-  return ltest::generators::makeSingleArg(1);
+  return ltest::generators::MakeSingleArg(1);
 }
 
 // Specify target structure and it's sequential specification.
-using spec_t =
+using SpecT =
     ltest::Spec<SlotsSet, spec::Set<>, spec::SetHash<>, spec::SetEquals<>>;
 
-LTEST_ENTRYPOINT(spec_t);
+LTEST_ENTRYPOINT(SpecT);
 
-target_method(generateInt, int, SlotsSet, Insert, int);
+TARGET_METHOD(GenerateInt, int, SlotsSet, Insert, int);
 
-target_method(generateInt, int, SlotsSet, Erase, int);
+TARGET_METHOD(GenerateInt, int, SlotsSet, Erase, int);

@@ -24,7 +24,7 @@ struct Node {
   }
 };
 
-const int Size = 2;
+constexpr int size = 2;
 
 auto GenerateInt(size_t thread_num) {
   return ltest::generators::MakeSingleArg(rand() % 10 + 1);
@@ -32,15 +32,15 @@ auto GenerateInt(size_t thread_num) {
 
 class MPMCBoundedQueue {
  public:
-  explicit MPMCBoundedQueue() : max_size{Size - 1} {
-    vec.resize(Size);
-    for (size_t i = 0; i < Size; ++i) {
+  explicit MPMCBoundedQueue() : max_size{size - 1} {
+    vec.resize(size);
+    for (size_t i = 0; i < size; ++i) {
       vec[i].generation.store(i, std::memory_order_relaxed);
     }
   }
 
   void Reset() {
-    for (size_t i = 0; i < Size; ++i) {
+    for (size_t i = 0; i < size; ++i) {
       vec[i].generation.store(i);
     }
     head.store(0);
@@ -53,8 +53,8 @@ class MPMCBoundedQueue {
       auto hid = h & max_size;
       auto gen = vec[hid].generation.load(/*std::memory_order_relaxed*/);
       if (gen == h) {
-        if (head.compare_exchange_weak(
-                h, h + 1 /*, std::memory_order_acquire*/)) {
+        if (head.compare_exchange_weak(h,
+                                       h + 1 /*, std::memory_order_acquire*/)) {
           // I am owner of the element.
           vec[hid].val = value;
           vec[hid].generation.fetch_add(1 /*, std::memory_order_release*/);
@@ -104,7 +104,7 @@ class MPMCBoundedQueue {
 // 1 == tail + 1? 1 == 1
 
 using SpecT = ltest::Spec<MPMCBoundedQueue, spec::Queue, spec::QueueHash,
-                           spec::QueueEquals>;
+                          spec::QueueEquals>;
 
 LTEST_ENTRYPOINT(SpecT);
 

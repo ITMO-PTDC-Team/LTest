@@ -44,7 +44,7 @@ struct StableVector {
     }
   }
 
-  using TypeT = std::byte[sizeof(T)];
+  using TypeT = std::byte[sizeof(T)]; //NOLINT(modernize-avoid-c-arrays)
 
   template <typename... Args>
     requires std::constructible_from<T, Args...>

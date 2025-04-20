@@ -15,7 +15,7 @@ struct MSQueue {
   // all nodes are stored in a fixed sized vector,
   // big enough to store reasonable number of nodes.
   // The memory is cleared by the vector destructor between rounds.
-  const int N = 100;
+  static constexpr int n = 100;
   // Fixed-size vector to store nodes
   std::vector<Node> nodes;
 
@@ -41,7 +41,7 @@ struct MSQueue {
   }
 
  public:
-  MSQueue() : nodes(N), index(0) {
+  MSQueue() : nodes(n), index(0) {
     head.store(&dummyNode);
     tail.store(&dummyNode);
   }

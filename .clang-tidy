@@ -56,7 +56,6 @@ CheckOptions:
 Checks: "
   -*,
   readability-identifier-naming,
-  -cppcoreguidelines-*,
   cppcoreguidelines-avoid-goto,
   cppcoreguidelines-explicit-virtual-functions,
   cppcoreguidelines-no-malloc,
@@ -64,12 +63,16 @@ Checks: "
   cppcoreguidelines-pro-type-static-cast-downcast,
   cppcoreguidelines-pro-type-union-access,
   cppcoreguidelines-missing-std-forward,
-  -modernize-*,
+  modernize-avoid-c-arrays,
+  modernize-use-emplace,
   modernize-use-override,
-  -misc-*,
-  misc-redundant-expression,
+  modernize-use-nullptr,
   modernize-deprecated-headers,
   modernize-use-constraints,
-  modernize-use-nullptr,
-  modernize-use-using"
+  performance-trivially-destructible,
+  performance-inefficient-vector-operation,
+  performance-inefficient-algorithm,
+  performance-for-range-copy,
+  misc-static-assert,
+  misc-redundant-expression"
 WarningsAsErrors: "*"

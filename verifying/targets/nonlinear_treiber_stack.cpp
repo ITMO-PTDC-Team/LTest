@@ -66,7 +66,7 @@ struct TreiberStack {
   // all nodes are stored in a fixed sized vector,
   // big enough to store reasonable number of nodes.
   // The memory is cleared by the vector destructor between rounds.
-  const int N = 100;
+  static constexpr int n = 100;
   std::vector<Node> nodes;
   std::atomic<int> head;
   std::atomic<int> free_list;

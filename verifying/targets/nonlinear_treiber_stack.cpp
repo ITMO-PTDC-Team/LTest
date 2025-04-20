@@ -3,7 +3,7 @@
 #include "../specs/stack.h"
 
 struct TreiberStack {
-  TreiberStack() : nodes(N), head(-1), free_list(0) { Reset(); }
+  TreiberStack() : nodes(n), head(-1), free_list(0) { Reset(); }
 
   NON_ATOMIC void Push(int value) {
     int node_index;

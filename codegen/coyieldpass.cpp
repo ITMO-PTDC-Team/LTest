@@ -56,7 +56,6 @@ struct CoroutineFilter {
   std::string print_name;
 };
 
-// Specialize YAML traits
 namespace llvm {
 namespace yaml {
 template <>

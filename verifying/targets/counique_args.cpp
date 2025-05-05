@@ -10,9 +10,24 @@ struct Promise;
 
 
 // NOLINTBEGIN(readability-identifier-naming)
+struct SimpleAwaitable {
+  bool await_ready() const noexcept { 
+      return false; // Always suspend
+  }
+  
+  bool await_suspend(std::coroutine_handle<> h) const noexcept {
+      h.resume(); 
+      return false;
+  }
+
+  void await_resume() const noexcept {
+  }
+};
 struct Coroutine : std::coroutine_handle<Promise> {
   using promise_type = ::Promise;
+  auto operator co_await() const { return SimpleAwaitable{}; }
 };
+
 
 struct Promise {
   Coroutine get_return_object() { return {Coroutine::from_promise(*this)}; }
@@ -26,9 +41,13 @@ struct Promise {
 static std::vector<size_t> used(limit, false);
 static std::vector<size_t> done(limit, false);
 
-Coroutine CoFun(int i) {
+Coroutine CoWork(int i) {
   done[i] = true;
   co_return;
+}
+
+Coroutine CoFun(int i) {
+  co_await CoWork(i);
 }
 struct CoUniqueArgsTest {
   CoUniqueArgsTest() {}

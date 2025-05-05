@@ -1,3 +1,4 @@
 - Name: cofun
-  Coroutine: CoFun(int)
+  Coroutine: CoWork(int)
+  OnlyFun: True
  

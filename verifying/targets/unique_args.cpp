@@ -8,17 +8,19 @@
 static std::vector<size_t> used(limit, false);
 static std::vector<size_t> done(limit, false);
 
+void DoWork(int i){
+  done[i] = true;
+}
 struct CoUniqueArgsTest {
   CoUniqueArgsTest() {}
   ValueWrapper Get(size_t i) {
     assert(!used[i]);
     used[i] = true;
-    CoroYield();
+    DoWork(i);
     auto l = [this]() {
       Reset();
       return limit;
     };
-    done[i] = true;
     return {std::count(done.begin(), done.end(), false) == 0
                 ? l()
                 : std::optional<int>(),

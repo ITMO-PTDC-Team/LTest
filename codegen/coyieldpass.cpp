@@ -1,6 +1,7 @@
 
 #include <llvm-19/llvm/IR/BasicBlock.h>
 #include <llvm-19/llvm/IR/Constant.h>
+#include <llvm-19/llvm/IR/Instruction.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -39,36 +40,53 @@ using namespace llvm;
 using Builder = IRBuilder<>;
 
 constexpr std::string_view costatus_change = "CoroutineStatusChange";
+constexpr std::string_view create_thread = "CreateNewVirtualThread";
+
 constexpr std::string_view co_await_ready = "await_ready";
 constexpr int resumed_coro = 0;
 static cl::opt<std::string> input_list(
-    "coroutine-file", cl::desc("Specify path to file with coroutines to check"),
+    "coroutine-file", cl::desc("Specify path to file with config"),
     llvm::cl::Required);
 ;
+
 constexpr bool dump_before = false;
-constexpr bool dump_after = true;
+constexpr bool dump_after = false;
+
+enum HandleType { GENERIC_FUN, CORO_FUN, SPAWN_VIRT_THREAD };
 
 struct CoroutineFilter {
   CoroutineFilter() = default;
-  CoroutineFilter(const std::optional<std::string> &parent_name,
-                  const std::optional<std::string> &co_name,
-                  const std::string &print_name)
-      : parent_name(parent_name), co_name(co_name), print_name(print_name) {};
-  std::optional<std::string> parent_name;
-  std::optional<std::string> co_name;
+  HandleType type;
   std::string print_name;
-  bool only_fun;
+
+  std::optional<std::string> co_name;
+  std::optional<std::string> parent_name;
+  // i believe that adding column is overkill
+  std::optional<unsigned int> debug_line;
+  std::optional<std::string> debug_file;
 };
 
 namespace llvm {
 namespace yaml {
 template <>
+struct ScalarEnumerationTraits<HandleType> {
+  static void enumeration(IO &io, HandleType &value) {  // NOLINT
+    io.enumCase(value, "Generic", HandleType::GENERIC_FUN);
+    io.enumCase(value, "Coro", HandleType::CORO_FUN);
+    io.enumCase(value, "VirtThread", HandleType::SPAWN_VIRT_THREAD);
+  }
+};
+template <>
 struct MappingTraits<CoroutineFilter> {
   static void mapping(IO &io, CoroutineFilter &cofilter) {  // NOLINT
+    io.mapRequired("Type", cofilter.type);
     io.mapRequired("Name", cofilter.print_name);
-    io.mapOptional("Coroutine", cofilter.co_name);
+
+    io.mapOptional("Function", cofilter.co_name);
     io.mapOptional("Parent", cofilter.parent_name);
-    io.mapRequired("OnlyFun", cofilter.only_fun);
+
+    io.mapOptional("Line", cofilter.debug_line);
+    io.mapOptional("File", cofilter.debug_file);
   }
 };
 }  // namespace yaml
@@ -77,8 +95,9 @@ struct MappingTraits<CoroutineFilter> {
 LLVM_YAML_IS_SEQUENCE_VECTOR(CoroutineFilter);
 
 struct CoYieldInserter {
+  Builder builder;
   CoYieldInserter(Module &m, std::vector<CoroutineFilter> &&co_filter)
-      : m(m), co_filter(std::move(co_filter)) {
+      : m(m), co_filter(std::move(co_filter)), builder(m.getContext()) {
     auto &context = m.getContext();
     coroYieldF = m.getOrInsertFunction(
         costatus_change,
@@ -86,14 +105,23 @@ struct CoYieldInserter {
                           {PointerType::get(Type::getInt8Ty(context), 0),
                            Type::getInt1Ty(context)},
                           {}));
+    createThreadF = m.getOrInsertFunction(
+        create_thread,
+        FunctionType::get(Type::getVoidTy(context),
+                          {PointerType::get(Type::getInt8Ty(context), 0),
+                           PointerType::get(context, 0)},
+                          {}));
   }
 
-  void Run(const Module &index) {
+  void Run() {
     if (dump_before) {
-      index.dump();
+      m.dump();
       errs().flush();
     }
     for (auto &f : m) {
+      if (ignored.contains(&f)) {
+        continue;
+      }
       std::string demangled = demangle(f.getName());
       auto filt =
           co_filter | std::ranges::views::filter(
@@ -104,8 +132,11 @@ struct CoYieldInserter {
         InsertYields(filt, f);
       }
     }
+    for (auto inst : to_delete) {
+      inst->eraseFromParent();
+    }
     if (dump_after) {
-      index.dump();
+      m.dump();
       errs().flush();
     }
   }
@@ -132,50 +163,139 @@ struct CoYieldInserter {
         InvokeInst *invoke = dyn_cast<InvokeInst>(call);
 
         if (call_inst || invoke) {
-          auto await_ready_ind = co_name.find(co_await_ready);
-          if (await_ready_ind != std::string::npos) {
-            auto res_filt =
-                filt | std::ranges::views::filter(
-                           [&co_name](const CoroutineFilter &a) -> bool {
-                             return !a.co_name || co_name.find(*a.co_name) !=
-                                                      std::string::npos;
-                           });
-            if (!res_filt.empty()) {
-              errs() << "inserted coro handled by type " << co_name << "\n";
-              HandleCoroCase(builder, call, res_filt.front());
-            }
-          } else {
-            auto res_filt =
-                filt | std::ranges::views::filter(
-                           [&co_name](const CoroutineFilter &a) -> bool {
-                             return !a.co_name || a.co_name == co_name;
-                           });
+          // filt and filt | filter have differnet types
+          if (auto debugLoc = call->getDebugLoc()) {
+            auto place_filt =
+                filt |
+                std::ranges::views::filter(
+                    [&co_name, &debugLoc](const CoroutineFilter &a) -> bool {
+                      if (a.debug_file.has_value() &&
+                          a.debug_file != debugLoc->getFile()->getFilename()) {
+                        return false;
+                      }
+                      if (a.debug_line.has_value() &&
+                          a.debug_line != debugLoc.getLine()) {
+                        return false;
+                      }
+                      return true;
+                    });
+            InsertYield(place_filt, call_inst, invoke, co_name);
 
-            if (!res_filt.empty()) {
-              auto entry = res_filt.front();
-              if (entry.only_fun) {
-                errs() << "inserted generic" << co_name << "\n";
-                HandleGenericFunCase(builder, call, invoke, entry);
-              } else {
-                errs() << "inserted coro handled by func name" << co_name
-                       << "\n";
-                if (invoke) {
-                  assert(FindAwaitReady(
-                      builder, invoke->getNormalDest()->begin(), entry));
-                } else {
-                  assert(FindAwaitReady(
-                      builder, BasicBlock::iterator(call->getNextNode()),
-                      entry));
-                }
-              }
-            }
+          } else {
+            InsertYield(filt, call_inst, invoke, co_name);
           }
         }
       }
     }
   }
 
-  bool FindAwaitReady(Builder &builder, BasicBlock::iterator start,
+  void InsertYield(auto filt, CallInst *call, InvokeInst *invoke,
+                   std::string co_name) {
+    auto await_ready_ind = co_name.find(co_await_ready);
+    if (await_ready_ind != std::string::npos) {
+      auto res_filt =
+          filt | std::ranges::views::filter(
+                     [&co_name](const CoroutineFilter &a) -> bool {
+                       return !a.co_name ||
+                              co_name.find(*a.co_name) != std::string::npos;
+                     });
+      if (!res_filt.empty() && res_filt.front().type == HandleType::CORO_FUN) {
+        errs() << "inserted coro handled by type " << co_name << "\n";
+        HandleCoroCase(call, res_filt.front());
+      }
+    } else {
+      auto res_filt = filt | std::ranges::views::filter(
+                                 [&co_name](const CoroutineFilter &a) -> bool {
+                                   return !a.co_name || a.co_name == co_name;
+                                 });
+
+      if (!res_filt.empty()) {
+        auto entry = res_filt.front();
+        switch (entry.type) {
+          case HandleType::CORO_FUN: {
+            errs() << "inserted coro handled by func name" << co_name << "\n";
+            if (invoke) {
+              assert(FindAwaitReady(invoke->getNormalDest()->begin(), entry));
+            } else {
+              assert(FindAwaitReady(BasicBlock::iterator(call->getNextNode()),
+                                    entry));
+            }
+            break;
+          }
+          case HandleType::GENERIC_FUN: {
+            errs() << "inserted generic " << co_name << "\n";
+            HandleGenericFunCase(call, invoke, entry);
+            break;
+          }
+          case HandleType::SPAWN_VIRT_THREAD: {
+            errs() << "inserted spawn of new thread " << co_name << "\n";
+            CallBase *inst = call ? static_cast<CallBase *>(call) : invoke;
+            Function *called_fun = inst->getCalledFunction();
+
+            if (!inst->arg_empty()) {
+              auto [wrapper_fun, storage] = InsertZeroArgsWrapper(inst);
+              builder.SetInsertPoint(inst);
+              for (size_t i = 0; i < called_fun->arg_size(); i++) {
+                Value *arg = inst->getArgOperand(i);
+
+                Value *storage_place =
+                    builder.CreateGEP(storage->getValueType(), storage,
+                                      {
+                                          builder.getInt32(0),
+                                          builder.getInt32(i),
+                                      });
+                builder.CreateStore(arg, storage_place);
+              }
+              called_fun = wrapper_fun;
+            }
+            Value *pointer_to_func = builder.CreatePointerCast(
+                called_fun, PointerType::get(builder.getContext(), 0));
+            builder.SetInsertPoint(inst);
+            Value *replacement = builder.CreateCall(
+                createThreadF, {GetLiteral(entry.print_name), pointer_to_func});
+            inst->replaceAllUsesWith(replacement);
+            // we cannot simple delete here instruction because we are
+            // iterating over it in basic block
+            to_delete.push_back(inst);
+            break;
+          }
+          default:
+            __builtin_unreachable();
+        }
+      }
+    }
+  }
+  // We need pass to scheduler function and wan't to care about number
+  // of args and their type to not interact with templates - so lets create a
+  // wrapper which would have zero args
+  std::pair<Function *, GlobalVariable *> InsertZeroArgsWrapper(
+      CallBase *call_inst) {
+    Function *func =
+        Function::Create(FunctionType::get(Type::getVoidTy(m.getContext()), {}),
+                         GlobalValue::PrivateLinkage, "", m);
+    ignored.insert(func);
+    std::vector<Type *> types;
+    for (auto &arg : call_inst->args()) {
+      types.push_back(arg->getType());
+    }
+    StructType *storage_type = StructType::create(types);
+    GlobalVariable *storage =
+        new GlobalVariable(m, storage_type, false, GlobalValue::PrivateLinkage,
+                           Constant::getNullValue(storage_type));
+    BasicBlock *block = BasicBlock::Create(builder.getContext(), "", func);
+    builder.SetInsertPoint(block);
+    std::vector<Value *> args;
+    for (size_t i = 0; i < types.size(); i++) {
+      Value *load = builder.CreateGEP(
+          storage_type, storage, {builder.getInt32(0), builder.getInt32(i)});
+      args.push_back(builder.CreateLoad(types[i], load));
+    }
+    builder.CreateCall(call_inst->getCalledFunction(), {args});
+    builder.CreateRetVoid();
+    return {func, storage};
+  }
+
+  bool FindAwaitReady(BasicBlock::iterator start,
                       const CoroutineFilter &entry) {
     for (Instruction &n_inst : make_range(start, start->getParent()->end())) {
       auto *call_inst = dyn_cast<CallBase>(&n_inst);
@@ -185,37 +305,35 @@ struct CoYieldInserter {
       auto await_ready_ind = demangle(call_inst->getCalledFunction()->getName())
                                  .find(co_await_ready);
       if (await_ready_ind != std::string::npos) {
-        HandleCoroCase(builder, call_inst, entry);
+        HandleCoroCase(call_inst, entry);
         return true;
       }
       // If Coro Type constructor can throw we need go deeper
       if (auto *invoke = dyn_cast<InvokeInst>(call_inst)) {
-        return FindAwaitReady(builder, invoke->getNormalDest()->begin(), entry);
+        return FindAwaitReady(invoke->getNormalDest()->begin(), entry);
       }
     }
     return false;
   }
   // This case is needed at sample by some coro primitives where the
   // normal function which is the body of coro is called in loop
-  void HandleGenericFunCase(Builder &builder, CallBase *call,
-                            InvokeInst *invoke,
+  void HandleGenericFunCase(CallBase *call, InvokeInst *invoke,
                             const CoroutineFilter &filt_entry) {
     builder.SetInsertPoint(call);
-    InsertCall(filt_entry, builder, true);
+    InsertYieldCall(filt_entry, builder, true);
     // Invoke instruction has unwind/normal ends so we need handle it
     if (invoke) {
       builder.SetInsertPoint(invoke->getNormalDest()->getFirstInsertionPt());
-      InsertCall(filt_entry, builder, false);
+      InsertYieldCall(filt_entry, builder, false);
       builder.SetInsertPoint(invoke->getUnwindDest()->getFirstInsertionPt());
-      InsertCall(filt_entry, builder, false);
+      InsertYieldCall(filt_entry, builder, false);
     } else {
       builder.SetInsertPoint(call->getNextNode());
-      InsertCall(filt_entry, builder, false);
+      InsertYieldCall(filt_entry, builder, false);
     }
   }
 
-  void HandleCoroCase(Builder &builder, CallBase *call,
-                      const CoroutineFilter &filt_entry) {
+  void HandleCoroCase(CallBase *call, const CoroutineFilter &filt_entry) {
     BranchInst *br = dyn_cast<BranchInst>(call->getNextNode());
     assert(br && br->getNumSuccessors() == 2);
     BasicBlock *not_ready_bb = br->getSuccessor(1);
@@ -227,18 +345,18 @@ struct CoYieldInserter {
 
       Intrinsic::ID id = call_base->getIntrinsicID();
       switch (id) {
-        // We cannot insert after await_suspend because inside it we can already
-        // interact with handle, so we must we do it before
+        // We cannot insert after await_suspend because inside it we can
+        // already interact with handle, so we must we do it before
         case Intrinsic::coro_await_suspend_bool: {
           builder.SetInsertPoint(call_base);
-          InsertCall(filt_entry, builder, true);
-          // InsertAtEnd(builder, nextNormal(call_base), filt_entry);
+          InsertYieldCall(filt_entry, builder, true);
           BranchInst *suspend_br = dyn_cast<BranchInst>(i.getNextNode());
           assert(suspend_br && suspend_br->getNumSuccessors() == 2);
           builder.SetInsertPoint(
               suspend_br->getSuccessor(0)->getFirstInsertionPt());
           // InsertCall(filt_entry, builder, true);
-          // handled if await_suspend was true, now change block also for false
+          // handled if await_suspend was true, now change block also for
+          // false
           BasicBlock *tramp =
               InsertAtEnd(builder, &(*builder.GetInsertPoint()), filt_entry);
           suspend_br->setSuccessor(1, tramp);
@@ -246,13 +364,13 @@ struct CoYieldInserter {
         }
         case Intrinsic::coro_await_suspend_void: {
           builder.SetInsertPoint(call_base);
-          InsertCall(filt_entry, builder, true);
+          InsertYieldCall(filt_entry, builder, true);
           InsertAtEnd(builder, call_base++, filt_entry);
           return;
         }
         case Intrinsic::coro_await_suspend_handle: {
           builder.SetInsertPoint(call_base);
-          InsertCall(filt_entry, builder, true);
+          InsertYieldCall(filt_entry, builder, true);
           InsertAtEnd(builder, nextNormal(call_base), filt_entry);
           return;
         }
@@ -263,6 +381,7 @@ struct CoYieldInserter {
     }
     assert(false && "Haven't found await_suspend intrisinc");
   }
+
   Instruction *nextNormal(CallBase *inst) {
     if (auto invoke = dyn_cast<InvokeInst>(inst)) {
       return invoke->getNormalDest()->getFirstNonPHI();
@@ -285,17 +404,21 @@ struct CoYieldInserter {
         BasicBlock::Create(builder.getContext(), "", succ->getParent());
     resumed_bb->setSuccessor(tramp);
     builder.SetInsertPoint(tramp);
-    InsertCall(filt_entry, builder, false);
+    InsertYieldCall(filt_entry, builder, false);
     builder.CreateBr(succ);
     return tramp;
   }
-  void InsertCall(const CoroutineFilter &filt, Builder &builder, bool start) {
+  void InsertYieldCall(const CoroutineFilter &filt, Builder &builder,
+                       bool start) {
     auto llvm_start =
         ConstantInt::get(Type::getInt1Ty(builder.getContext()), start);
-    auto literal = string_literals.find(filt.print_name);
+    builder.CreateCall(coroYieldF, {GetLiteral(filt.print_name), llvm_start});
+  }
+  Constant *GetLiteral(const std::string &name) {
+    auto literal = string_literals.find(name);
     if (literal == string_literals.end()) {
       Constant *str_const =
-          ConstantDataArray::getString(m.getContext(), filt.print_name, true);
+          ConstantDataArray::getString(m.getContext(), name, true);
       auto zero = ConstantInt::get(Type::getInt32Ty(m.getContext()), 0);
       std::array<Constant *, 2> ind = {zero, zero};
       GlobalVariable *global =
@@ -303,15 +426,17 @@ struct CoYieldInserter {
                              GlobalValue::PrivateLinkage, str_const);
       auto ptr =
           ConstantExpr::getGetElementPtr(global->getValueType(), global, ind);
-      literal = string_literals.emplace(filt.print_name, ptr).first;
+      literal = string_literals.emplace(name, ptr).first;
     }
-    builder.CreateCall(coroYieldF, {literal->second, llvm_start});
+    return literal->second;
   }
-
   Module &m;
   FunctionCallee coroYieldF;
+  FunctionCallee createThreadF;
   std::vector<CoroutineFilter> co_filter;
   std::map<std::string, Constant *> string_literals;
+  std::vector<Instruction *> to_delete;
+  std::set<Function *> ignored;
 };
 
 namespace {
@@ -337,7 +462,7 @@ struct CoYieldInsertPass final : public PassInfoMixin<CoYieldInsertPass> {
       report_fatal_error("Error parsing YAML\n", false);
     }
     CoYieldInserter gen{m, std::move(filt)};
-    gen.Run(m);
+    gen.Run();
     return PreservedAnalyses::none();
   };
 };
@@ -362,7 +487,7 @@ llvmGetPassPluginInfo() {
                 });
             pb.registerPipelineStartEPCallback(
                 [](ModulePassManager &mpm, OptimizationLevel level) {
-                  // Looks like we don't need any lowerings, but i'm not
+                  // Looks like we don't need any lowerings, before but i'm not
                   // sure
                   //  mpm.addPass(CoroEarlyPass());
                   mpm.addPass(CoYieldInsertPass());

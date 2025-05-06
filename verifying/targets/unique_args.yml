@@ -1,4 +1,4 @@
 - Name: work
-  Coroutine: DoWork(int)
-  OnlyFun: True
+  Function: DoWork(int)
+  Type: Generic
  

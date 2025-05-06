@@ -13,6 +13,8 @@ Task this_coro{};
 boost::context::fiber_context sched_ctx;
 std::optional<CoroutineStatus> coroutine_status;
 
+std::optional<VirtualThreadCreation> virtual_thread_creation;
+
 std::unordered_map<long, int> futex_state{};
 
 namespace ltest {
@@ -65,6 +67,11 @@ extern "C" void CoroYield() {
 extern "C" void CoroutineStatusChange(char* name, bool start) {
   // assert(!coroutine_status.has_value());
   coroutine_status.emplace(name, start);
+  CoroYield();
+}
+
+extern "C" void CreateNewVirtualThread(char* name, void* func) {
+  virtual_thread_creation.emplace(name, reinterpret_cast<void (*)()>(func));
   CoroYield();
 }
 

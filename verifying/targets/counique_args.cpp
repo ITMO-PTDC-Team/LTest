@@ -12,12 +12,12 @@ struct Promise;
 // NOLINTBEGIN(readability-identifier-naming)
 struct SimpleAwaitable {
   bool await_ready() const noexcept { 
-      return false; // Always suspend
+      return false;
   }
   
   bool await_suspend(std::coroutine_handle<> h) const noexcept {
       h.resume(); 
-      return false;
+      return true;
   }
 
   void await_resume() const noexcept {
@@ -49,6 +49,7 @@ Coroutine CoWork(int i) {
 Coroutine CoFun(int i) {
   co_await CoWork(i);
 }
+
 struct CoUniqueArgsTest {
   CoUniqueArgsTest() {}
   ValueWrapper Get(size_t i) {

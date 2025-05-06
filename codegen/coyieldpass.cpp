@@ -21,7 +21,6 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Transforms/Coroutines/CoroEarly.h>
 
-#include <algorithm>
 #include <cassert>
 #include <optional>
 #include <ranges>
@@ -365,7 +364,7 @@ struct CoYieldInserter {
         case Intrinsic::coro_await_suspend_void: {
           builder.SetInsertPoint(call_base);
           InsertYieldCall(filt_entry, builder, true);
-          InsertAtEnd(builder, call_base++, filt_entry);
+          // InsertAtEnd(builder, call_base++, filt_entry);
           return;
         }
         case Intrinsic::coro_await_suspend_handle: {

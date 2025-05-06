@@ -62,10 +62,8 @@ void GreedyRoundMinimizor::Minimize(
           OnTasksRemoved(sched, nonlinear_history, {task_i_id, task_j_id});
 
       if (new_histories.has_value()) {
-        // sequential history (Invoke/Response events) must have even number of
-        // history events
-        assert(new_histories.value().second.size() % 2 == 0);
-
+        // sequential history (Invoke/Response events) could have odd number of
+        // history events in case if some task are not completed which is allowed by linearizability checker
         nonlinear_history.first.swap(new_histories.value().first);
         nonlinear_history.second.swap(new_histories.value().second);
 

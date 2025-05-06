@@ -185,7 +185,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     // current_depth have been increased
     size_t new_k = std::reduce(k_statistics.begin(), k_statistics.end()) /
                    k_statistics.size();
-    log() << "k: " << new_k << "\n";
+    // log() << "k: " << new_k << "\n";
     PrepareForDepth(current_depth, new_k);
   }
 

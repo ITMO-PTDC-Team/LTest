@@ -8,7 +8,6 @@
 
 struct Promise;
 
-
 // NOLINTBEGIN(readability-identifier-naming)
 struct Coroutine : std::coroutine_handle<Promise> {
   using promise_type = ::Promise;
@@ -31,7 +30,7 @@ Coroutine CoFun(int i) {
   co_return;
 }
 struct CoUniqueArgsTest {
-  CoUniqueArgsTest() {}
+  CoUniqueArgsTest() { Reset(); }
   ValueWrapper Get(size_t i) {
     assert(!used[i]);
     used[i] = true;

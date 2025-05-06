@@ -9,6 +9,7 @@ set (SOURCE_FILES
         syscall_trap.cpp
         minimization.cpp
         minimization_smart.cpp
+        yield_guard.cpp
 )
 
 add_library(runtime SHARED ${SOURCE_FILES})

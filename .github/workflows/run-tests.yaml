@@ -9,12 +9,12 @@ jobs:
       run:
         shell: bash
     container: 
-      image: silkeh/clang:18
+      image: silkeh/clang:19
       options: --user root
     timeout-minutes: 10
     steps:
       - name: Install deps
-        run: apt update && apt install -y git ninja-build valgrind libboost-context-dev libgflags-dev
+        run: apt update && apt install -y git ninja-build valgrind libboost-context-dev libgflags-dev libclang-19-dev
       - name: Check out repository code
         uses: actions/checkout@v4
       - name: Build
@@ -29,13 +29,13 @@ jobs:
       run:
         shell: bash
     container: 
-      image: silkeh/clang:18
+      image: silkeh/clang:19
       options: --user root
     timeout-minutes: 10
     steps:
       - name: Install deps
         run: |
-          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev protobuf-compiler libboost-context-dev pkg-config libcapstone-dev && \
+          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev protobuf-compiler libboost-context-dev pkg-config libcapstone-dev libclang-19-dev && \
           git clone https://github.com/Kirillog/syscall_intercept.git &&  \
           cmake syscall_intercept -G Ninja -B syscall_intercept/build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang && \
           cmake --build syscall_intercept/build --target install
@@ -46,4 +46,49 @@ jobs:
           cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=RelWithAssert
           cmake --build build --target verify-targets verify-blocking
       - name: "Tests"
-        run: ctest --test-dir build -L "verify" -V
+        run: ctest --parallel 4 --test-dir build -L "verify" -V
+  verifying-folly-release:
+    runs-on: ubuntu-latest
+    env:
+      LTEST_BUILD_PATH: "/__w/LTest/LTest/build"
+    defaults:
+      run:
+        shell: bash
+    container: 
+      image: silkeh/clang:19
+      options: --user root
+    steps:
+      - name: Install deps
+        run: |
+          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev libclang-19-dev \
+                    protobuf-compiler libboost-context-dev pkg-config libcapstone-dev \
+                    libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev \
+                    libdouble-conversion-dev libfast-float-dev libevent-dev libssl-dev libfmt-dev \
+                    libgoogle-glog-dev zlib1g-dev && \
+          git clone --depth=1 https://github.com/Kirillog/syscall_intercept.git &&  \
+          cmake syscall_intercept -G Ninja -B syscall_intercept/build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang && \
+          cmake --build syscall_intercept/build --target install
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Build folly ltest dependencies
+        run: |
+          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target plugin_pass runtime
+      - name: Install folly
+        run: |
+          git clone --depth=1 https://github.com/Kirillog/folly.git && \
+          cmake folly -G Ninja -B folly/build_dir -DCMAKE_BUILD_TYPE=Release && \
+          cmake --build folly/build_dir --target install
+      - name: Build tests
+        run: |
+          cmake --build build --target verifying/blocking/folly_rwspinlock verifying/blocking/folly_sharedmutex \
+            verifying/blocking/folly_flatcombining_queue
+      - name: Run folly rwspinlock with pct strategy
+        run: |
+          ./scripts/check.sh 0 ./build/verifying/blocking/folly_rwspinlock --strategy pct --rounds 10000
+      - name: Run folly shared_mutex with pct strategy
+        run: |
+          ./scripts/check.sh 0 ./build/verifying/blocking/folly_sharedmutex --strategy pct --rounds 10000
+      - name: Run folly flatcombining queue with pct strategy
+        run: |
+          ./scripts/check.sh 0 ./build/verifying/blocking/folly_flatcombining_queue --strategy pct --rounds 10000

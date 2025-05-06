@@ -167,7 +167,8 @@ bool LinearizabilityChecker<
       bool was_checked = false;
       LinearSpecificationObject data_structure_state_copy =
           data_structure_state;
-      ValueWrapper res = method(&data_structure_state_copy, inv.GetTask()->GetArgs());
+      ValueWrapper res =
+          method(&data_structure_state_copy, inv.GetTask()->GetArgs());
 
       // If invoke doesn't have a response we can't check the response
       bool doesnt_have_response =

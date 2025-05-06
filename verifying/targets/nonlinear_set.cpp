@@ -5,7 +5,11 @@
 
 struct SlotsSet {
  public:
-  SlotsSet() { Reset(); }
+  SlotsSet() {
+    for (size_t i = 0; i < N; ++i) {
+      slots[i].store(0);
+    }
+  }
 
   non_atomic int Insert(int value) {
     assert(value != 0);  // zero should never be added
@@ -43,12 +47,6 @@ struct SlotsSet {
       }
     }
     return false;
-  }
-
-  void Reset() {
-    for (size_t i = 0; i < N; ++i) {
-      slots[i].store(0);
-    }
   }
 
  private:

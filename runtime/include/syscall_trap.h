@@ -1,6 +1,6 @@
 #pragma once
 
-extern bool __trap_syscall;
+extern bool ltest_trap_syscall;
 
 namespace ltest {
 

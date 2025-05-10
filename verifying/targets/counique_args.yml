@@ -1,4 +1,5 @@
-- Name: cofun
-  Function: CoWork(int)
-  Type: Coro
+- Action: Coro
+  Name: cofun
+  Place:
+    Function: CoWork(int)
  

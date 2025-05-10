@@ -18,7 +18,8 @@
 
 struct CoroBase;
 struct CoroutineStatus;
-struct VirtualThreadCreation;
+struct CreatedThreadInfo;
+struct WaitThreadInfo;
 
 // Current executing coroutine.
 extern std::shared_ptr<CoroBase> this_coro;
@@ -27,18 +28,25 @@ extern boost::context::fiber_context sched_ctx;
 
 extern std::optional<CoroutineStatus> coroutine_status;
 
-extern std::optional<VirtualThreadCreation> virtual_thread_creation;
+extern std::optional<CreatedThreadInfo> virtual_thread_creation;
 
-extern std::optional<VirtualThreadCreation> virtual_thread_creation;
+extern std::optional<WaitThreadInfo> virtual_thread_wait;
 
 struct CoroutineStatus {
   std::string_view name;
   bool has_started;
 };
 
-struct VirtualThreadCreation {
+struct CreatedThreadInfo {
   std::string_view name;
   std::function<void()> function;
+  int id;
+  //will be set in scheduler
+  size_t parent = -1;
+};
+
+struct WaitThreadInfo {
+  std::vector<int> wait_ids;
 };
 
 // Runtime token.
@@ -62,7 +70,9 @@ extern "C" void CoroYield();
 
 extern "C" void CoroutineStatusChange(char* coroutine, bool start);
 
-extern "C" void CreateNewVirtualThread(char* name, void* func);
+extern "C" void CreateNewVirtualThread(int id, char* name, void* func);
+
+extern "C" void WaitForThread(int* ids, int size);
 
 struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   CoroBase(const CoroBase&) = delete;

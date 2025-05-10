@@ -1,5 +1,6 @@
 #include "include/lib.h"
 
+#include <algorithm>
 #include <cassert>
 #include <unordered_map>
 #include <utility>
@@ -13,7 +14,10 @@ Task this_coro{};
 boost::context::fiber_context sched_ctx;
 std::optional<CoroutineStatus> coroutine_status;
 
-std::optional<VirtualThreadCreation> virtual_thread_creation;
+std::optional<CreatedThreadInfo> virtual_thread_creation;
+
+std::optional<WaitThreadInfo> virtual_thread_wait;
+
 
 std::unordered_map<long, int> futex_state{};
 
@@ -70,8 +74,15 @@ extern "C" void CoroutineStatusChange(char* name, bool start) {
   CoroYield();
 }
 
-extern "C" void CreateNewVirtualThread(char* name, void* func) {
-  virtual_thread_creation.emplace(name, reinterpret_cast<void (*)()>(func));
+extern "C" void CreateNewVirtualThread(int id, char* name, void* func) {
+  virtual_thread_creation.emplace(name, reinterpret_cast<void (*)()>(func), id);
+  CoroYield();
+}
+
+extern "C" void WaitForThread(int* ids, int size) {
+  std::vector<int> vids(size);
+  std::copy(ids, ids + size, vids.begin());
+  virtual_thread_wait.emplace(vids);
   CoroYield();
 }
 

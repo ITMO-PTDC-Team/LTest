@@ -143,7 +143,7 @@ std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
       std::cout << "tla\n";
       auto scheduler = std::make_unique<TLAScheduler<TargetObj, Verifier>>(
           opts.tasks, opts.rounds, opts.threads, opts.switches, opts.depth,
-          std::move(l), checker, pretty_printer, cancel);
+          std::move(l), checker, cancel);
       return scheduler;
     }
     default: {

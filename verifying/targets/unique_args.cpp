@@ -11,8 +11,8 @@ static std::vector<size_t> done(limit, false);
 void DoWork(int i){
   done[i] = true;
 }
-struct CoUniqueArgsTest {
-  CoUniqueArgsTest() {}
+struct DynThreadsTest {
+  DynThreadsTest() {}
   ValueWrapper Get(size_t i) {
     assert(!used[i]);
     used[i] = true;
@@ -41,10 +41,10 @@ auto GenerateArgs(size_t thread_num) {
   assert(false && "extra call");
 }
 
-target_method(GenerateArgs, int, CoUniqueArgsTest, Get, size_t);
+target_method(GenerateArgs, int, DynThreadsTest, Get, size_t);
 
 using SpecT =
-    ltest::Spec<CoUniqueArgsTest, spec::UniqueArgsRef, spec::UniqueArgsHash,
+    ltest::Spec<DynThreadsTest, spec::UniqueArgsRef, spec::UniqueArgsHash,
                 spec::UniqueArgsEquals, spec::UniqueArgsOptionsOverride>;
 
 LTEST_ENTRYPOINT(SpecT);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <new>
 #include <utility>
@@ -49,7 +50,7 @@ struct StableVector {
   template <typename... Args>
     requires std::constructible_from<T, Args...>
   T &emplace_back(Args &&...args) {
-    const size_t index = 63 - __builtin_clzll(total_size + 1);
+    const size_t index = 63 - std::countl_zero(total_size + 1);
     if (((total_size + 1) & total_size) == 0 && !entities[index]) {
       entities[index] = ::new (static_cast<std::align_val_t>(alignof(T)))
           type_t[1ULL << index];
@@ -62,7 +63,7 @@ struct StableVector {
   }
 
   void pop_back() noexcept {
-    const size_t index = 63 - __builtin_clzll(total_size);
+    const size_t index = 63 - std::countl_zero(total_size);
     if (((total_size - 1) & total_size) == 0 && entities[index + 1]) {
       ::operator delete[](std::exchange(entities[index + 1], nullptr),
                           static_cast<std::align_val_t>(alignof(T)));
@@ -73,14 +74,14 @@ struct StableVector {
   }
 
   T &operator[](size_t i) noexcept {
-    const size_t index = 63 - __builtin_clzll(++i);
+    const size_t index = 63 - std::countl_zero(++i);
     const size_t internal_index = i ^ (1ULL << index);
     return *std::launder(
         reinterpret_cast<T *>(entities[index][internal_index]));
   }
 
   const T &operator[](size_t i) const noexcept {
-    const size_t index = 63 - __builtin_clzll(++i);
+    const size_t index = 63 - std::countl_zero(++i);
     const size_t internal_index = i ^ (1ULL << index);
     return *std::launder(
         reinterpret_cast<const T *>(entities[index][internal_index]));

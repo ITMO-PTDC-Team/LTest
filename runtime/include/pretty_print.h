@@ -1,18 +1,54 @@
 #pragma once
+#include <algorithm>
 #include <cassert>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
 #include "lib.h"
 #include "lincheck.h"
 #include "logger.h"
-
+#include "stable_vector.h"
 using std::string;
 using std::to_string;
-using FullHistoryWithThreads = std::vector<std::pair<
-    int, std::variant<std::reference_wrapper<Task>, CoroutineStatus>>>;
+struct CreateNewThread {
+  size_t created_thread_id;
+  std::string_view name;
+};
+
+using FullHistoryWithThreads =
+    std::vector<std::pair<int, std::variant<std::reference_wrapper<Task>,
+                                            CoroutineStatus, CreateNewThread, WaitThreadInfo>>>;
+
+template <typename T>
+void DFS(const StableVector<T>& arr, std::vector<bool>& visited, size_t i,
+         std::vector<size_t>& ans) {
+  ans.push_back(i);
+  visited[i] = true;
+  for (auto& u : arr[i].children) {
+    if (!visited[u]) {
+      DFS(arr, visited, u, ans);
+    }
+  }
+}
+
+template <typename T>
+void TopSort(const StableVector<T>& arr, std::vector<size_t>& ans) {
+  std::vector<bool> visited(arr.size(), false);
+  for (int i = 0; i < arr.size(); i++) {
+    if (!visited[i]) {
+      DFS(arr, visited, i, ans);
+    }
+  }
+}
+
+template <class... Ts>
+struct Overloads : Ts... {
+  using Ts::operator()...;
+};
+
 struct PrettyPrinter {
   PrettyPrinter(size_t threads_num);
 
@@ -121,9 +157,14 @@ struct PrettyPrinter {
 
   // Helps to debug full histories.
   template <typename Out_t>
-  void PrettyPrint(FullHistoryWithThreads& result, Out_t& out) {
-    int cell_width = 20;  // Up it if necessary. Enough for now.
+  void PrettyPrint(FullHistoryWithThreads& result, std::vector<size_t> mapping,
+                   Out_t& out) {
+    int cell_width = 10;  // Up it if necessary. Enough for now.
 
+    std::vector<int> inverse_mapping(mapping.size(), -1);
+    for (int i = 0; i < mapping.size(); i++) {
+      inverse_mapping[mapping[i]] = i;
+    }
     auto print_separator = [&out, this, cell_width]() {
       out << "*";
       for (int i = 0; i < threads_num; ++i) {
@@ -150,7 +191,7 @@ struct PrettyPrinter {
     for (int i = 0; i < threads_num; ++i) {
       int rest = cell_width - 1 /*T*/ - to_string(i).size();
       print_spaces(rest / 2);
-      out << "T" << i;
+      out << "T" << mapping[i];
       print_spaces(rest - rest / 2);
       out << "|";
     }
@@ -168,59 +209,78 @@ struct PrettyPrinter {
     std::vector<int> co_depth(threads_num, 0);
     // Rows.
     for (const auto& i : result) {
-      int num = i.first;
+      int num = inverse_mapping[i.first];
       FitPrinter fp{out, cell_width};
-      if (i.second.index() == 0) {
-        auto act = std::get<0>(i.second);
-        auto base = act.get().get();
-        if (index.find(base) == index.end()) {
-          int sz = index.size();
-          index[base] = sz;
-        }
-        int length = std::to_string(index[base]).size();
-        std::cout << index[base];
-        assert(spaces - length >= 0);
-        print_spaces(7 - length);
-        out << "|";
-        for (int j = 0; j < num; ++j) {
-          print_empty_cell();
-        }
-        fp.Out(" ");
-        fp.Out(std::string{act.get()->GetName()});
-        fp.Out("(");
-        const auto& args = act.get()->GetStrArgs();
-        for (int i = 0; i < args.size(); ++i) {
-          if (i > 0) {
-            fp.Out(", ");
-          }
-          fp.Out(args[i]);
-        }
-        fp.Out(")");
-      } else if (i.second.index() == 1) {
-        print_spaces(7);
-        out << "|";
-        for (int j = 0; j < num; ++j) {
-          print_empty_cell();
-        }
-        auto cor = std::get<1>(i.second);
-        auto print_formated_spaces = [&fp](int count) {
-          for (int i = 0; i < count; ++i) {
-            fp.Out(" ");
-          }
-        };
-        if (cor.has_started) {
-          print_formated_spaces(co_depth[num] + 1);
-          fp.Out(">");
-          co_depth[num]++;
-        } else {
-          print_formated_spaces(co_depth[num]);
-          fp.Out("<");
-          co_depth[num]--;
-        }
-        fp.Out(cor.name);
-        // std::cerr << cor.name << "\n";
-        assert(fp.rest > 0 && "increase cell_width in pretty printer");
-      }
+      auto visitor =
+          Overloads{[&](std::reference_wrapper<Task> act) {
+                      auto base = act.get().get();
+                      if (index.find(base) == index.end()) {
+                        int sz = index.size();
+                        index[base] = sz;
+                      }
+                      int length = std::to_string(index[base]).size();
+                      out << index[base];
+                      assert(spaces - length >= 0);
+                      print_spaces(7 - length);
+                      out << "|";
+                      for (int j = 0; j < num; ++j) {
+                        print_empty_cell();
+                      }
+                      fp.Out(" ");
+                      fp.Out(std::string{act.get()->GetName()});
+                      fp.Out("(");
+                      const auto& args = act.get()->GetStrArgs();
+                      for (int i = 0; i < args.size(); ++i) {
+                        if (i > 0) {
+                          fp.Out(", ");
+                        }
+                        fp.Out(args[i]);
+                      }
+                      fp.Out(")");
+                    },
+                    [&](const CoroutineStatus& cor) {
+                      print_spaces(7);
+                      out << "|";
+                      for (int j = 0; j < num; ++j) {
+                        print_empty_cell();
+                      }
+                      auto print_formated_spaces = [&fp](int count) {
+                        for (int i = 0; i < count; ++i) {
+                          fp.Out(" ");
+                        }
+                      };
+                      if (cor.has_started) {
+                        print_formated_spaces(co_depth[num] + 1);
+                        fp.Out(">");
+                        co_depth[num]++;
+                      } else {
+                        print_formated_spaces(co_depth[num]);
+                        fp.Out("<");
+                        co_depth[num]--;
+                      }
+                      fp.Out(cor.name);
+                    },
+                    [&](const CreateNewThread& new_thread) {
+                      print_spaces(7);
+                      out << "|";
+                      for (int j = 0; j < num; ++j) {
+                        print_empty_cell();
+                      }
+                      fp.Out(std::string(" ->T") +
+                             std::to_string(new_thread.created_thread_id));
+                    },
+                    [&](const WaitThreadInfo& wait_thread){
+                      print_spaces(7);
+                      out << "|";
+                      for (int j = 0; j < num; ++j) {
+                        print_empty_cell();
+                      }
+                      fp.Out(std::string(" <-"));
+                    }
+
+          };
+      std::visit(visitor, i.second);
+      assert(fp.rest > 0 && "increase cell_width in pretty printer");
       print_spaces(fp.rest);
       out << "|";
 

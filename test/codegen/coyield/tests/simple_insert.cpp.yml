@@ -1,0 +1,10 @@
+- Action: Generic
+  Name: test
+  Place:
+    Parent: f()
+    Function: g()  
+- Action: Generic
+  Name: pos_test
+  Place:
+    Parent: based_on_pos()
+    Function: g()  

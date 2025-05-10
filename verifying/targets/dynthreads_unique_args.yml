@@ -1,0 +1,11 @@
+- Action: Spawn
+  CreationId: 0
+  Name: go
+  Place:
+    Function: Waiter::Add(Coroutine const&)
+- Action: Wait
+  WaitsFor: [0] 
+  Name: wait
+  Place:
+    Function: Waiter::Wait()
+

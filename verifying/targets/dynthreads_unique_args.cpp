@@ -6,68 +6,77 @@
 
 #include "../specs/unique_args.h"
 
+static std::vector<size_t> used(limit, false);
+static std::vector<size_t> state(limit, 0);
 struct Promise;
-
-
 // NOLINTBEGIN(readability-identifier-naming)
 struct SimpleAwaitable {
-  bool await_ready() const noexcept { 
-      return false;
-  }
-  
+  bool await_ready() const noexcept { return false; }
+
   bool await_suspend(std::coroutine_handle<> h) const noexcept {
-      h.resume(); 
-      return true;
+    h.resume();
+    return true;
   }
 
-  void await_resume() const noexcept {
-  }
+  void await_resume() const noexcept {}
 };
+
 struct Coroutine : std::coroutine_handle<Promise> {
   using promise_type = ::Promise;
   auto operator co_await() const { return SimpleAwaitable{}; }
 };
 
-
 struct Promise {
   Coroutine get_return_object() { return {Coroutine::from_promise(*this)}; }
-  std::suspend_never initial_suspend() noexcept { return {}; }
-  std::suspend_always final_suspend() noexcept { return {}; }
+  std::suspend_always initial_suspend() noexcept { return {}; }
+  std::suspend_never final_suspend() noexcept { return {}; }
   void return_void() {}
   void unhandled_exception() {}
 };
 // NOLINTEND(readability-identifier-naming)
 
-static std::vector<size_t> used(limit, false);
-static std::vector<size_t> done(limit, false);
+struct Waiter {
+  void Add(const Coroutine& coro) {
+    list.push_back(&coro);
+  }
+  SimpleAwaitable Wait() { 
+    for (auto& a : list) {
+      a->resume();
+    }
+    return {}; }
+  std::vector<const Coroutine*> list;
+};
 
-Coroutine CoWork(int i) {
-  done[i] = true;
-  co_return;
+Coroutine DoWork(int i) {
+  state[i]++;
+  return {};
+}
+Coroutine Work(int i) {
+  Waiter w;
+  w.Add(DoWork(i));
+  state[i]++;
+  co_await w.Wait();
 }
 
-Coroutine CoFun(int i) {
-  co_await CoWork(i);
-}
-
-struct CoUniqueArgsTest {
-  CoUniqueArgsTest() {}
+struct DynThreadsTest {
+  DynThreadsTest() {}
   ValueWrapper Get(size_t i) {
     assert(!used[i]);
     used[i] = true;
+    auto coro= Work(i);
+    coro.resume();
     auto l = [this]() {
       Reset();
       return limit;
     };
-    CoFun(i);
-    return {std::count(done.begin(), done.end(), false) == 0
+    return {std::count(state.begin(), state.end(), 2) == limit
                 ? l()
                 : std::optional<int>(),
             GetDefaultCompator<std::optional<int>>(), Print};
   }
   void Reset() {
     std::fill(used.begin(), used.end(), false);
-    std::fill(done.begin(), done.end(), false);
+    std::fill(state.begin(), state.end(), false);
   }
 };
 
@@ -80,10 +89,10 @@ auto GenerateArgs(size_t thread_num) {
   assert(false && "extra call");
 }
 
-target_method(GenerateArgs, int, CoUniqueArgsTest, Get, size_t);
+target_method(GenerateArgs, int, DynThreadsTest, Get, size_t);
 
 using SpecT =
-    ltest::Spec<CoUniqueArgsTest, spec::UniqueArgsRef, spec::UniqueArgsHash,
+    ltest::Spec<DynThreadsTest, spec::UniqueArgsRef, spec::UniqueArgsHash,
                 spec::UniqueArgsEquals, spec::UniqueArgsOptionsOverride>;
 
 LTEST_ENTRYPOINT(SpecT);

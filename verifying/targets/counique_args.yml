@@ -1,3 +1,5 @@
-- Name: cofun
-  Coroutine: CoFun(int)
+- Action: Coro
+  Name: cofun
+  Place:
+    Function: CoWork(int)
  

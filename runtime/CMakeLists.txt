@@ -6,10 +6,9 @@ set (SOURCE_FILES
         pretty_printer.cpp
         verifying.cpp 
         generators.cpp
-        syscall_trap.cpp
         minimization.cpp
         minimization_smart.cpp
-        yield_guard.cpp
+        coro_ctx_guard.cpp
 )
 
 add_library(runtime SHARED ${SOURCE_FILES})

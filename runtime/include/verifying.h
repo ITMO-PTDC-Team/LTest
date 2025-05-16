@@ -14,7 +14,6 @@
 #include "round_robin_strategy.h"
 #include "scheduler.h"
 #include "strategy_verifier.h"
-#include "syscall_trap.h"
 #include "verifying_macro.h"
 
 namespace ltest {
@@ -155,7 +154,6 @@ std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
 
 inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
                    PrettyPrinter &pretty_printer) {
-  auto guard = SyscallTrapGuard{};
   auto result = scheduler->Run();
   if (result.has_value()) {
     if (result->reason == Scheduler::NonLinearizableHistory::Reason::DEADLOCK) {

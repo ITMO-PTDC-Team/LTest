@@ -30,7 +30,9 @@ struct TaskWithMetaData {
 /// UB.
 template <typename T>
 concept StrategyTaskVerifier = requires(T a) {
-  { a.Verify(std::declval<const std::string&>(), size_t()) } -> std::same_as<bool>;
+  {
+    a.Verify(std::declval<const std::string&>(), size_t())
+  } -> std::same_as<bool>;
   { a.OnFinished(std::declval<Task&>(), size_t()) } -> std::same_as<void>;
   { a.ReleaseTask(size_t()) } -> std::same_as<std::optional<std::string>>;
 };

@@ -13,20 +13,20 @@ struct BlockManager {
   // table & linked list
   std::unordered_map<std::uintptr_t, std::deque<CoroBase *>> queues;
 
-  void BlockOn(BlockState state, CoroBase *coro) {
+  inline void BlockOn(BlockState state, CoroBase *coro) {
     if (!queues.contains(state.addr)) {
       queues[state.addr] = std::deque<CoroBase *>{};
     }
     queues[state.addr].push_back(coro);
   }
 
-  bool IsBlocked(const BlockState &state, CoroBase *coro) {
+  inline bool IsBlocked(const BlockState &state, CoroBase *coro) {
     return state.addr &&
            std::find(queues[state.addr].begin(), queues[state.addr].end(),
                      coro) != queues[state.addr].end();
   }
 
-  std::size_t UnblockOn(std::intptr_t addr, std::size_t max_wakes) {
+  inline std::size_t UnblockOn(std::intptr_t addr, std::size_t max_wakes) {
     if (!queues.contains(addr)) [[unlikely]] {
       return 0;
     }
@@ -38,7 +38,7 @@ struct BlockManager {
     return wakes;
   }
 
-  void UnblockAllOn(std::intptr_t addr) {
+  inline void UnblockAllOn(std::intptr_t addr) {
     if (!queues.contains(addr)) {
       return;
     }
@@ -46,4 +46,4 @@ struct BlockManager {
   }
 };
 
-extern BlockManager block_manager;
+inline BlockManager block_manager;

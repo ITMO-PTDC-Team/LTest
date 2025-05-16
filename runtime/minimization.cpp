@@ -63,7 +63,8 @@ void GreedyRoundMinimizor::Minimize(
 
       if (new_histories.has_value()) {
         // sequential history (Invoke/Response events) could have odd number of
-        // history events in case if some task are not completed which is allowed by linearizability checker
+        // history events in case if some task are not completed which is
+        // allowed by linearizability checker
         nonlinear_history.full.swap(new_histories.value().full);
         nonlinear_history.seq.swap(new_histories.value().seq);
 

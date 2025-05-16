@@ -18,8 +18,6 @@
 struct CoroBase;
 struct CoroutineStatus;
 
-struct BlockManager;
-
 // Current executing coroutine.
 extern std::shared_ptr<CoroBase> this_coro;
 
@@ -27,8 +25,6 @@ extern std::shared_ptr<CoroBase> this_coro;
 extern boost::context::fiber_context sched_ctx;
 
 extern std::optional<CoroutineStatus> coroutine_status;
-
-extern BlockManager block_manager;
 
 struct CoroutineStatus {
   std::string_view name;

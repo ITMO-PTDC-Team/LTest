@@ -4,17 +4,15 @@
 #include <utility>
 #include <vector>
 
+#include "coro_ctx_guard.h"
 #include "logger.h"
 #include "value_wrapper.h"
-#include "yield_guard.h"
 
 // See comments in the lib.h.
 Task this_coro{};
 
 boost::context::fiber_context sched_ctx;
 std::optional<CoroutineStatus> coroutine_status;
-
-BlockManager block_manager;
 
 namespace ltest {
 std::vector<TaskBuilder> task_builders{};
@@ -32,7 +30,7 @@ void CoroBase::Resume() {
   // coroutine, area that protected by it should be as small as possible to
   // reduce errors
   {
-    ltest::AllowYieldArea guard{};
+    ltest::CoroCtxGuard guard{};
     boost::context::fiber_context([coro](boost::context::fiber_context&& ctx) {
       sched_ctx = std::move(ctx);
       coro->ctx = std::move(coro->ctx).resume();
@@ -61,7 +59,7 @@ std::string_view CoroBase::GetName() const { return name; }
 bool CoroBase::IsReturned() const { return is_returned; }
 
 extern "C" void CoroYield() {
-  if (!ltest_yield) [[unlikely]] {
+  if (!ltest_coro_ctx) [[unlikely]] {
     return;
   }
   assert(this_coro && sched_ctx);

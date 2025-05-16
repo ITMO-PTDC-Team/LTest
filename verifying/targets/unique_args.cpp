@@ -9,7 +9,7 @@ static std::vector<size_t> used(limit, false);
 static std::vector<size_t> done(limit, false);
 
 struct CoUniqueArgsTest {
-  CoUniqueArgsTest() {}
+  CoUniqueArgsTest() { Reset(); }
   ValueWrapper Get(size_t i) {
     assert(!used[i]);
     used[i] = true;

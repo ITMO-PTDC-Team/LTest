@@ -8,7 +8,7 @@
 
 // Allows a random thread to work.
 // Randoms new task.
-template <typename TargetObj, StrategyVerifier Verifier>
+template <typename TargetObj, StrategyTaskVerifier Verifier>
 struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
   explicit RandomStrategy(size_t threads_count,
                           std::vector<TaskBuilder> constructors,
@@ -17,25 +17,25 @@ struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
                                           std::move(constructors)},
         weights{std::move(weights)} {}
 
-  size_t Pick() override {
+  std::optional<size_t> Pick() override {
     pick_weights.clear();
     auto &threads = PickStrategy<TargetObj, Verifier>::threads;
     for (size_t i = 0; i < threads.size(); ++i) {
-      if (!threads[i].empty() &&
-      (threads[i].back()->IsParked() || threads[i].back()->IsBlocked())) {
+      if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
         continue;
       }
       pick_weights.push_back(weights[i]);
     }
 
-    assert(!pick_weights.empty() && "deadlock");
+    if (pick_weights.empty()) [[unlikely]] {
+      return std::nullopt;
+    }
 
     auto thread_distribution =
         std::discrete_distribution<>(pick_weights.begin(), pick_weights.end());
     auto num = thread_distribution(PickStrategy<TargetObj, Verifier>::rng);
     for (size_t i = 0; i < threads.size(); ++i) {
-      if (!threads[i].empty() &&
-          (threads[i].back()->IsParked() || threads[i].back()->IsBlocked())) {
+      if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
         continue;
       }
       if (num == 0) {
@@ -43,23 +43,25 @@ struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
       }
       num--;
     }
-    assert(false && "Cannot pick thread to continue round generation");
+    return std::nullopt;
   }
 
-  size_t PickSchedule() override {
+  std::optional<size_t> PickSchedule() override {
     pick_weights.clear();
     auto &threads = this->threads;
 
     for (size_t i = 0; i < threads.size(); ++i) {
       int task_index = this->GetNextTaskInThread(i);
       if (task_index == threads[i].size() ||
-          threads[i][task_index]->IsParked()) {
+          threads[i][task_index]->IsBlocked()) {
         continue;
       }
       pick_weights.push_back(weights[i]);
     }
 
-    assert(!pick_weights.empty() && "deadlock");
+    if (pick_weights.empty()) [[unlikely]] {
+      return std::nullopt;
+    }
 
     auto thread_distribution =
         std::discrete_distribution<>(pick_weights.begin(), pick_weights.end());
@@ -67,7 +69,7 @@ struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
     for (size_t i = 0; i < threads.size(); ++i) {
       int task_index = this->GetNextTaskInThread(i);
       if (task_index == threads[i].size() ||
-          threads[i][task_index]->IsParked()) {
+          threads[i][task_index]->IsBlocked()) {
         continue;
       }
       if (num == 0) {
@@ -75,7 +77,7 @@ struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
       }
       num--;
     }
-    assert(false && "Cannot pick thread to continue round scheduling");
+    return std::nullopt;
   }
 
  private:

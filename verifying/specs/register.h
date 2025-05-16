@@ -2,13 +2,15 @@
 #include <functional>
 #include <map>
 #include <string>
+
 #include "runtime/include/value_wrapper.h"
 
 namespace spec {
 
 struct LinearRegister;
 
-using mutex_method_t = std::function<ValueWrapper(LinearRegister *l, void *)>;
+using register_method_t =
+    std::function<ValueWrapper(LinearRegister *l, void *)>;
 
 struct LinearRegister {
   int x = 0;
@@ -16,16 +18,16 @@ struct LinearRegister {
   int get() { return x; }
 
   static auto GetMethods() {
-    mutex_method_t add_func = [](LinearRegister *l, void *) {
+    register_method_t add_func = [](LinearRegister *l, void *) {
       l->add();
       return void_v;
     };
 
-    mutex_method_t get_func = [](LinearRegister *l, void *)  {
+    register_method_t get_func = [](LinearRegister *l, void *) {
       return l->get();
     };
 
-    return std::map<std::string, mutex_method_t>{
+    return std::map<std::string, register_method_t>{
         {"add", add_func},
         {"get", get_func},
     };

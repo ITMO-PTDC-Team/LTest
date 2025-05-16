@@ -3,7 +3,9 @@
 #include <gflags/gflags.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <stdexcept>
+#include <string>
 
 namespace ltest {
 
@@ -13,9 +15,8 @@ std::string toString<int>(const int &a) {
 }
 
 template <>
-std::string toString<std::shared_ptr<Token>>(
-    const std::shared_ptr<Token> &token) {
-  return "token";
+std::string toString<size_t>(const size_t &a) {
+  return std::to_string(a);
 }
 
 std::string toLower(std::string str) {
@@ -74,11 +75,8 @@ DEFINE_int32(exploration_runs, 15,
 DEFINE_int32(minimization_runs, 15,
              "Number of minimization runs for smart minimizor");
 DEFINE_int32(depth, 0,
-              "How many tasks can be executed on one thread(Only for TLA)");
+             "How many tasks can be executed on one thread(Only for TLA)");
 DEFINE_bool(verbose, false, "Verbosity");
-DEFINE_bool(
-    forbid_all_same, false,
-    "forbid scenarios that execute tasks with same name at all threads");
 DEFINE_string(strategy, GetLiteral(StrategyType::RR), "Strategy");
 DEFINE_string(weights, "", "comma-separated list of weights for threads");
 
@@ -90,7 +88,6 @@ void SetOpts(const DefaultOptions &def) {
   FLAGS_depth = def.depth;
   FLAGS_verbose = def.verbose;
   FLAGS_strategy = def.strategy;
-  FLAGS_forbid_all_same = def.forbid_all_same;
   FLAGS_weights = def.weights;
   FLAGS_exploration_runs = def.exploration_runs;
   FLAGS_minimization_runs = def.minimization_runs;
@@ -103,8 +100,8 @@ Opts ParseOpts() {
   opts.tasks = FLAGS_tasks;
   opts.switches = FLAGS_switches;
   opts.rounds = FLAGS_rounds;
-  opts.forbid_all_same = FLAGS_forbid_all_same;
-  opts.minimize = FLAGS_minimize; // NOTE(dartiukhov) minimization for scenarios with locks is not supported
+  opts.minimize = FLAGS_minimize;  // NOTE(dartiukhov) minimization for
+                                   // scenarios with locks is not supported
   opts.exploration_runs = FLAGS_exploration_runs;
   opts.minimization_runs = FLAGS_minimization_runs;
   opts.verbose = FLAGS_verbose;

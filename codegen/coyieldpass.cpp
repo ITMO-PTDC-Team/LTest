@@ -136,9 +136,11 @@ struct CoYieldInserter {
             InsertCall(filt_entry, builder, true);
             // Invoke instruction has unwind/normal ends so we need handle it
             if (invoke) {
-              builder.SetInsertPoint(invoke->getNormalDest()->getFirstInsertionPt());
+              builder.SetInsertPoint(
+                  invoke->getNormalDest()->getFirstInsertionPt());
               InsertCall(filt_entry, builder, false);
-              builder.SetInsertPoint(invoke->getUnwindDest()->getFirstInsertionPt());
+              builder.SetInsertPoint(
+                  invoke->getUnwindDest()->getFirstInsertionPt());
               InsertCall(filt_entry, builder, false);
             } else {
               builder.SetInsertPoint(call->getNextNode());

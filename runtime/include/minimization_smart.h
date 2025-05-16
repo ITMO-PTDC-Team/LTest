@@ -2,11 +2,9 @@
 
 #include <random>
 #include <set>
-#include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "lib.h"
 #include "minimization.h"
 #include "pretty_print.h"
 #include "scheduler_fwd.h"
@@ -37,13 +35,14 @@ struct SmartMinimizor : public RoundMinimizor {
                           int offsprings_generation_attemps = 10,
                           int initial_mutations_count = 10);
 
-  void Minimize(SchedulerWithReplay& sched,
-                Scheduler::BothHistories& nonlinear_histories) const override;
+  void Minimize(
+      SchedulerWithReplay& sched,
+      Scheduler::NonLinearizableHistory& nonlinear_histories) const override;
 
  private:
   struct Solution {
     explicit Solution(const Strategy& strategy,
-                      const Scheduler::BothHistories& histories,
+                      const Scheduler::NonLinearizableHistory& histories,
                       int total_tasks);
 
     float GetFitness() const;
@@ -51,7 +50,7 @@ struct SmartMinimizor : public RoundMinimizor {
 
     std::unordered_map<int, std::unordered_set<int>>
         tasks;  // ThreadId -> { ValidTaskId1, ValidTaskId2, ... }
-    Scheduler::BothHistories nonlinear_histories;
+    Scheduler::NonLinearizableHistory nonlinear_histories;
     // Fitness is a value in range [0.0, 1.0], the bigger it is, the better is
     // the Solution.
    private:

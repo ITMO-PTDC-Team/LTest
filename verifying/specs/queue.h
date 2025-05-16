@@ -2,6 +2,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <string>
 
 #include "../../runtime/include/verifying.h"
 #include "runtime/include/value_wrapper.h"
@@ -11,9 +12,7 @@ namespace spec {
 template <typename PushArgTuple = std::tuple<int>, std::size_t ValueIndex = 0>
 struct Queue {
   std::deque<int> deq{};
-  void Push(int v) {
-    deq.push_back(v);
-  }
+  void Push(int v) { deq.push_back(v); }
   int Pop() {
     if (deq.empty()) return 0;
     int res = deq.front();
@@ -38,21 +37,19 @@ struct Queue {
   }
 };
 
-template <typename QueueCls = Queue<>>
 struct QueueHash {
-  size_t operator()(const QueueCls &r) const {
+  size_t operator()(const Queue<> &r) const {
     int res = 0;
     for (int elem : r.deq) {
       res += elem;
     }
     return res;
-  }  // namespace spec
+  }
 };
 
-template <typename QueueCls = Queue<>>
 struct QueueEquals {
   template <typename PushArgTuple, int ValueIndex>
-  bool operator()(const QueueCls &lhs, const QueueCls &rhs) const {
+  bool operator()(const Queue<> &lhs, const Queue<> &rhs) const {
     return lhs.deq == rhs.deq;
   }
 };

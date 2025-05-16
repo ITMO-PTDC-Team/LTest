@@ -1,11 +1,12 @@
 /**
- * ./build/verifying/targets/fast_queue --strategy tla --tasks 4 --rounds 50000 --switches 1
+ * ./build/verifying/targets/fast_queue --strategy tla --tasks 4 --rounds 50000
+ * --switches 1
  */
 #include <atomic>
 #include <iostream>
 #include <vector>
 
-#include "../specs/bounded_queue.h"
+#include "../specs/queue.h"
 
 template <typename T>
 struct Node {
@@ -37,14 +38,6 @@ class MPMCBoundedQueue {
     for (size_t i = 0; i < size; ++i) {
       vec_[i].generation.store(i, std::memory_order_relaxed);
     }
-  }
-
-  void Reset() {
-    for (size_t i = 0; i < size; ++i) {
-      vec_[i].generation.store(i);
-    }
-    head_.store(0);
-    tail_.store(0);
   }
 
   non_atomic int Push(int value) {
@@ -103,11 +96,10 @@ class MPMCBoundedQueue {
 // POP
 // 1 == tail + 1? 1 == 1
 
-using spec_t = ltest::Spec<MPMCBoundedQueue, spec::Queue, spec::QueueHash,
+using spec_t = ltest::Spec<MPMCBoundedQueue, spec::Queue<>, spec::QueueHash,
                            spec::QueueEquals>;
 
 LTEST_ENTRYPOINT(spec_t);
 
 target_method(generateInt, int, MPMCBoundedQueue, Push, int);
-
 target_method(ltest::generators::genEmpty, int, MPMCBoundedQueue, Pop);

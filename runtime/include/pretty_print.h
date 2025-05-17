@@ -13,23 +13,23 @@
 #include "stable_vector.h"
 using std::string;
 using std::to_string;
-struct CreateNewThread {
+struct CreateNewThreadHistoryInfo {
   size_t created_thread_id;
   std::string_view name;
 };
 
 using FullHistoryWithThreads =
     std::vector<std::pair<int, std::variant<std::reference_wrapper<Task>,
-                                            CoroutineStatus, CreateNewThread, WaitThreadInfo>>>;
+                                            CoroutineStatus, CreateNewThreadHistoryInfo, WaitThreadInfo>>>;
 
 template <typename T>
-void DFS(const StableVector<T>& arr, std::vector<bool>& visited, size_t i,
+void Dfs(const StableVector<T>& arr, std::vector<bool>& visited, size_t i,
          std::vector<size_t>& ans) {
   ans.push_back(i);
   visited[i] = true;
   for (auto& u : arr[i].children) {
     if (!visited[u]) {
-      DFS(arr, visited, u, ans);
+      Dfs(arr, visited, u, ans);
     }
   }
 }
@@ -39,7 +39,7 @@ void TopSort(const StableVector<T>& arr, std::vector<size_t>& ans) {
   std::vector<bool> visited(arr.size(), false);
   for (int i = 0; i < arr.size(); i++) {
     if (!visited[i]) {
-      DFS(arr, visited, i, ans);
+      Dfs(arr, visited, i, ans);
     }
   }
 }
@@ -227,6 +227,7 @@ struct PrettyPrinter {
                         print_empty_cell();
                       }
                       fp.Out(" ");
+                      // std::cerr << "writing " << &act.get() << "\n";
                       fp.Out(std::string{act.get()->GetName()});
                       fp.Out("(");
                       const auto& args = act.get()->GetStrArgs();
@@ -260,7 +261,7 @@ struct PrettyPrinter {
                       }
                       fp.Out(cor.name);
                     },
-                    [&](const CreateNewThread& new_thread) {
+                    [&](const CreateNewThreadHistoryInfo& new_thread) {
                       print_spaces(7);
                       out << "|";
                       for (int j = 0; j < num; ++j) {

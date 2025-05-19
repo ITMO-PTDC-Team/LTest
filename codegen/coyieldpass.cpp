@@ -43,15 +43,17 @@ using Builder = IRBuilder<>;
 constexpr std::string_view costatus_change = "CoroutineStatusChange";
 constexpr std::string_view create_thread = "CreateNewVirtualThread";
 constexpr std::string_view wait_thread = "WaitForThread";
+constexpr std::string_view coyield = "CoYield";
 
 constexpr std::string_view co_await_ready = "await_ready";
+constexpr std::string_view co_initial_suspend = "initial_suspend()";
 constexpr int resumed_coro = 0;
 static cl::opt<std::string> input_list(
     "coroutine-file", cl::desc("Specify path to file with config"),
     llvm::cl::Required);
 ;
 
-constexpr bool dump_before = false;
+constexpr bool dump_before = true;
 constexpr bool dump_after = false;
 
 enum HandleType { GENERIC_FUN, CORO_FUN, SPAWN_VIRT_THREAD, WAIT_VIRT_THREAD };
@@ -65,32 +67,33 @@ struct InsertPlace {
   std::optional<std::string> debug_file;
 };
 
-// LLVM is built without rtti by default, so no vtables
 struct InsertAction {
-  InsertAction(HandleType type) : type(type) {}
   InsertPlace place;
   std::string print_name;
   HandleType type;
+  virtual HandleType GetType() = 0;
   virtual ~InsertAction() {}
 };
 struct InsertCoro : InsertAction {
-  InsertCoro() : InsertAction(HandleType::CORO_FUN) {}
+  HandleType GetType() override { return HandleType::CORO_FUN; }
 };
 
 struct InsertGeneric : InsertAction {
-  InsertGeneric() : InsertAction(HandleType::GENERIC_FUN) {}
+  HandleType GetType() override { return HandleType::GENERIC_FUN; }
 };
 
 struct InsertSpawn : InsertAction {
   int creation_id;
-  InsertSpawn(int creation_id)
-      : InsertAction(HandleType::SPAWN_VIRT_THREAD), creation_id(creation_id) {}
+  bool has_this;
+  HandleType GetType() override { return HandleType::SPAWN_VIRT_THREAD; }
+  InsertSpawn(int creation_id, bool has_this)
+      : creation_id(creation_id), has_this(has_this) {}
 };
 
 struct InsertWaitThread : InsertAction {
   std::vector<int> wait_for_ids;
-  InsertWaitThread(const std::vector<int> &wait)
-      : InsertAction(HandleType::WAIT_VIRT_THREAD), wait_for_ids(wait) {}
+  HandleType GetType() override { return HandleType::WAIT_VIRT_THREAD; }
+  InsertWaitThread(const std::vector<int> &wait) : wait_for_ids(wait) {}
 };
 
 using InsertActionPtr = std::shared_ptr<InsertAction>;
@@ -104,8 +107,10 @@ static std::map<std::string_view, std::function<InsertActionPtr(IO &io)>>
         {"Spawn",
          [](IO &io) {
            int creation_id;
+           bool has_this;
            io.mapRequired("CreationId", creation_id);
-           return std::make_shared<InsertSpawn>(creation_id);
+           io.mapRequired("HasThis", has_this);
+           return std::make_shared<InsertSpawn>(creation_id, has_this);
          }},
         {"Wait", [](IO &io) {
            std::vector<int> vect;
@@ -168,6 +173,8 @@ struct CoYieldInserter {
         FunctionType::get(
             Type::getVoidTy(context),
             {PointerType::get(context, 0), Type::getInt32Ty(context)}, {}));
+    coro_yield_f = m.getOrInsertFunction(
+        coyield, FunctionType::get(Type::getVoidTy(context), {}));
   }
 
   void Run() {
@@ -263,7 +270,7 @@ struct CoYieldInserter {
                      });
       if (!res_filt.empty()) {
         auto entry = res_filt.front();
-        switch (entry->type) {
+        switch (entry->GetType()) {
           case HandleType::CORO_FUN: {
             errs() << "inserted coro handled by type " << co_name << "\n";
             auto start = [this, &entry]() { InsertYieldCall(entry, true); };
@@ -286,7 +293,7 @@ struct CoYieldInserter {
 
     if (!res_filt.empty()) {
       auto entry = res_filt.front();
-      switch (entry->type) {
+      switch (entry->GetType()) {
         case HandleType::CORO_FUN: {
           errs() << "inserted coro handled by func name " << co_name << "\n";
           auto start = [this, &entry]() { InsertYieldCall(entry, true); };
@@ -310,24 +317,22 @@ struct CoYieldInserter {
           CallBase *inst = call ? static_cast<CallBase *>(call) : invoke;
           Function *called_fun = inst->getCalledFunction();
 
-          if (!inst->arg_empty()) {
-            auto [wrapper_fun, storage] = InsertZeroArgsWrapper(inst);
-            builder.SetInsertPoint(inst);
-            for (size_t i = 0; i < called_fun->arg_size(); i++) {
-              Value *arg = inst->getArgOperand(i);
+          assert(!inst->arg_empty());
+          auto [wrapper_fun, storage] = InsertZeroArgsWrapper(inst);
+          builder.SetInsertPoint(inst);
+          for (size_t i = 0; i < called_fun->arg_size(); i++) {
+            Value *arg = inst->getArgOperand(i);
 
-              Value *storage_place =
-                  builder.CreateGEP(storage->getValueType(), storage,
-                                    {
-                                        builder.getInt32(0),
-                                        builder.getInt32(i),
-                                    });
-              builder.CreateStore(arg, storage_place);
-            }
-            called_fun = wrapper_fun;
+            Value *storage_place =
+                builder.CreateGEP(storage->getValueType(), storage,
+                                  {
+                                      builder.getInt32(0),
+                                      builder.getInt32(i),
+                                  });
+            builder.CreateStore(arg, storage_place);
           }
           Value *pointer_to_func = builder.CreatePointerCast(
-              called_fun, PointerType::get(builder.getContext(), 0));
+              wrapper_fun, PointerType::get(builder.getContext(), 0));
           std::shared_ptr<InsertSpawn> spawn =
               std::static_pointer_cast<InsertSpawn>(entry);
           Value *id = builder.getInt32(spawn->creation_id);
@@ -347,7 +352,18 @@ struct CoYieldInserter {
           // we cannot simple delete here instruction because we are
           // iterating over it in basic block
           to_delete.push_back(inst);
-          break;
+          // Now we must insert coyield point at the start of coroutines args,
+          // we need explicitly launch it's body to be sure that it's args are
+          // saved
+          // TODO: put name and metainfo inside this call
+          for (size_t i = 0; i < called_fun->arg_size(); i++) {
+            if (i == 0 && spawn->has_this) {
+              continue;
+            }
+            assert(isa<CallBase>(inst->getArgOperand(i)));
+            InsertAtBodyStart(dyn_cast<CallBase>(inst->getArgOperand(i)),
+                              [this]() { builder.CreateCall(coro_yield_f); });
+          }
         }
         case HandleType::WAIT_VIRT_THREAD: {
           errs() << "inserted wait of new thread" << co_name << "\n";
@@ -379,8 +395,9 @@ struct CoYieldInserter {
     Constant *indices = ConstantArray::get(
         ArrayType::get(builder.getInt32Ty(), act->wait_for_ids.size()),
         elements);
-    GlobalVariable *val_ind = new GlobalVariable(m,
-        indices->getType(), true, llvm::GlobalValue::InternalLinkage, indices);
+    GlobalVariable *val_ind =
+        new GlobalVariable(m, indices->getType(), true,
+                           llvm::GlobalValue::InternalLinkage, indices);
     builder.CreateCall(wait_thread_f,
                        {val_ind, builder.getInt32(elements.size())});
   }
@@ -550,6 +567,39 @@ struct CoYieldInserter {
     builder.CreateCall(coro_yield_f,
                        {GetLiteral(filt->print_name), llvm_start});
   }
+
+  void InsertAtBodyStart(CallBase *call,
+                         const std::function<void(void)> &insert) {
+    auto f = call->getCalledFunction();
+    ValueToValueMapTy vmap;
+    auto cloned_f = CloneFunction(f, vmap);
+    call->setCalledFunction(cloned_f);
+    for (auto &b : *cloned_f) {
+      for (auto &i : b) {
+        if (auto call = dyn_cast<CallBase>(&i)) {
+          std::string demangled = demangle(call->getName());
+
+          auto initial = demangled.find(co_initial_suspend);
+          if (initial != std::string::npos) {
+            // we have only one initial_suspend;
+            auto *await_ready = i.getNextNode();
+            auto *br = dyn_cast<BranchInst>(await_ready->getNextNode());
+            // true case is shorter;
+            auto *ready_bb = br->getSuccessor(0);
+            auto *resume_bb = ready_bb->getSingleSuccessor();
+            // in this block is llvm.lifetime.end.p0 for coro initial suspend
+            auto *lifetime_end_bb = resume_bb->getSingleSuccessor();
+            auto *body_bb = resume_bb->getSingleSuccessor();
+            builder.SetInsertPoint(body_bb);
+            insert();
+            return;
+          }
+        }
+      }
+    }
+    assert(false && "no initial suspend");
+  }
+
   Constant *GetLiteral(const std::string &name) {
     auto literal = string_literals.find(name);
     if (literal == string_literals.end()) {

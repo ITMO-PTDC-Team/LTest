@@ -3,7 +3,7 @@ include(FetchContent)
 FetchContent_Declare(
         fuzztest
         GIT_REPOSITORY https://github.com/google/fuzztest.git
-        GIT_TAG main
+        GIT_TAG         2025-02-14
         GIT_SHALLOW TRUE
         SYSTEM
 )

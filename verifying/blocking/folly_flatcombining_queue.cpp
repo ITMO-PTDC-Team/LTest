@@ -5,7 +5,8 @@
 #include "runtime/include/verifying_macro.h"
 #include "verifying/specs/queue.h"
 
-class FlatCombiningQueue : public folly::FlatCombining<FlatCombiningQueue> {
+class FlatCombiningQueue
+    : public folly::FlatCombining<FlatCombiningQueue, ltest::mutex> {
   spec::Queue<> queue_;
 
  public:

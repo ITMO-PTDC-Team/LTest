@@ -5,6 +5,7 @@ set (SOURCE_TARGET_LIST
     shared_mutexed_register.cpp
     bank.cpp
     buffered_channel.cpp
+    nonlinear_buffered_channel.cpp
     simple_deadlock.cpp
     bank_deadlock.cpp
 )
@@ -77,6 +78,10 @@ add_integration_test_blocking("shared_mutexed_register_random" "verify" FALSE
 
 add_integration_test_blocking("buffered_channel_pct" "verify" FALSE 
     buffered_channel --strategy pct --rounds 10000
+)
+
+add_integration_test_blocking("nonlinear_buffered_channel_pct" "verify" TRUE 
+    nonlinear_buffered_channel --strategy pct --rounds 10000
 )
 
 add_integration_test_blocking("buffered_channel_random" "verify" FALSE 

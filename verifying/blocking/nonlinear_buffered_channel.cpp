@@ -1,10 +1,9 @@
-#include "../specs/buffered_channel.h"
-
 #include <atomic>
 #include <condition_variable>
 #include <cstring>
 #include <mutex>
 
+#include "../specs/buffered_channel.h"
 #include "runtime/include/verifying.h"
 #include "verifiers/buffered_channel_verifier.h"
 
@@ -19,7 +18,6 @@ struct BufferedChannel {
 
     queue_[sidx_] = v;
     sidx_ = (sidx_ + 1) % N;
-    full_ = (sidx_ == ridx_);
     empty_ = false;
     recv_side_cv_.notify_one();
   }

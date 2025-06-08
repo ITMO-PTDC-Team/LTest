@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <type_traits>
+#include <variant>
 
 #include "lib.h"
 #include "lincheck_recursive.h"
@@ -152,13 +153,19 @@ std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
   }
 }
 
-inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
-                   PrettyPrinter &pretty_printer) {
+inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler) {
   auto guard = SyscallTrapGuard{};
   auto result = scheduler->Run();
   if (result.has_value()) {
     std::cout << "non linearized:\n";
-    pretty_printer.PrettyPrint(result.value().second, std::cout);
+    int count = 0;
+    for (auto& v : result->second) {
+      std::visit([&count](auto& a){
+        count = std::max(count, a.thread_id);
+      }, v);
+    }
+    PrettyPrinter pretty_printer(count + 1);
+    pretty_printer.PrettyPrint(result->second, std::cout);
     return 1;
   } else {
     std::cout << "success!\n";
@@ -202,7 +209,7 @@ int Run(int argc, char *argv[]) {
       &Spec::cancel_t::Cancel);
   std::cout << "\n\n";
   std::cout.flush();
-  return TrapRun(std::move(scheduler), pretty_printer);
+  return TrapRun(std::move(scheduler));
 }
 
 }  // namespace ltest

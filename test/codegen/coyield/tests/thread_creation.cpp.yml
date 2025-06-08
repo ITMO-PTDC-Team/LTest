@@ -1,10 +1,12 @@
 - Action: Spawn
-  CreationId: 0
   HasThis: True
+  CreationId: 0
+  Name: go
   Place:
-    Function: Waiter::Add(Coroutine&&)
+    Function: Waiter::Add(Coroutine)
 - Action: Wait
   WaitsFor: [0] 
+  Name: wait
   Place:
     Function: Waiter::Wait()
 - Action: SpawnedCoro

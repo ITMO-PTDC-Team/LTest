@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -38,11 +39,15 @@ struct CoroutineStatus {
 };
 
 struct CreatedThreadInfo {
-  std::string_view name;
   std::function<void()> function;
   int id;
-  //will be set in scheduler
+  // this will be set after start of scheduler
+  //  name is a literal stored in .data, but args will be set in runtime
+  std::string_view name = "";
+  std::string args = "";
+  // will be set in scheduler
   size_t parent = -1;
+  bool has_started = false;
 };
 
 struct WaitThreadInfo {
@@ -70,7 +75,9 @@ extern "C" void CoroYield();
 
 extern "C" void CoroutineStatusChange(char* coroutine, bool start);
 
-extern "C" void CreateNewVirtualThread(int id, char* name, void* func);
+extern "C" void CreateNewVirtualThread(int id, void* func);
+
+extern "C" void VirtualThreadStartPoint(char* name, char* args);
 
 extern "C" void WaitForThread(int* ids, int size);
 
@@ -101,6 +108,10 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   // Returns the args as strings.
   virtual std::vector<std::string> GetStrArgs() const = 0;
 
+  virtual void SetStrArgsAndName(
+      std::string_view name,
+      std::function<std::vector<std::string>(std::shared_ptr<void>)> args) = 0;
+
   // Returns raw pointer to the tuple arguments.
   virtual void* GetArgs() const = 0;
 
@@ -109,7 +120,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   std::shared_ptr<CoroBase> GetPtr();
 
   // Terminate the coroutine.
-  void Terminate();
+  bool Terminate();
 
   // Sets the token.
   void SetToken(std::shared_ptr<Token>);
@@ -213,6 +224,14 @@ struct Coro final : public CoroBase {
   std::vector<std::string> GetStrArgs() const override {
     assert(args_to_strings != nullptr);
     return args_to_strings(args);
+  }
+
+  void SetStrArgsAndName(
+      std::string_view name,
+      std::function<std::vector<std::string>(std::shared_ptr<void>)> args_fun)
+      override {
+    this->name = name;
+    this->args_to_strings = args_fun;
   }
 
   void* GetArgs() const override { return args.get(); }

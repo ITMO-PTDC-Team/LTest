@@ -507,7 +507,8 @@ struct TLAScheduler : Scheduler {
       threads.emplace_back(Thread{.id = i,
                                   .tasks = StableVector<Task>{},
                                   .children = {},
-                                  .created_meta = {}});
+                                  .created_meta = {},
+                                  .wait_cond = {}});
     }
   };
 
@@ -536,7 +537,7 @@ struct TLAScheduler : Scheduler {
   };
   struct WaitHasher {
     std::size_t operator()(const WaitId& id) const {
-      return std::hash<size_t>()(id.base_id ^ (id.thread << 32));
+      return (id.thread & 0xff) | ((id.base_id & 0xff) << 8);
     }
   };
   // TLAScheduler enumerates all possible executions with finished max_tasks.
@@ -561,16 +562,22 @@ struct TLAScheduler : Scheduler {
 
   // In structured concurrency so kind of termination will be safe for children
   // threads
-  void TerminateThread(Thread& thr) {
+  void TerminateThread(size_t i) {
+    Thread& thr = threads[i];
     for (size_t i = 0; i < thr.children.size(); i++) {
-      TerminateThread(threads[thr.children[i]]);
+      TerminateThread(thr.children[i]);
     }
     thr.children.clear();
     thr.wait_cond.reset();
     for (size_t j = 0; j < thr.tasks.size(); ++j) {
       auto& task = thr.tasks[j];
       if (!task->IsReturned()) {
-        task->Terminate();
+        if (!task->Terminate()) {
+          // a new thread was spawned, so we need to create and finish him first
+          CreateNewThread(i);
+          virtual_thread_creation.reset();
+          TerminateThread(threads.size() - 1);
+        }
       }
     }
   }
@@ -581,7 +588,7 @@ struct TLAScheduler : Scheduler {
   void TerminateTasks() {
     cancel();
     for (size_t i = 0; i < initial_threads_count; ++i) {
-      TerminateThread(threads[i]);
+      TerminateThread(i);
     }
     started_thread_groups.clear();
     threads.resize(initial_threads_count);
@@ -595,13 +602,8 @@ struct TLAScheduler : Scheduler {
     state.Reset();
     for (size_t step = 0; step < step_end; ++step) {
       Frame& frame = frames[step];
-      auto task = frame.task;
+      Task* task = frame.task;
       assert(task);
-      if (virtual_thread_creation) {
-        CreateNewThread(frame.thread_id, *virtual_thread_creation);
-        virtual_thread_creation.reset();
-      }
-      AddWaitCond(frame.thread_id);
       if (frame.is_new) {
         // It was a new task.frame.created_meta
         // So restart it from the beginning with the same
@@ -609,47 +611,85 @@ struct TLAScheduler : Scheduler {
         if (frame.thread_id < initial_threads_count) {
           *task = (*task)->Restart(&state);
         } else {
-          std::optional<CreatedThreadInfo> meta =
-              threads[frame.thread_id].created_meta;
-          assert(meta);
-          std::cerr << "was " << &task;
-          threads[frame.thread_id].tasks.emplace_back(CreateSpawnedTask(*meta));
-          task = &threads[frame.thread_id].tasks.back();
-          std::cerr << " " << &task << "\n";
+          assert(false);
         }
       } else {
         // It was a not new task, hence, we recreated in
         // early.
+        if (frame.thread_id >= initial_threads_count) {
+          task = &threads[frame.thread_id].tasks.back();
+        }
       }
       (*task)->Resume();
-      std::cerr << task->get()->GetName() << " replayed\n";
+      if (virtual_thread_creation) {
+        CreateNewThread(frame.thread_id);
+        virtual_thread_creation.reset();
+      }
+      AddWaitCond(frame.thread_id);
+      bool is_finished = (*task)->IsReturned();
+      if (is_finished && frame.thread_id >= initial_threads_count) {
+        started_thread_groups[{
+            .base_id = threads[frame.thread_id].created_meta->id,
+            .thread = threads[frame.thread_id].created_meta->parent}]--;
+      }
       coroutine_status.reset();
     }
-    std::cerr << "replayed " << step_end << "\n";
+    // Horrible but how to this better?
+    for (auto& v : full_history) {
+      if (v.first >= initial_threads_count) {
+        Task* new_task = &threads[v.first].tasks.back();
+        std::visit(Overloads{[&new_task, &v](std::reference_wrapper<Task>& t) {
+                               t = std::reference_wrapper(*new_task);
+                             },
+                             [](auto& a) {}},
+                   v.second);
+      }
+    }
+    for (auto& v : sequential_history) {
+      size_t thread_id = std::visit([](auto& a) { return a.thread_id; }, v);
+      if (thread_id >= initial_threads_count) {
+        std::visit([this, thread_id](
+                       auto& a) { a.task = threads[thread_id].tasks.back(); },
+                   v);
+      }
+    }
   }
 
-  void CreateNewThread(size_t thread_id, const CreatedThreadInfo& created) {
+  void CreateNewThread(size_t parent_id) {
+    assert(virtual_thread_creation.has_value());
     threads.emplace_back(Thread{.id = threads.size(),
                                 .tasks = {},
                                 .children = {},
-                                .created_meta = created});
-    threads.back().created_meta->parent = thread_id;
-    threads[thread_id].children.push_back(threads.size() - 1);
+                                .created_meta = virtual_thread_creation,
+                                .wait_cond = {}});
+    threads.back().created_meta->parent = parent_id;
+    threads[parent_id].children.push_back(threads.size() - 1);
     started_thread_groups
-        .emplace(WaitId{.base_id = created.id, .thread = thread_id}, 0)
+        .emplace(
+            WaitId{.base_id = virtual_thread_creation->id, .thread = parent_id},
+            0)
         .first->second++;
+    auto& tasks = threads.back().tasks;
+    tasks.emplace_back(CreateSpawnedTask(*virtual_thread_creation));
+    tasks.back()->Resume();
+    tasks.back()->SetStrArgsAndName(virtual_thread_creation->name,
+                                    [](auto _) { return std::vector<std::string>{}; });
   }
+
   void AddWaitCond(size_t thread_id) {
     if (virtual_thread_wait) {
+      assert(thread_id < initial_threads_count);
       assert(!threads[thread_id].wait_cond);
       threads[thread_id].wait_cond = virtual_thread_wait;
       virtual_thread_wait.reset();
       return;
     }
   }
+
   void UpdateFullHistory(size_t thread_id, Task& task, bool is_new) {
     if (virtual_thread_creation) {
-      CreateNewThread(thread_id, *virtual_thread_creation);
+      // this is will push us to the moment where coro is real started
+      CreateNewThread(thread_id);
       full_history.emplace_back(thread_id, task);
       // TODO: looks like we need a seperate function fo verifier
       //  verifier.UpdateState(coroutine_status->name, thread_id,
@@ -657,9 +697,6 @@ struct TLAScheduler : Scheduler {
       full_history.emplace_back(
           thread_id, CreateNewThreadHistoryInfo{threads.size() - 1,
                                                 virtual_thread_creation->name});
-      threads.back().tasks.emplace_back(CreateSpawnedTask(*virtual_thread_creation));
-      threads.back().tasks.back().Resume();
-      //this is will push us to the moment where args are saved and we can save continue
       virtual_thread_creation.reset();
       return;
     }
@@ -715,13 +752,6 @@ struct TLAScheduler : Scheduler {
     }
 
     assert(!task->IsParked());
-
-    std::vector<size_t> mapping;
-    TopSort(threads, mapping);
-    PrettyPrinter pretty_printer{threads.size()};
-    pretty_printer.PrettyPrint(full_history, mapping, log());
-    log() << "===============================================\n\n";
-
     task->Resume();
     UpdateFullHistory(thread_id, task, is_new);
     bool is_finished = task->IsReturned();
@@ -733,9 +763,9 @@ struct TLAScheduler : Scheduler {
                                .thread = thread.created_meta->parent}]--;
       } else {
         finished_tasks++;
-        auto result = task->GetRetVal();
-        sequential_history.emplace_back(Response(task, result, thread_id));
       }
+      auto result = task->GetRetVal();
+      sequential_history.emplace_back(Response(task, result, thread_id));
     }
 
     bool stop = finished_tasks == max_tasks;
@@ -755,12 +785,10 @@ struct TLAScheduler : Scheduler {
       log().flush();
       // Stop, check if the the generated history is linearizable.
       ++finished_rounds;
-      // Disabled temporaraly - need discuus how to handle it better
-      //  if (!checker.Check(sequential_history)) {
-      //    return {false,
-      //            std::make_pair(Scheduler::FullHistory{},
-      //            sequential_history)};
-      //  }
+      if (!checker.Check(sequential_history)) {
+        return {false,
+                std::make_pair(Scheduler::FullHistory{}, sequential_history)};
+      }
       if (finished_rounds == max_rounds) {
         // It was the last round.q
         return {true, {}};
@@ -788,11 +816,11 @@ struct TLAScheduler : Scheduler {
           full_history.pop_back();
         },
         [this](const WaitThreadInfo& wait) { full_history.pop_back(); },
-        [](auto& a) {}};
+        [](const std::reference_wrapper<Task>& a) {}};
     std::visit(visitor, full_history.back().second);
     full_history.pop_back();
     if (is_finished) {
-      if (thread.created_meta) {
+      if (thread_id < initial_threads_count) {
         --finished_tasks;
       }
       // resp.
@@ -800,12 +828,11 @@ struct TLAScheduler : Scheduler {
     }
     if (is_new) {
       // inv.
-      if (thread.created_meta) {
+      if (thread_id < initial_threads_count) {
         --started_tasks;
       }
       sequential_history.pop_back();
     }
-
     return {false, {}};
   }
 
@@ -817,7 +844,7 @@ struct TLAScheduler : Scheduler {
         },
         &state, std::shared_ptr<void>(),
         [](std::shared_ptr<void>) -> std::vector<std::string> { return {}; },
-        created.name, -1);
+        {}, -1);
   }
   std::tuple<bool, typename Scheduler::Result> RunStep(size_t step,
                                                        size_t switches) {
@@ -830,12 +857,12 @@ struct TLAScheduler : Scheduler {
       Thread& thread = threads[i];
       auto& tasks = thread.tasks;
       if (thread.wait_cond) {
-        if (std::any_of(
+        if (!std::all_of(
                 thread.wait_cond->wait_ids.begin(),
                 thread.wait_cond->wait_ids.end(), [this, &i](auto& child) {
                   auto it = started_thread_groups.find(
                       {.base_id = child, .thread = i});
-                  return it == started_thread_groups.end() || it->second != 0;
+                  return it == started_thread_groups.end() || it->second == 0;
                 })) {
           continue;
         }
@@ -848,14 +875,18 @@ struct TLAScheduler : Scheduler {
           continue;
         }
         all_parked = false;
+        auto& meta = thread.created_meta;
+        bool is_new =
+            meta ? !std::exchange((*thread.created_meta).has_started, true)
+                 : false;
         if (!verifier.Verify(CreatedTaskMetaData{
-                std::string{tasks.back()->GetName()}, false, i})) {
+                std::string{tasks.back()->GetName()}, is_new, i})) {
           continue;
         }
         // Task exists.
         frame.is_new = false;
         frame.thread_id = i;
-        auto [is_over, res] = ResumeTask(frame, step, switches, thread, false);
+        auto [is_over, res] = ResumeTask(frame, step, switches, thread, is_new);
         if (is_over || res.has_value()) {
           return {is_over, res};
         }
@@ -866,7 +897,6 @@ struct TLAScheduler : Scheduler {
       }
 
       all_parked = false;
-      std::optional<CreatedThreadInfo>& created = thread.created_meta;
       if (i >= initial_threads_count) {
         continue;
       }
@@ -889,8 +919,8 @@ struct TLAScheduler : Scheduler {
           tasks.pop_back();
           auto size_after = thread.tasks.size();
           assert(size_before == size_after);
-          // As we can't return to the past in coroutine, we need to replay all
-          // tasks from the beginning.
+          // As we can't return to the past in coroutine, we need to replay
+          // all tasks from the beginning.
           Replay(step);
         }
       }

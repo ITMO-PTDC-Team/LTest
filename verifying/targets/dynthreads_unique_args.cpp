@@ -3,8 +3,10 @@
 #include <cstring>
 #include <functional>
 #include <optional>
+#include <string>
 
 #include "../specs/unique_args.h"
+#include "runtime/include/lib.h"
 
 static std::vector<size_t> used(limit, false);
 static std::vector<size_t> state(limit, 0);
@@ -34,44 +36,48 @@ struct Promise {
   void unhandled_exception() {}
 };
 // NOLINTEND(readability-identifier-naming)
-
 struct Waiter {
-  void Add(const Coroutine& coro) {
-    list.push_back(&coro);
+  void Add(Coroutine&& coro) {
+    // list.push_back(coro);
+    coro.resume();
   }
-  SimpleAwaitable Wait() { 
-    for (auto& a : list) {
-      a->resume();
-    }
-    return {}; }
-  std::vector<const Coroutine*> list;
+  SimpleAwaitable Wait() { return {}; }
+  std::vector<Coroutine> list;
 };
 
 Coroutine DoWork(int i) {
   state[i]++;
-  return {};
+  // std::cerr << "updated" << i << "\n";
+  co_return;
 }
+
 Coroutine Work(int i) {
   Waiter w;
   w.Add(DoWork(i));
-  state[i]++;
   co_await w.Wait();
+  assert(state[i] == 1);
+  co_return;
 }
 
+static std::string str;
+
+extern "C" char* PrintInt(int i) {
+  str = std::to_string(i);
+  return str.data();
+};
 struct DynThreadsTest {
   DynThreadsTest() {}
   ValueWrapper Get(size_t i) {
     assert(!used[i]);
     used[i] = true;
-    auto coro= Work(i);
+    bool last = std::count(used.begin(), used.end(), true) == limit;
+    auto coro = Work(i);
     coro.resume();
     auto l = [this]() {
-      Reset();
+      std::fill(used.begin(), used.end(), false);
       return limit;
     };
-    return {std::count(state.begin(), state.end(), 2) == limit
-                ? l()
-                : std::optional<int>(),
+    return {last ? l() : std::optional<int>(),
             GetDefaultCompator<std::optional<int>>(), Print};
   }
   void Reset() {

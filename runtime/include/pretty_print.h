@@ -18,9 +18,9 @@ struct CreateNewThreadHistoryInfo {
   std::string_view name;
 };
 
-using FullHistoryWithThreads =
-    std::vector<std::pair<int, std::variant<std::reference_wrapper<Task>,
-                                            CoroutineStatus, CreateNewThreadHistoryInfo, WaitThreadInfo>>>;
+using FullHistoryWithThreads = std::vector<
+    std::pair<int, std::variant<std::reference_wrapper<Task>, CoroutineStatus,
+                                CreateNewThreadHistoryInfo, WaitThreadInfo>>>;
 
 template <typename T>
 void Dfs(const StableVector<T>& arr, std::vector<bool>& visited, size_t i,
@@ -68,14 +68,6 @@ struct PrettyPrinter {
   template <typename Out_t>
   void PrettyPrint(const std::vector<std::variant<Invoke, Response>>& result,
                    Out_t& out) {
-    auto get_thread_num = [](const std::variant<Invoke, Response>& v) {
-      // Crutch.
-      if (v.index() == 0) {
-        return get<0>(v).thread_id;
-      }
-      return get<1>(v).thread_id;
-    };
-
     int cell_width = 20;  // Up it if necessary. Enough for now.
 
     auto print_separator = [&out, this, cell_width]() {
@@ -116,7 +108,7 @@ struct PrettyPrinter {
 
     // Rows.
     for (const auto& i : result) {
-      int num = get_thread_num(i);
+      int num = std::visit([](auto& a) { return a.thread_id; }, i);
       out << "|";
       for (int j = 0; j < num; ++j) {
         print_empty_cell();
@@ -124,24 +116,25 @@ struct PrettyPrinter {
 
       FitPrinter fp{out, cell_width};
       fp.Out(" ");
-      if (i.index() == 0) {
-        auto inv = get<0>(i);
-        auto& task = inv.GetTask();
-        fp.Out("[" + std::to_string(task->GetId()) + "] ");
-        fp.Out(std::string{task->GetName()});
-        fp.Out("(");
-        const auto& args = task->GetStrArgs();
-        for (int i = 0; i < args.size(); ++i) {
-          if (i > 0) {
-            fp.Out(", ");
-          }
-          fp.Out(args[i]);
-        }
-        fp.Out(")");
-      } else {
-        auto resp = get<1>(i);
-        fp.Out("<-- " + to_string(resp.GetTask()->GetRetVal()));
-      }
+      std::visit(
+          Overloads{[&fp](const Invoke& inv) {
+                      auto& task = inv.GetTask();
+                      fp.Out("[" + std::to_string(task->GetId()) + "] ");
+                      fp.Out(std::string{task->GetName()});
+                      fp.Out("(");
+                      const auto& args = task->GetStrArgs();
+                      for (int i = 0; i < args.size(); ++i) {
+                        if (i > 0) {
+                          fp.Out(", ");
+                        }
+                        fp.Out(args[i]);
+                      }
+                      fp.Out(")");
+                    },
+                    [&fp](const Response& resp) {
+                      fp.Out("<-- " + to_string(resp.GetTask()->GetRetVal()));
+                    }},
+          i);
       assert(fp.rest > 0 && "increase cell_width in pretty printer");
       print_spaces(fp.rest);
       out << "|";
@@ -157,9 +150,9 @@ struct PrettyPrinter {
 
   // Helps to debug full histories.
   template <typename Out_t>
-  void PrettyPrint(FullHistoryWithThreads& result, std::vector<size_t> mapping,
-                   Out_t& out) {
-    int cell_width = 10;  // Up it if necessary. Enough for now.
+  void PrettyPrint(FullHistoryWithThreads& result,
+                   const std::vector<size_t> mapping, Out_t& out) {
+    int cell_width = 20;  // Up it if necessary. Enough for now.
 
     std::vector<int> inverse_mapping(mapping.size(), -1);
     for (int i = 0; i < mapping.size(); i++) {
@@ -270,7 +263,7 @@ struct PrettyPrinter {
                       fp.Out(std::string(" ->T") +
                              std::to_string(new_thread.created_thread_id));
                     },
-                    [&](const WaitThreadInfo& wait_thread){
+                    [&](const WaitThreadInfo& wait_thread) {
                       print_spaces(7);
                       out << "|";
                       for (int j = 0; j < num; ++j) {

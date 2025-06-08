@@ -17,7 +17,7 @@ struct Response {
   ValueWrapper result;
   int thread_id;
 
- private:
+//  private:
   std::reference_wrapper<const Task> task;
 };
 
@@ -28,7 +28,7 @@ struct Invoke {
 
   int thread_id;
 
- private:
+//  private:
   std::reference_wrapper<const Task> task;
 };
 

@@ -1,2 +1,2 @@
 add_subdirectory(runtime)
-add_subdirectory(codegen)
+# add_subdirectory(codegen)

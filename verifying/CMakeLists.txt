@@ -46,4 +46,4 @@ function(add_integration_test test_name label fail)
 endfunction()
 
 add_subdirectory(targets)
-add_subdirectory(net)
+add_subdirectory(blocking)

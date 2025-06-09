@@ -9,7 +9,7 @@ jobs:
       run:
         shell: bash
     container: 
-      image: silkeh/clang:18
+      image: silkeh/clang:19
       options: --user root
     timeout-minutes: 10
     steps:
@@ -29,7 +29,7 @@ jobs:
       run:
         shell: bash
     container: 
-      image: silkeh/clang:18
+      image: silkeh/clang:19
       options: --user root
     timeout-minutes: 10
     steps:
@@ -49,7 +49,7 @@ jobs:
       run:
         shell: bash
     container: 
-      image: silkeh/clang:18
+      image: silkeh/clang:19
       options: --user root
     timeout-minutes: 10
     steps:

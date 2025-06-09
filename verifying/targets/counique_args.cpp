@@ -53,7 +53,7 @@ auto GenerateArgs(size_t thread_num) {
 target_method(GenerateArgs, int, NonLinearCommunicationTest, Get, size_t);
 
 using SpecT =
-    ltest::Spec<NonLinearCommunicationTest, spec::CommunicationRef, spec::UniqueArgsHash,
+    ltest::Spec<NonLinearCommunicationTest, spec::UniqueArgsRef, spec::UniqueArgsHash,
                 spec::UniqueArgsEquals, spec::UniqueArgsOptionsOverride>;
 
 LTEST_ENTRYPOINT(SpecT);

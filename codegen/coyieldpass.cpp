@@ -38,7 +38,6 @@
 #include "llvm/Pass.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
-#include "llvm/Transforms/Coroutines/CoroSplit.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 using namespace llvm;
 using Builder = IRBuilder<>;

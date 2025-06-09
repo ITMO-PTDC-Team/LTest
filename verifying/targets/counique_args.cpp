@@ -5,38 +5,8 @@
 #include <optional>
 
 #include "../specs/unique_args.h"
+#include "../specs/support_coro.h"
 
-struct Promise;
-
-
-// NOLINTBEGIN(readability-identifier-naming)
-struct SimpleAwaitable {
-  bool await_ready() const noexcept { 
-      return false;
-  }
-  
-  bool await_suspend(std::coroutine_handle<> h) const noexcept {
-      h.resume(); 
-      return true;
-  }
-
-  void await_resume() const noexcept {
-  }
-};
-struct Coroutine : std::coroutine_handle<Promise> {
-  using promise_type = ::Promise;
-  auto operator co_await() const { return SimpleAwaitable{}; }
-};
-
-
-struct Promise {
-  Coroutine get_return_object() { return {Coroutine::from_promise(*this)}; }
-  std::suspend_never initial_suspend() noexcept { return {}; }
-  std::suspend_always final_suspend() noexcept { return {}; }
-  void return_void() {}
-  void unhandled_exception() {}
-};
-// NOLINTEND(readability-identifier-naming)
 
 static std::vector<size_t> used(limit, false);
 static std::vector<size_t> done(limit, false);
@@ -50,8 +20,8 @@ Coroutine CoFun(int i) {
   co_await CoWork(i);
 }
 
-struct CoUniqueArgsTest {
-  CoUniqueArgsTest() {}
+struct NonLinearCommunicationTest {
+  NonLinearCommunicationTest() {}
   ValueWrapper Get(size_t i) {
     assert(!used[i]);
     used[i] = true;
@@ -80,10 +50,10 @@ auto GenerateArgs(size_t thread_num) {
   assert(false && "extra call");
 }
 
-target_method(GenerateArgs, int, CoUniqueArgsTest, Get, size_t);
+target_method(GenerateArgs, int, NonLinearCommunicationTest, Get, size_t);
 
 using SpecT =
-    ltest::Spec<CoUniqueArgsTest, spec::UniqueArgsRef, spec::UniqueArgsHash,
+    ltest::Spec<NonLinearCommunicationTest, spec::CommunicationRef, spec::UniqueArgsHash,
                 spec::UniqueArgsEquals, spec::UniqueArgsOptionsOverride>;
 
 LTEST_ENTRYPOINT(SpecT);

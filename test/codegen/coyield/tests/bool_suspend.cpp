@@ -30,7 +30,8 @@ CoroTask myCoroutine2() {
     co_return;
 }
 
-// CHECK: call
 CoroTask myCoroutine() {    
-    co_await myCoroutine2();
+  // CHECK: call void @CoroutineStatusChange(ptr [[name:@[0-9]+]], i1 true)
+  co_await myCoroutine2();
+  // CHECK: call void @CoroutineStatusChange(ptr [[name]], i1 false)
 }

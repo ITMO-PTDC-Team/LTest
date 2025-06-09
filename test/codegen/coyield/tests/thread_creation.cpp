@@ -1,5 +1,13 @@
 // RUN: %check
 #include <coroutine>
+#include <string>
+static std::string str;
+
+extern "C" char* PrintInt(int i) {
+  str = std::to_string(i);
+  return str.data();
+};
+
 struct Promise;
 // NOLINTBEGIN(readability-identifier-naming)
 struct SimpleAwaitable {
@@ -26,16 +34,17 @@ struct Promise {
 };
 // NOLINTEND(readability-identifier-naming)
 
-//Let's omit realization for simplicity 
+// Let's omit realization for simplicity
 struct Waiter {
   void Add(Coroutine coro) {}
   SimpleAwaitable Wait() { return {}; }
 };
 
-Coroutine DoWork(int i) { return {}; }
+Coroutine DoWork(int i) { co_return; }
 Coroutine Work(int i) {
   Waiter w;
+  // CHECK: call 
   w.Add(DoWork(i));
-  w.Add(DoWork(i));
+  // CHECK: call 
   co_await w.Wait();
 }

@@ -1,0 +1,4 @@
+- Action: Coro
+  Name: test
+  Place:
+    Function: myCoroutine2()  

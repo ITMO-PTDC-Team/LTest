@@ -1,0 +1,14 @@
+- Action: Spawn
+  CreationId: 0
+  HasThis: True
+  Place:
+    Function: Waiter::Add(Coroutine&&)
+- Action: Wait
+  WaitsFor: [0] 
+  Place:
+    Function: Waiter::Wait()
+- Action: SpawnedCoro
+  ArgsFun: PrintInt
+  Name: DoWork
+  Place:
+    Function: DoWork(int)

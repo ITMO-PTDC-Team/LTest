@@ -9,7 +9,7 @@ jobs:
       run:
         shell: bash
     container: 
-      image: silkeh/clang:18
+      image: silkeh/clang:19
       options: --user root
     timeout-minutes: 10
     steps:
@@ -23,13 +23,33 @@ jobs:
           cmake --build build --target lin_check_test
       - name: Run lin check test
         run: ctest --test-dir build -R "^LinearizabilityCheckerCounterTest" -V
+  # pass-tests:
+  #   runs-on: ubuntu-latest
+  #   defaults:
+  #     run:
+  #       shell: bash
+  #   container: 
+  #     image: silkeh/clang:19
+  #     options: --user root
+  #   timeout-minutes: 10
+  #   steps:
+  #     - name: Install deps
+  #       run: apt update && apt install -y git ninja-build valgrind libboost-context-dev libgflags-dev
+  #     - name: Check out repository code
+  #       uses: actions/checkout@v4
+  #     - name: Build
+  #       run: |
+  #         cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=RelWithAssert
+  #         cmake --build build --target CoYieldPass
+  #     - name: Run lin check test
+  #       run: ctest --test-dir build -L llvm-pass -V
   verifying-test:
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
     container: 
-      image: silkeh/clang:18
+      image: silkeh/clang:19
       options: --user root
     timeout-minutes: 10
     steps:

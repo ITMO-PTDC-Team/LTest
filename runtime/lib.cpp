@@ -1,6 +1,10 @@
 #include "include/lib.h"
 
+#include <algorithm>
 #include <cassert>
+#include <chrono>
+#include <iostream>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -12,6 +16,10 @@ Task this_coro{};
 
 boost::context::fiber_context sched_ctx;
 std::optional<CoroutineStatus> coroutine_status;
+
+std::optional<CreatedThreadInfo> virtual_thread_creation;
+
+std::optional<WaitThreadInfo> virtual_thread_wait;
 
 std::unordered_map<long, int> futex_state{};
 
@@ -63,19 +71,46 @@ extern "C" void CoroYield() {
 }
 
 extern "C" void CoroutineStatusChange(char* name, bool start) {
-  // assert(!coroutine_status.has_value());
+  assert(!coroutine_status.has_value());
   coroutine_status.emplace(name, start);
   CoroYield();
 }
 
-void CoroBase::Terminate() {
+extern "C" void CreateNewVirtualThread(int id, void* func) {
+  virtual_thread_creation.emplace(reinterpret_cast<void (*)()>(func), id);
+  CoroYield();
+}
+
+extern "C" void VirtualThreadStartPoint(char* name, char* args) {
+  assert(virtual_thread_creation);
+  virtual_thread_creation->name = name;
+  virtual_thread_creation->args = std::string(args);
+  CoroYield();
+}
+
+extern "C" void WaitForThread(int* ids, int size) {
+  std::vector<int> vids(size);
+  std::copy(ids, ids + size, vids.begin());
+  virtual_thread_wait.emplace(vids);
+  CoroYield();
+}
+
+bool CoroBase::Terminate() {
   int tries = 0;
   while (!IsReturned()) {
     ++tries;
     Resume();
+    // we don't care about this while terminating
+    coroutine_status.reset();
+    virtual_thread_wait.reset();
+    // we couldn't process before the spawned thread is spawned and finished
+    if (virtual_thread_creation) {
+      return false;
+    }
     assert(tries < 10000000 &&
            "coroutine is spinning too long, possible wrong terminating order");
   }
+  return true;
 }
 
 void Token::Reset() { parked = false; }

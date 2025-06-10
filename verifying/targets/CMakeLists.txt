@@ -11,11 +11,13 @@ set (SOURCE_TARGET_LIST
 )
 
 set (SOURCE_TARGET_WITHOUT_PLUGIN_LIST
-    unique_args.cpp
 )
 
 set (SOURCE_TARGET_CO_LIST
+    unique_args.cpp
     counique_args.cpp
+    dynthreads_unique_args.cpp
+    nonlinear_communication.cpp
 )
 
 foreach(source_name ${SOURCE_TARGET_LIST})

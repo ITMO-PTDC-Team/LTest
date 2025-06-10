@@ -23,17 +23,18 @@ struct UniqueArgsRef {
     return {called == limit ? std::exchange(called, 0) : std::optional<int>(),
             GetDefaultCompator<std::optional<int>>(), Print};
   }
-
+  void DoWork() { return; }
   using MethodT = std::function<ValueWrapper(UniqueArgsRef *l, void *args)>;
   static auto GetMethods() {
     MethodT get = [](UniqueArgsRef *l, void *args) {
       auto real_args = reinterpret_cast<std::tuple<size_t> *>(args);
       return l->Get(std::get<0>(*real_args));
     };
-
-    return std::map<std::string, MethodT>{
-        {"Get", get},
+    MethodT do_work = [](UniqueArgsRef *l, void *args) {
+      l->DoWork();
+      return void_v;
     };
+    return std::map<std::string, MethodT>{{"Get", get}, {"DoWork", do_work}};
   }
 };
 

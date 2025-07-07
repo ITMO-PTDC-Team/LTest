@@ -110,14 +110,6 @@ struct MSQueue {
 
     return value;
   }
-
-  void Reset() {
-    // Reset the queue to its initial state
-    index.store(0);
-    dummyNode.next.store(nullptr);
-    head.store(&dummyNode);
-    tail.store(&dummyNode);
-  }
 };
 
 // Arguments generator.
@@ -127,7 +119,7 @@ auto generateInt(size_t unused) {
 
 // Specify target structure and it's sequential specification.
 using spec_t =
-    ltest::Spec<MSQueue, spec::Queue<>, spec::QueueHash<>, spec::QueueEquals<>>;
+    ltest::Spec<MSQueue, spec::Queue<>, spec::QueueHash, spec::QueueEquals>;
 
 LTEST_ENTRYPOINT(spec_t);
 

@@ -1,10 +1,11 @@
 #include "include/lib.h"
 
 #include <cassert>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "coro_ctx_guard.h"
+#include "logger.h"
 #include "value_wrapper.h"
 
 // See comments in the lib.h.
@@ -13,24 +14,29 @@ Task this_coro{};
 boost::context::fiber_context sched_ctx;
 std::optional<CoroutineStatus> coroutine_status;
 
-std::unordered_map<long, int> futex_state{};
-
 namespace ltest {
 std::vector<TaskBuilder> task_builders{};
 }
 
 Task CoroBase::GetPtr() { return shared_from_this(); }
 
-void CoroBase::SetToken(std::shared_ptr<Token> token) { this->token = token; }
-
 void CoroBase::Resume() {
   this_coro = this->GetPtr();
   assert(!this_coro->IsReturned() && this_coro->ctx);
-  boost::context::fiber_context([](boost::context::fiber_context&& ctx) {
-    sched_ctx = std::move(ctx);
-    this_coro->ctx = std::move(this_coro->ctx).resume();
-    return std::move(sched_ctx);
-  }).resume();
+  // debug(stderr, "name: %s\n",
+  // std::string(this_coro->GetPtr()->GetName()).c_str());
+  auto coro = this_coro.get();  // std::shared_ptr also can be interleaved
+  // NOTE(kmitkin): Guard below prevents us from call CoroYield in the scheduler
+  // coroutine, area that protected by it should be as small as possible to
+  // reduce errors
+  {
+    ltest::CoroCtxGuard guard{};
+    boost::context::fiber_context([coro](boost::context::fiber_context&& ctx) {
+      sched_ctx = std::move(ctx);
+      coro->ctx = std::move(coro->ctx).resume();
+      return std::move(sched_ctx);
+    }).resume();
+  }
   this_coro.reset();
 }
 
@@ -40,8 +46,6 @@ ValueWrapper CoroBase::GetRetVal() const {
   assert(IsReturned());
   return ret;
 }
-
-bool CoroBase::IsParked() const { return token != nullptr && token->parked; }
 
 CoroBase::~CoroBase() {
   // The coroutine must be returned if we want to restart it.
@@ -55,6 +59,9 @@ std::string_view CoroBase::GetName() const { return name; }
 bool CoroBase::IsReturned() const { return is_returned; }
 
 extern "C" void CoroYield() {
+  if (!ltest_coro_ctx) [[unlikely]] {
+    return;
+  }
   assert(this_coro && sched_ctx);
   boost::context::fiber_context([](boost::context::fiber_context&& ctx) {
     this_coro->ctx = std::move(ctx);
@@ -73,16 +80,13 @@ void CoroBase::Terminate() {
   while (!IsReturned()) {
     ++tries;
     Resume();
-    assert(tries < 10000000 &&
+    assert(tries < 1000000 &&
            "coroutine is spinning too long, possible wrong terminating order");
   }
 }
 
-void Token::Reset() { parked = false; }
-
-void Token::Park() {
-  parked = true;
-  CoroYield();
+void CoroBase::TryTerminate() {
+  for (size_t i = 0; i < 1000 && !is_returned; ++i) {
+    Resume();
+  }
 }
-
-void Token::Unpark() { parked = false; }

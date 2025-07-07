@@ -28,8 +28,8 @@ class ValueWrapper {
   bool operator==(const ValueWrapper& other) const {
     return compare(*this, other);
   }
-  //using std::to_string
-  friend std::string to_string(const ValueWrapper& wrapper) { // NOLINT
+  // using std::to_string
+  friend std::string to_string(const ValueWrapper& wrapper) {  // NOLINT
     return wrapper.to_str(wrapper);
   }
   bool HasValue() const { return value.has_value(); }

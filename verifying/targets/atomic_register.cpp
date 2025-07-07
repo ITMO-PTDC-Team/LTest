@@ -1,5 +1,6 @@
 /**
- * ./build/verifying/targets/atomic_register --tasks 3 --strategy tla --rounds 100000
+ * ./build/verifying/targets/atomic_register --tasks 3 --strategy tla --rounds
+ * 100000
  */
 #include <atomic>
 
@@ -9,8 +10,6 @@
 struct Register {
   non_atomic void add() { x.fetch_add(1); }
   non_atomic int get() { return x.load(); }
-
-  void Reset() { x.store(0); }
 
   std::atomic<int> x{};
 };
@@ -22,5 +21,4 @@ using spec_t =
 LTEST_ENTRYPOINT(spec_t);
 
 target_method(ltest::generators::genEmpty, void, Register, add);
-
 target_method(ltest::generators::genEmpty, int, Register, get);

@@ -1,9 +1,11 @@
 #pragma once
 #include <gflags/gflags.h>
 
+#include <chrono>
 #include <memory>
 #include <type_traits>
 
+#include "blocking_primitives.h"
 #include "lib.h"
 #include "lincheck_recursive.h"
 #include "logger.h"
@@ -13,7 +15,6 @@
 #include "round_robin_strategy.h"
 #include "scheduler.h"
 #include "strategy_verifier.h"
-#include "syscall_trap.h"
 #include "verifying_macro.h"
 
 namespace ltest {
@@ -75,7 +76,7 @@ Opts ParseOpts();
 
 std::vector<std::string> split(const std::string &s, char delim);
 
-template <typename TargetObj, StrategyVerifier Verifier>
+template <typename TargetObj, StrategyTaskVerifier Verifier>
 std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
   switch (opts.typ) {
     case RR: {
@@ -98,8 +99,8 @@ std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
     }
     case PCT: {
       std::cout << "pct\n";
-      return std::make_unique<PctStrategy<TargetObj, Verifier>>(
-          opts.threads, std::move(l), opts.forbid_all_same);
+      return std::make_unique<PctStrategy<TargetObj, Verifier>>(opts.threads,
+                                                                std::move(l));
     }
     default:
       assert(false && "unexpected type");
@@ -108,7 +109,7 @@ std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
 
 // Keeps pointer to strategy to pass reference to base scheduler.
 // TODO: refactor.
-template <StrategyVerifier Verifier>
+template <StrategyTaskVerifier Verifier>
 struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
   StrategySchedulerWrapper(std::unique_ptr<Strategy> strategy,
                            ModelChecker &checker, PrettyPrinter &pretty_printer,
@@ -123,7 +124,7 @@ struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
   std::unique_ptr<Strategy> strategy;
 };
 
-template <typename TargetObj, StrategyVerifier Verifier>
+template <typename TargetObj, StrategyTaskVerifier Verifier>
 std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
                                          const std::vector<TaskBuilder> &l,
                                          PrettyPrinter &pretty_printer,
@@ -154,19 +155,28 @@ std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
 
 inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
                    PrettyPrinter &pretty_printer) {
-  auto guard = SyscallTrapGuard{};
   auto result = scheduler->Run();
   if (result.has_value()) {
-    std::cout << "non linearized:\n";
-    pretty_printer.PrettyPrint(result.value().second, std::cout);
-    return 1;
+    if (result->reason == Scheduler::NonLinearizableHistory::Reason::DEADLOCK) {
+      std::cout << "deadlock detected:\n";
+      pretty_printer.PrettyPrint(result->seq, std::cout);
+      return 4;  // see https://tldp.org/LDP/abs/html/exitcodes.html
+    } else if (result->reason == Scheduler::NonLinearizableHistory::Reason::
+                                     NON_LINEARIZABLE_HISTORY) {
+      std::cout << "non linearized:\n";
+      pretty_printer.PrettyPrint(result->seq, std::cout);
+      return 3;
+    } else {
+      std::abort();
+    }
   } else {
     std::cout << "success!\n";
     return 0;
   }
 }
 
-template <class Spec, StrategyVerifier Verifier = DefaultStrategyVerifier>
+template <class Spec,
+          StrategyTaskVerifier Verifier = DefaultStrategyTaskVerifier>
 int Run(int argc, char *argv[]) {
   if constexpr (!std::is_same_v<typename Spec::options_override_t,
                                 ltest::NoOverride>) {

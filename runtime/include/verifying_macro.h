@@ -18,6 +18,12 @@ extern std::vector<TaskBuilder> task_builders;
 
 // Tell that the function need to be converted to the coroutine.
 #define non_atomic attr(ltest_nonatomic)
+// Tell that the function must not contain interleavings.
+// Note that all functions that can be reached recursively from this function is
+// marked `as_atomic` also, so in the implementation of these functions it is
+// highly recommend to avoid std:: usage otherwise many interleavings in
+// standard library will not be inserted.
+#define as_atomic attr(ltest_atomic)
 
 namespace ltest {
 
@@ -25,10 +31,11 @@ template <typename T>
 std::string toString(const T &a);
 
 template <typename T>
-std::string toString(const T &a) requires (std::is_integral_v<T>){
+std::string toString(const T &a)
+  requires(std::is_integral_v<T>)
+{
   return std::to_string(a);
 }
-
 
 template <typename tuple_t, size_t... index>
 auto toStringListHelper(const tuple_t &t,
@@ -53,7 +60,7 @@ auto toStringArgs(std::shared_ptr<void> args) {
 }
 
 template <typename Ret, typename Target, typename... Args>
-struct TargetMethod{
+struct TargetMethod {
   using Method = std::function<ValueWrapper(Target *, Args...)>;
   TargetMethod(std::string_view method_name,
                std::function<std::tuple<Args...>(size_t)> gen, Method method) {
@@ -64,17 +71,12 @@ struct TargetMethod{
       auto coro = Coro<Target, Args...>::New(method, this_ptr, args,
                                              &ltest::toStringArgs<Args...>,
                                              method_name, task_id);
-      if (ltest::generators::generated_token) {
-        coro->SetToken(ltest::generators::generated_token);
-        ltest::generators::generated_token.reset();
-      }
       return coro;
     };
     ltest::task_builders.push_back(
         TaskBuilder(std::string(method_name), builder));
   }
 };
-
 
 template <typename Target, typename... Args>
 struct TargetMethod<void, Target, Args...> {
@@ -86,16 +88,13 @@ struct TargetMethod<void, Target, Args...> {
                     method = std::move(method)](
                        void *this_ptr, size_t thread_num, int task_id) -> Task {
       auto wrapper = [f = std::move(method)](void *this_ptr, Args &&...args) {
-                          f(reinterpret_cast<Target *>(this_ptr), std::forward<Args>(args)...);
-                          return void_v;
-                        };      auto args = std::shared_ptr<void>(new std::tuple(gen(thread_num)));
+        f(reinterpret_cast<Target *>(this_ptr), std::forward<Args>(args)...);
+        return void_v;
+      };
+      auto args = std::shared_ptr<void>(new std::tuple(gen(thread_num)));
       auto coro = Coro<Target, Args...>::New(wrapper, this_ptr, args,
                                              &ltest::toStringArgs<Args...>,
                                              method_name, task_id);
-      if (ltest::generators::generated_token) {
-        coro->SetToken(ltest::generators::generated_token);
-        ltest::generators::generated_token.reset();
-      }
       return coro;
     };
     ltest::task_builders.push_back(
@@ -105,7 +104,8 @@ struct TargetMethod<void, Target, Args...> {
 
 }  // namespace ltest
 
-#define declare_task_name(symbol) const char *symbol##_task_name = #symbol
+#define declare_task_name(symbol) \
+  static const char *symbol##_task_name = #symbol
 
 #define target_method(gen, ret, cls, symbol, ...)          \
   declare_task_name(symbol);                               \

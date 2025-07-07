@@ -1,8 +1,6 @@
 set (SOURCE_TARGET_LIST
     atomic_register.cpp
-    deadlock.cpp
     fast_queue.cpp
-    mutex_queue.cpp
     race_register.cpp
     nonlinear_queue.cpp
     nonlinear_set.cpp
@@ -71,6 +69,10 @@ add_integration_test("nonlinear_set_random_minimization" "verify" TRUE
 
 add_integration_test("nonlinear_set_pct_minimization" "verify" TRUE 
     nonlinear_set --tasks 40 --rounds 1000000 --strategy pct --minimize
+)
+
+add_integration_test("nonlinear_queue_pct" "verify" TRUE 
+    nonlinear_queue --rounds 10000 --strategy pct
 )
 
 add_integration_test("unique_args" "verify" FALSE 

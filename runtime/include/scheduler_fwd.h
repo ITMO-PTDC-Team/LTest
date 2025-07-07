@@ -1,6 +1,5 @@
 #pragma once
 #include <optional>
-#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -12,8 +11,15 @@ struct RoundMinimizor;
 struct Scheduler {
   using FullHistory = std::vector<std::reference_wrapper<Task>>;
   using SeqHistory = std::vector<std::variant<Invoke, Response>>;
-  using BothHistories = std::pair<FullHistory, SeqHistory>;
-  using Result = std::optional<BothHistories>;
+
+  struct NonLinearizableHistory {
+    enum class Reason { DEADLOCK, NON_LINEARIZABLE_HISTORY };
+    FullHistory full;
+    SeqHistory seq;
+    Reason reason;
+  };
+
+  using Result = std::optional<NonLinearizableHistory>;
 
   virtual Result Run() = 0;
 
@@ -35,6 +41,6 @@ struct SchedulerWithReplay : Scheduler {
 
   virtual Strategy& GetStrategy() const = 0;
 
-  virtual void Minimize(BothHistories& nonlinear_history,
+  virtual void Minimize(NonLinearizableHistory& nonlinear_history,
                         const RoundMinimizor& minimizor) = 0;
 };

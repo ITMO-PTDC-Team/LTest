@@ -6,8 +6,6 @@ struct Register {
 
   non_atomic int get() { return x; }
 
-  void Reset() { x = 0; }
-
   int x{};
 };
 

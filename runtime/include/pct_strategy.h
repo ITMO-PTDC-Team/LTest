@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cassert>
+#include <limits>
+#include <optional>
 #include <random>
 
 #include "scheduler.h"
@@ -9,53 +11,58 @@
 // K represents the maximal number of potential switches in the program
 // Although it's impossible to predict the exact number of switches(since it's
 // equivalent to the halt problem), k should be good approximation
-template <typename TargetObj, StrategyVerifier Verifier>
+template <typename TargetObj, StrategyTaskVerifier Verifier>
 struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
-  // forbid_all_same indicates whether it is allowed to have all same tasks(same
-  // methods) in any moment of execution. Useful for blocking structures, for
-  // instance, you don't want to run mutex.lock in each thread
-  explicit PctStrategy(size_t threads_count,
-                       std::vector<TaskBuilder> constructors,
-                       bool forbid_all_same)
-      : threads_count(threads_count),
+  PctStrategy(size_t threads_count, std::vector<TaskBuilder> ctrs)
+      : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count, ctrs),
         current_depth(1),
-        current_schedule_length(0),
-        forbid_all_same(forbid_all_same) {
-    this->constructors = std::move(constructors);
-    this->round_schedule.resize(threads_count, -1);
+        current_schedule_length(0) {
+    PrepareForDepth(current_depth, 1);
+  }
 
-    std::random_device dev;
-    rng = std::mt19937(dev());
-    this->constructors_distribution =
-        std::uniform_int_distribution<std::mt19937::result_type>(
-            0, this->constructors.size() - 1);
+  void AvoidLivelock(size_t& index, size_t& prior) {
+    auto& threads = this->threads;
+    if (fair_stage > 0) [[unlikely]] {
+      for (size_t attempt = 0; attempt < threads.size(); ++attempt) {
+        auto i = (++last_chosen) % threads.size();
+        if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
+          continue;
+        }
+        index = i;
+        prior = priorities[i];
+        break;
+      }
+      // debug(stderr, "round robin choose: %d\n", index_of_max);
+      if (fair_start == index) {
+        --fair_stage;
+      }
+    }
 
-    // We have information about potential number of resumes
-    // but because of the implementation, it's only available in the task.
-    // In fact, it doesn't depend on the task, it only depends on the
-    // constructor
-    size_t avg_k = 0;
-    avg_k = avg_k / this->constructors.size();
+    // TODO: Choose wiser constant
+    if (count_chosen_same == 1000 && index == last_chosen) [[unlikely]] {
+      fair_stage = 5;
+      fair_start = index;
+    }
 
-    PrepareForDepth(current_depth, avg_k);
-
-    // Create queues.
-    for (size_t i = 0; i < threads_count; ++i) {
-      this->threads.emplace_back();
+    if (index == last_chosen) {
+      ++count_chosen_same;
+    } else {
+      count_chosen_same = 1;
     }
   }
 
-  // If there aren't any non returned tasks and the amount of finished tasks
-  // is equal to the max_tasks the finished task will be returned
-  TaskWithMetaData Next() override {
+  std::optional<size_t> NextThreadId() override {
     auto& threads = this->threads;
     size_t max = std::numeric_limits<size_t>::min();
     size_t index_of_max = 0;
     // Have to ignore waiting threads, so can't do it faster than O(n)
     for (size_t i = 0; i < threads.size(); ++i) {
       // Ignore waiting tasks
-      if (!threads[i].empty() &&
-          (threads[i].back()->IsParked() || threads[i].back()->IsBlocked())) {
+      // debug(stderr, "prior: %d, number %d\n", priorities[i], i);
+      if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
+        debug(stderr, "blocked on %p val %d\n",
+              threads[i].back()->GetBlockState().addr,
+              threads[i].back()->GetBlockState().value);
         // dual waiting if request finished, but follow up isn't
         // skip dual tasks that already have finished the request
         // section(follow-up will be executed in another task, so we can't
@@ -69,8 +76,11 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
     }
 
-    assert((max != std::numeric_limits<size_t>::min() &&
-            "all threads are empty or parked"));
+    AvoidLivelock(index_of_max, max);
+
+    if (max == std::numeric_limits<size_t>::min()) [[unlikely]] {
+      return std::nullopt;
+    }
 
     // Check whether the priority change is required
     current_schedule_length++;
@@ -80,38 +90,17 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
     }
 
-    if (threads[index_of_max].empty() ||
-        threads[index_of_max].back()->IsReturned()) {
-      auto constructor =
-          this->constructors.at(this->constructors_distribution(rng));
-      if (forbid_all_same) {
-        auto names = CountNames(index_of_max);
-        // TODO: выглядит непонятно и так себе
-        while (true) {
-          auto name = constructor.GetName();
-          names.insert(name);
-          CreatedTaskMetaData task = {name, true, index_of_max};
-          if (names.size() == 1 || !this->sched_checker.Verify(task)) {
-            constructor =
-                this->constructors.at(this->constructors_distribution(rng));
-          } else {
-            break;
-          }
-        }
-      }
-
-      threads[index_of_max].emplace_back(
-          constructor.Build(&this->state, index_of_max, this->new_task_id++));
-      return {threads[index_of_max].back(), true, index_of_max};
-    }
-
-    return {threads[index_of_max].back(), false, index_of_max};
+    // debug(stderr, "Chosen thread: %d, cnt_count: %d\n", index_of_max,
+    // count_chosen_same);
+    last_chosen = index_of_max;
+    return index_of_max;
   }
 
-  TaskWithMetaData NextSchedule() override {
+  // NOTE: `Next` version use heuristics for livelock avoiding, but not there
+  // refactor later to avoid copy-paste
+  std::optional<TaskWithMetaData> NextSchedule() override {
     auto& round_schedule = this->round_schedule;
     auto& threads = this->threads;
-
     size_t max = std::numeric_limits<size_t>::min();
     size_t index_of_max = 0;
     // Have to ignore waiting threads, so can't do it faster than O(n)
@@ -119,7 +108,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       int task_index = this->GetNextTaskInThread(i);
       // Ignore waiting tasks
       if (task_index == threads[i].size() ||
-          threads[i][task_index]->IsParked()) {
+          threads[i][task_index]->IsBlocked()) {
         // dual waiting if request finished, but follow up isn't
         // skip dual tasks that already have finished the request
         // section(follow-up will be executed in another task, so we can't
@@ -132,14 +121,42 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         index_of_max = i;
       }
     }
-    // Check whether the priority change is required
-    current_schedule_length++;
-    for (size_t i = 0; i < priority_change_points.size(); ++i) {
-      if (current_schedule_length == priority_change_points[i]) {
-        priorities[index_of_max] = current_depth - i;
+
+    if (fair_stage > 0) [[unlikely]] {
+      for (size_t attempt = 0; attempt < threads.size(); ++attempt) {
+        auto i = (++last_chosen) % threads.size();
+        int task_index = this->GetNextTaskInThread(i);
+        if (task_index == threads[i].size() ||
+            threads[i][task_index]->IsBlocked()) {
+          continue;
+        }
+        index_of_max = i;
+        max = priorities[i];
+        break;
+      }
+      // debug(stderr, "round robin choose: %d\n", index_of_max);
+      if (fair_start == index_of_max) {
+        --fair_stage;
       }
     }
 
+    // TODO: Choose wiser constant
+    if (count_chosen_same == 1000 && index_of_max == last_chosen) [[unlikely]] {
+      fair_stage = 5;
+      fair_start = index_of_max;
+    }
+
+    if (index_of_max == last_chosen) {
+      ++count_chosen_same;
+    } else {
+      count_chosen_same = 1;
+    }
+
+    if (max == std::numeric_limits<size_t>::min()) {
+      return std::nullopt;
+    }
+
+    last_chosen = index_of_max;
     // Picked thread is `index_of_max`
     int next_task_index = this->GetNextTaskInThread(index_of_max);
     bool is_new = round_schedule[index_of_max] != next_task_index;
@@ -160,7 +177,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
       thread = StableVector<Task>();
     }
-    //this->state.Reset();
+    // this->state.Reset();
 
     UpdateStatistics();
   }
@@ -181,6 +198,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     }
     k_statistics.push_back(current_schedule_length);
     current_schedule_length = 0;
+    count_chosen_same = 0;
+    fair_stage = 0;
 
     // current_depth have been increased
     size_t new_k = std::reduce(k_statistics.begin(), k_statistics.end()) /
@@ -189,25 +208,9 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     PrepareForDepth(current_depth, new_k);
   }
 
-  std::unordered_set<std::string> CountNames(size_t except_thread) {
-    std::unordered_set<std::string> names;
-
-    for (size_t i = 0; i < this->threads.size(); ++i) {
-      auto& thread = this->threads[i];
-      if (thread.empty() || i == except_thread) {
-        continue;
-      }
-
-      auto& task = thread.back();
-      names.insert(std::string{task->GetName()});
-    }
-
-    return names;
-  }
-
   void PrepareForDepth(size_t depth, size_t k) {
     // Generates priorities
-    priorities = std::vector<size_t>(threads_count);
+    priorities = std::vector<int>(this->threads_count);
     for (size_t i = 0; i < priorities.size(); ++i) {
       priorities[i] = current_depth + i;
     }
@@ -223,15 +226,15 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   }
 
   std::vector<size_t> k_statistics;
-  size_t threads_count;
   size_t current_depth;
   size_t current_schedule_length;
-  std::vector<size_t> priorities;
+  // NOTE(kmitkin): added for livelock avoiding in spinlocks (read more in
+  // original article)
+  size_t count_chosen_same;
+  size_t last_chosen;
+  size_t fair_start;
+  size_t fair_stage{0};
+  std::vector<int> priorities;
   std::vector<size_t> priority_change_points;
-  // Strategy struct is the owner of all tasks, and all
-  // references can't be invalidated before the end of the round,
-  // so we have to contains all tasks in queues(queue doesn't invalidate the
-  // references)
-  bool forbid_all_same;
   std::mt19937 rng;
 };

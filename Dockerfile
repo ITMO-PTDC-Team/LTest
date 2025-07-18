@@ -18,7 +18,7 @@ RUN apt install -y libboost-filesystem-dev libboost-program-options-dev libboost
 FROM ltest as userver-blocking
 # userver conflicts with default libboost-context-dev (1.74) version, 1.81 required
 RUN apt install -y python3-dev python3-venv \
-        libboost-context1.81-dev libboost-filesystem1.81-dev libboost-program-options1.81-dev libboost-regex1.81-dev 
+        libboost-context1.81-dev libboost-filesystem1.81-dev libboost-program-options1.81-dev libboost-regex1.81-dev \
         libboost-stacktrace1.81-dev libboost-locale1.81-dev \
         libzstd-dev libyaml-cpp-dev libcrypto++-dev libnghttp2-dev libev-dev
 RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v1.2.1/zsh-in-docker.sh)" -- \

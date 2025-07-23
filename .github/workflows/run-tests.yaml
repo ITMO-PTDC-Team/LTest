@@ -31,7 +31,7 @@ jobs:
     container: 
       image: silkeh/clang:19
       options: --user root
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Install deps
         run: |

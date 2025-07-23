@@ -1,5 +1,11 @@
 # Ltest
 
+LTest (Linearizability Test) is a framework for writing tests for concurrent data structures. It allows you to write complex tests in a declarative way.
+
+LTest instruments your data structure’s methods with context switches, executes these methods in a single thread, and produces different interleavings due to the context switches. Later, the obtained execution is checked for linearizability.
+
+Test examples can be found in the verifying directory.
+
 ## Build
 
 It is not recommended to try install all required dependencies locally in your system. Build docker image and run container:

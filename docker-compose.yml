@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  ltest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ltest:latest
+    container_name: ltest_container
+    volumes:
+      - .:/Ltest:z
+    stdin_open: true
+    tty: true
+    working_dir: /Ltest
+    command: /bin/bash

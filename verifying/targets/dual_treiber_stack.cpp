@@ -194,7 +194,7 @@ struct DualTreiberStack {
           req->data_node.store(data_node, std::memory_order_relaxed);
           req->next = TPtr{NULL, false, false};
 
-          int id = next_ticket_.fetch_add(1, std::memory_order_seq_cst);
+          int id = h.sn + 1; //next_ticket_.fetch_add(1, std::memory_order_seq_cst);
           Ticket t{id, static_cast<void*>(req)};
           RegisterTicketForGenerator(t);
           return t;
@@ -212,7 +212,7 @@ struct DualTreiberStack {
         if (!cas_head(expected, desired))
           continue;
 
-        int id = next_ticket_.fetch_add(1, std::memory_order_seq_cst);
+        int id = h.sn + 1; //next_ticket_.fetch_add(1, std::memory_order_seq_cst);
         Ticket t{id, static_cast<void*>(n)};
         RegisterTicketForGenerator(t);
         return t;
@@ -297,17 +297,23 @@ struct DualTreiberStack {
 std::mutex          DualTreiberStack::ticket_mutex;
 std::vector<DualTreiberStack::Ticket> DualTreiberStack::tickets;
 
-auto generateInt(size_t /*thread_num*/) {
+auto generateInt(size_t thread_num) {
+  std::cerr << "generateInt, thread_num=" << ' ' << thread_num << std::endl;
   return ltest::generators::makeSingleArg(rand() % 10 + 1);
 }
 
-auto genEmptyArgs(size_t /*thread_num*/) {
+auto genEmptyArgs(size_t thread_num) {
+  std::cerr << "genEmptyArgs, thread_num=" << ' ' << thread_num << std::endl;
   return ltest::generators::genEmpty(0);
 }
 
-auto generateTicket(size_t /*thread_num*/) {
+auto generateTicket(size_t thread_num) {
+  std::cerr << "generateTicket before AcquireTicketForFollowUp, thread_num="
+            << ' ' << thread_num << std::endl;
   DualTreiberStack::Ticket t =
       DualTreiberStack::AcquireTicketForFollowUp();
+  std::cerr << "generateTicket after AcquireTicketForFollowUp, thread_num="
+            << ' ' << thread_num << std::endl;
   return ltest::generators::makeSingleArg(t);
 }
 

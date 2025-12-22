@@ -1,3 +1,7 @@
+//
+// Created by d84370027 on 12/22/2025.
+//
+// paper https://www.cs.rochester.edu/research/synchronization/pseudocode/duals.html
 #include <atomic>
 #include <cassert>
 #include <cstdint>

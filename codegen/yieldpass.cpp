@@ -111,6 +111,8 @@ struct YieldInserter {
     Builder Builder(&*F.begin());
     for (auto &B : F) {
       for (auto it = B.begin(); std::next(it) != B.end(); ++it) {
+        // !ItsYieldInst(&*std::next(it)) - after each load, store, atomicrmw
+        // instruction, but not in a row
         if (NeedInterrupt(&*it, index) && !ItsYieldInst(&*std::next(it))) {
           Builder.SetInsertPoint(&*std::next(it));
           Builder.CreateCall(CoroYieldF, {})->getIterator();

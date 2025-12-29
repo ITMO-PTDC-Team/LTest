@@ -4,6 +4,7 @@ venv
 .vscode
 .devcontainer/**
 .cache/**
+tmp/
 third_party/**
 !third_party/CMakeLists.txt
 dist

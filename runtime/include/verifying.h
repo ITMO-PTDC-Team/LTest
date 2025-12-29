@@ -41,18 +41,31 @@ struct Spec {
 };
 
 struct Opts {
+  // Number of threads
   size_t threads;
+  // Number of tasks (operations)
   size_t tasks;
+  // Maximum number of switches
   size_t switches;
+  // Number of testing rounds
   size_t rounds;
+  // Minimize the bugs found?
   bool minimize;
+  // Attempts to find a bug while minimizing
   size_t exploration_runs;
+  // Minimization launches
   size_t minimization_runs;
+  // Depth (only for TLA)
   size_t depth;
+  // Prohibit identical operations in a row?
   bool forbid_all_same;
+  // Detailed output
   bool verbose;
+  // Intercepting system calls
   bool syscall_trap;
+  // Type of strategy (RR, RND, TLA, PCT)
   StrategyType typ;
+  // Thread weights for random strategy
   std::vector<int> thread_weights;
 };
 
@@ -141,6 +154,7 @@ std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
       return scheduler;
     }
     case TLA: {
+      // Total Linearization Analysis - the full complete search
       std::cout << "tla\n";
       auto scheduler = std::make_unique<TLAScheduler<TargetObj, Verifier>>(
           opts.tasks, opts.rounds, opts.threads, opts.switches, opts.depth,

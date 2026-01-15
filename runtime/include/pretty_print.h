@@ -14,7 +14,7 @@ using std::to_string;
 using FullHistoryWithThreads = std::vector<std::pair<
     int, std::variant<std::reference_wrapper<Task>, CoroutineStatus>>>;
 struct PrettyPrinter {
-  PrettyPrinter(size_t threads_num);
+  explicit PrettyPrinter() = default;
 
   /*
       Prints like this:
@@ -31,7 +31,7 @@ struct PrettyPrinter {
   */
   template <typename Out_t>
   void PrettyPrint(const std::vector<std::variant<Invoke, Response>>& result,
-                   Out_t& out) {
+                   int threads_num, Out_t& out) {
     auto get_thread_num = [](const std::variant<Invoke, Response>& v) {
       // Crutch.
       if (v.index() == 0) {
@@ -42,7 +42,7 @@ struct PrettyPrinter {
 
     int cell_width = 50;  // Up it if necessary. Enough for now.
 
-    auto print_separator = [&out, this, cell_width]() {
+    auto print_separator = [threads_num, &out, this, cell_width]() {
       out << "*";
       for (int i = 0; i < threads_num; ++i) {
         for (int j = 0; j < cell_width; ++j) {
@@ -121,10 +121,11 @@ struct PrettyPrinter {
 
   // Helps to debug full histories.
   template <typename Out_t>
-  void PrettyPrint(FullHistoryWithThreads& result, Out_t& out) {
+  void PrettyPrint(FullHistoryWithThreads& result, int threads_num,
+                   Out_t& out) {
     int cell_width = 20;  // Up it if necessary. Enough for now.
 
-    auto print_separator = [&out, this, cell_width]() {
+    auto print_separator = [threads_num, &out, this, cell_width]() {
       out << "*";
       for (int i = 0; i < threads_num; ++i) {
         for (int j = 0; j < cell_width; ++j) {
@@ -247,5 +248,4 @@ struct PrettyPrinter {
       out << msg;
     }
   };
-  size_t threads_num;
 };

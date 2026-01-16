@@ -179,7 +179,7 @@ struct PrettyPrinter {
           index[base] = sz;
         }
         int length = std::to_string(index[base]).size();
-        std::cout << index[base];
+        out << index[base];
         assert(spaces - length >= 0);
         print_spaces(7 - length);
         out << "|";

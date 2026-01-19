@@ -50,6 +50,8 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   // Check if the coroutine is returned.
   bool IsReturned() const;
 
+  // TODO(bitree):: getReady?
+
   // Returns task id.
   int GetId() const;
 

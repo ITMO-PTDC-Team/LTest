@@ -15,7 +15,7 @@ public:
   //   int x = co_await f;  // или f.get();
   std::future<int> PopAsync() {
     Ticket ticket = core.PopRequest();
-  auto prom = std::make_shared<std::promise<int>>();
+    auto prom = std::make_shared<std::promise<int>>();
     std::future<int> fut = prom->get_future();
 
     std::thread([this, ticket, prom]() mutable {

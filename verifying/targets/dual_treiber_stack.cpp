@@ -281,12 +281,10 @@ struct DualTreiberStack {
 
 
   static void RegisterTicketForGenerator(Ticket t) {
-    std::lock_guard<std::mutex> lg(ticket_mutex);
     tickets.push_back(t);
   }
 
   static Ticket AcquireTicketForFollowUp() {
-    std::lock_guard<std::mutex> lg(ticket_mutex);
     if (tickets.empty()) {
       return Ticket{0, nullptr};
     }

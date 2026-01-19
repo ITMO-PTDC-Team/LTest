@@ -51,9 +51,6 @@ std::map<size_t, size_t> get_inv_res_mapping(
 std::map<size_t, size_t> get_inv_res_full_mapping(
     const std::vector<HistoryEvent>& history);
 
-// TODO(bitree):: ask???
-std::map<size_t, size_t> get_followup_res_request_inv_mapping(
-    const std::vector<HistoryEvent>& history);
 
 // fix_history deletes invokes that don't have corresponding responses,
 // this is allowed by the definition of the linearizability

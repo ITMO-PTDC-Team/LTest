@@ -115,4 +115,27 @@ extern "C" void CoroutineStatusChange(char* name, bool start) {
 Кажется будет достаточно модификации планировщикая
 + пробросить инфу на этот уровень как-то?
 
+LTest: 
+
+1. вопрос валидация
+strategy - дает функцию и поток (same)
+checker - same
+
+точек переключения = старые 
++ новые (специальную обработку)
++ scheduler меняю
+
+Invoke(request), Response(Request), 
+Invoke(FollowUp), Response(FollowUp, false),
+...
+Invoke(FollowUp), Response(FollowUp, false),
+Invoke(FollowUp), Response(FollowUp, true)
+
+2. вопрос нельзя дальше запускать
+
+
+
+3. вопрос про promise?
+
+
 

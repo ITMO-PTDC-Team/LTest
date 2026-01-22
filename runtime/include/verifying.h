@@ -7,6 +7,7 @@
 
 #include "blocking_primitives.h"
 #include "custom_round.h"
+#include "latomic.h"
 #include "lib.h"
 #include "lincheck_recursive.h"
 #include "logger.h"

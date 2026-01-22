@@ -328,7 +328,7 @@ struct BaseStrategyWithThreads : public Strategy {
           auto& task = thread[task_index];
           has_nonterminated_threads = true;
           // do a single step in this task
-          task->Resume();
+          task->Resume(thread_index);
           if (task->IsReturned()) {
             OnVerifierTaskFinish(task, thread_index);
             debug(stderr, "Terminated: %ld\n", thread_index);
@@ -474,7 +474,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
       }
       full_history.emplace_back(next_task);
 
-      next_task->Resume();
+      next_task->Resume(thread_id);
       if (next_task->IsReturned()) {
         finished_tasks++;
         strategy.OnVerifierTaskFinish(next_task, thread_id);
@@ -526,7 +526,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
         }
         full_history.emplace_back(next_task);
 
-        next_task->Resume();
+        next_task->Resume(thread_id);
         if (next_task->IsReturned()) {
           tasks_to_run--;
           strategy.OnVerifierTaskFinish(next_task, thread_id);
@@ -600,10 +600,10 @@ struct StrategyScheduler : public SchedulerWithReplay {
       // if this is the last time this task appears in `tasks_ordering`, then
       // complete it fully.
       if (resumes_count[next_task_id] == 0) {
-        next_task->Terminate();
+        next_task->Terminate(thread_id);
       } else {
         resumes_count[next_task_id]--;
-        next_task->Resume();
+        next_task->Resume(thread_id);
       }
 
       if (next_task->IsReturned()) {
@@ -696,6 +696,8 @@ struct TLAScheduler : Scheduler {
   struct Frame {
     // Pointer to the in task thread.
     Task* task{};
+    // Id of the thread in which the task is running.
+    int thread_id{};
     // Is true if the task was created at this step.
     bool is_new{};
   };
@@ -706,11 +708,11 @@ struct TLAScheduler : Scheduler {
   // cancel() func takes care for graceful shutdown
   void TerminateTasks() {
     cancel();
-    for (size_t i = 0; i < threads.size(); ++i) {
-      for (size_t j = 0; j < threads[i].tasks.size(); ++j) {
-        auto& task = threads[i].tasks[j];
+    for (size_t thread_id = 0; thread_id < threads.size(); ++thread_id) {
+      for (size_t j = 0; j < threads[thread_id].tasks.size(); ++j) {
+        auto& task = threads[thread_id].tasks[j];
         if (!task->IsReturned()) {
-          task->Terminate();
+          task->Terminate(thread_id);
         }
       }
     }
@@ -733,7 +735,7 @@ struct TLAScheduler : Scheduler {
       } else {
         // It was a not new task, hence, we recreated in early.
       }
-      (*task)->Resume();
+      (*task)->Resume(frame.thread_id);
     }
     coroutine_status.reset();
   }
@@ -780,6 +782,7 @@ struct TLAScheduler : Scheduler {
     }
     auto& task = thread.tasks.back();
     frame.task = &task;
+    frame.thread_id = thread_id;
 
     thread_id_history.push_back(thread_id);
     if (is_new) {
@@ -787,7 +790,7 @@ struct TLAScheduler : Scheduler {
     }
 
     assert(!task->IsBlocked());
-    task->Resume();
+    task->Resume(thread_id);
     UpdateFullHistory(thread_id, task, is_new);
     bool is_finished = task->IsReturned();
     if (is_finished) {

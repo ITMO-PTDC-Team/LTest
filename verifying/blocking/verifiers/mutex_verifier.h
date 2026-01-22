@@ -36,6 +36,8 @@ struct MutexVerifier {
     return std::nullopt;
   }
 
+  void Reset() { status.clear(); }
+
   // NOTE(kmitkin): we cannot just store number of thread that holds mutex
   //                because Lock can finish before Unlock!
   std::unordered_map<size_t, size_t> status;

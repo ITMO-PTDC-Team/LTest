@@ -166,19 +166,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   }
 
   void StartNextRound() override {
-    this->new_task_id = 0;
-    //    log() << "depth: " << current_depth << "\n";
-    // Reconstruct target as we start from the beginning.
-    this->TerminateTasks();
-    for (auto& thread : this->threads) {
-      // We don't have to keep references alive
-      while (thread.size() > 0) {
-        thread.pop_back();
-      }
-      thread = StableVector<Task>();
-    }
-    // this->state.Reset();
-
+    BaseStrategyWithThreads<TargetObj, Verifier>::StartNextRound();
     UpdateStatistics();
   }
 

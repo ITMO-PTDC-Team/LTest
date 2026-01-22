@@ -36,6 +36,7 @@ concept StrategyTaskVerifier = requires(T a) {
   } -> std::same_as<bool>;
   { a.OnFinished(std::declval<Task&>(), size_t()) } -> std::same_as<void>;
   { a.ReleaseTask(size_t()) } -> std::same_as<std::optional<std::string>>;
+  { a.Reset() } -> std::same_as<void>;
 };
 
 // Strategy is the general strategy interface which decides which task
@@ -159,6 +160,31 @@ struct BaseStrategyWithThreads : public Strategy {
     return threads;
   }
 
+  void StartNextRound() override {
+    this->new_task_id = 0;
+    // also resets the state
+    this->TerminateTasks();
+
+    // this could happen if we run custom scenarios
+    // (which could have arbitrary number of threads)
+    if (this->threads.size() != this->threads_count) {
+      this->threads.clear();
+      for (size_t i = 0; i < this->threads_count; ++i) {
+        this->threads.emplace_back();
+      }
+    } else {
+      // more optimal allocations-wise implementation
+      for (auto& thread : this->threads) {
+        // We don't have to keep references alive
+        while (thread.size() > 0) {
+          thread.pop_back();
+        }
+      }
+    }
+
+    this->round_schedule.resize(this->threads_count, -1);
+  }
+
   void ResetCurrentRound() override {
     TerminateTasks();
     for (auto& thread : threads) {
@@ -177,6 +203,8 @@ struct BaseStrategyWithThreads : public Strategy {
     // custom round threads count might differ from the generated rounds
     this->threads.resize(custom_threads_count);
     this->round_schedule.resize(custom_threads_count, -1);
+    this->sched_checker.Reset();
+    this->state = std::make_unique<TargetObj>();
 
     for (size_t current_thread = 0; current_thread < custom_threads_count;
          ++current_thread) {

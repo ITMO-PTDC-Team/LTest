@@ -2,10 +2,13 @@
 
 #include <iostream>
 
+#include "../logger.h"
 #include "common.h"
 #include "graph.h"
 
 namespace ltest::wmm {
+
+extern bool wmm_enabled;
 
 class ExecutionGraph {
  public:
@@ -21,12 +24,12 @@ class ExecutionGraph {
 
   // Empties graph events and sets new number of threads.
   void Reset(int nThreads) {
-    std::cout << "Reset Graph: threads=" << nThreads << std::endl;
+    log() << "Reset Graph: threads=" << nThreads << "\n";
     this->nThreads = nThreads;
     this->nextLocationId = 0;
 
     graph.Reset(nThreads);
-    graph.Print(std::cout);
+    graph.Print(log());
   }
 
   // When new location is constructed, it registers itself in the wmm-graph
@@ -34,12 +37,12 @@ class ExecutionGraph {
   template <class T>
   int RegisterLocation(T value) {
     int currentLocationId = nextLocationId++;
-    std::cout << "Register location: loc-" << currentLocationId
-              << ", init value=" << value << std::endl;
+    log() << "Register location: loc-" << currentLocationId
+          << ", init value=" << value << "\n";
     graph.AddWriteEvent(currentLocationId, WmmUtils::INIT_THREAD_ID,
                         MemoryOrder::SeqCst, value);
 
-    graph.Print(std::cout);
+    graph.Print(log());
     return currentLocationId;
   }
 
@@ -47,22 +50,22 @@ class ExecutionGraph {
   T Load(int location, int threadId, MemoryOrder order) {
     // TODO: if we now only do real atomics, then they should be stored in
     // graph, I guess?
-    std::cout << "Load: loc-" << location << ", thread=" << threadId
-              << ", order=" << WmmUtils::OrderToString(order) << std::endl;
+    log() << "Load: loc-" << location << ", thread=" << threadId
+          << ", order=" << WmmUtils::OrderToString(order) << "\n";
     T readValue = graph.AddReadEvent<T>(location, threadId, order);
 
-    graph.Print(std::cout);
+    graph.Print(log());
     return readValue;
   }
 
   template <class T>
   void Store(int location, int threadId, MemoryOrder order, T value) {
-    std::cout << "Store: loc-" << location << ", thread=" << threadId
-              << ", order=" << WmmUtils::OrderToString(order)
-              << ", value=" << value << std::endl;
+    log() << "Store: loc-" << location << ", thread=" << threadId
+          << ", order=" << WmmUtils::OrderToString(order) << ", value=" << value
+          << "\n";
     graph.AddWriteEvent(location, threadId, order, value);
 
-    graph.Print(std::cout);
+    graph.Print(log());
   }
 
   // TODO: generalize to any other type of the RMW operation
@@ -72,15 +75,15 @@ class ExecutionGraph {
   std::pair<bool, T> ReadModifyWrite(int location, int threadId, T* expected,
                                      T desired, MemoryOrder success,
                                      MemoryOrder failure) {
-    std::cout << "RMW: loc-" << location << ", thread=" << threadId
-              << ", expected=" << *expected << ", desired=" << desired
-              << ", success=" << WmmUtils::OrderToString(success)
-              << ", failure=" << WmmUtils::OrderToString(failure) << std::endl;
+    log() << "RMW: loc-" << location << ", thread=" << threadId
+          << ", expected=" << *expected << ", desired=" << desired
+          << ", success=" << WmmUtils::OrderToString(success)
+          << ", failure=" << WmmUtils::OrderToString(failure) << "\n";
     auto rmwResult = graph.AddRMWEvent<T>(location, threadId, expected, desired,
                                           success, failure);
-    graph.Print(std::cout);
-    std::cout << "RMW result: " << (rmwResult.first ? "MODIFY" : "READ")
-              << ", value=" << rmwResult.second << std::endl;
+    graph.Print(log());
+    log() << "RMW result: " << (rmwResult.first ? "MODIFY" : "READ")
+          << ", value=" << rmwResult.second << "\n";
     return rmwResult;
   }
 

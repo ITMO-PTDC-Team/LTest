@@ -7,6 +7,7 @@
 #include <ranges>
 #include <unordered_set>
 
+#include "../logger.h"
 #include "common.h"
 #include "edge.h"
 #include "event.h"
@@ -37,8 +38,8 @@ class Graph {
     for (auto readFromEvent : shuffledEvents) {
       // try reading from `readFromEvent`
       if (TryCreateRfEdge(readFromEvent, event)) {
-        std::cout << "Read event " << event->AsString() << " now reads from "
-                  << readFromEvent->AsString() << std::endl;
+        log() << "Read event " << event->AsString() << " now reads from "
+              << readFromEvent->AsString() << "\n";
         break;
       }
     }
@@ -92,8 +93,8 @@ class Graph {
     for (auto readFromEvent : shuffledEvents) {
       // try reading from `readFromEvent`
       if (TryCreateRfEdge(readFromEvent, event)) {
-        std::cout << "RMW event " << event->AsString() << " now reads from "
-                  << readFromEvent->AsString() << std::endl;
+        log() << "RMW event " << event->AsString() << " now reads from "
+              << readFromEvent->AsString() << "\n";
         break;
       }
     }
@@ -108,18 +109,19 @@ class Graph {
         Event::GetReadValue<T>(event)};
   }
 
-  void Print(std::ostream& os) const {
-    os << "Graph edges:" << std::endl;
+  template <typename Out>
+  void Print(Out& os) const {
+    os << "Graph edges:" << "\n";
     if (edges.empty())
       os << "<empty>";
     else {
       for (const auto& edge : edges) {
         os << events[edge.from]->AsString() << " ->"
            << WmmUtils::EdgeTypeToString(edge.type) << " "
-           << events[edge.to]->AsString() << std::endl;
+           << events[edge.to]->AsString() << "\n";
       }
     }
-    os << std::endl;
+    os << "\n";
   }
 
  private:
@@ -236,15 +238,15 @@ class Graph {
 
     bool isConsistent = IsConsistent();
     if (isConsistent) {
-      std::cout << "Consistent graph:" << std::endl;
-      Print(std::cout);
+      log() << "Consistent graph:" << "\n";
+      Print(log());
       // preserve added edges and other modifications
       ApplySnapshot();
     } else {
-      std::cout << "Not consistent graph:" << std::endl;
-      Print(std::cout);
+      log() << "Not consistent graph:" << "\n";
+      Print(log());
       // removes all added edges
-      std::cout << "Discarding snapshot" << std::endl;
+      log() << "Discarding snapshot" << "\n";
       DiscardSnapshot();
       // remove rf-edge
       read->SetReadFromEvent(nullptr);
@@ -254,7 +256,7 @@ class Graph {
       }
       // restore last seq-cst write event
       lastSeqCstWriteEvents[read->location] = oldLastSeqCstWriteEvent;
-      Print(std::cout);
+      Print(log());
     }
 
     return isConsistent;
@@ -546,9 +548,9 @@ class Graph {
     // for mo edges we might add duplicates, so we need to check that such
     // mo-edge does not exist
     if (type == EdgeType::MO && ExistsEdge(type, from, to)) {
-      // std::cout << "Edge already exists: " << events[from]->AsString() << "
+      // log() << "Edge already exists: " << events[from]->AsString() << "
       // --" << WmmUtils::EdgeTypeToString(type) << "--> "
-      //           << events[to]->AsString() << std::endl;
+      //           << events[to]->AsString() << "\n";
       return;
     }
 

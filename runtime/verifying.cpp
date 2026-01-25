@@ -9,6 +9,10 @@
 
 namespace ltest {
 
+namespace wmm {
+bool wmm_enabled = false;
+}  // namespace wmm
+
 template <>
 std::string toString<int>(const int &a) {
   return std::to_string(a);
@@ -74,6 +78,9 @@ DEFINE_int32(exploration_runs, 15,
              "minimization step");
 DEFINE_int32(minimization_runs, 15,
              "Number of minimization runs for smart minimizor");
+DEFINE_bool(wmm_enabled, false,
+            "Enable WMM graph usage (all atomic operations will be performed "
+            "via this graph");
 DEFINE_int32(depth, 0,
              "How many tasks can be executed on one thread(Only for TLA)");
 DEFINE_bool(verbose, false, "Verbosity");
@@ -91,6 +98,7 @@ void SetOpts(const DefaultOptions &def) {
   FLAGS_weights = def.weights;
   FLAGS_exploration_runs = def.exploration_runs;
   FLAGS_minimization_runs = def.minimization_runs;
+  FLAGS_wmm_enabled = def.wmm_enabled;
 }
 
 // Extracts required opts, returns the rest of args.
@@ -104,6 +112,7 @@ Opts ParseOpts() {
                                    // scenarios with locks is not supported
   opts.exploration_runs = FLAGS_exploration_runs;
   opts.minimization_runs = FLAGS_minimization_runs;
+  opts.wmm_enabled = wmm_enabled = FLAGS_wmm_enabled;
   opts.verbose = FLAGS_verbose;
   opts.typ = FromLiteral(std::move(FLAGS_strategy));
   opts.depth = FLAGS_depth;

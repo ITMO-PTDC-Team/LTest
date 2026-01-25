@@ -2,13 +2,20 @@
 
 #include <atomic>
 
+#include "lib.h"
+#include "wmm/wmm.h"
+
 namespace ltest {
+
+using namespace wmm;
 
 // This class is intended to be the entry point
 // for the weak memory logic later.
 template <class T>
 class latomic {
   std::atomic<T> atomicValue;
+  int locationId;
+  ExecutionGraph& wmmGraph = ExecutionGraph::getInstance();
 
  public:
 #if __cplusplus >= 201703L  // C++17
@@ -17,8 +24,12 @@ class latomic {
 #endif
 
   // Constructors
-  constexpr latomic() noexcept = default;
-  constexpr latomic(T desired) noexcept : atomicValue(desired) {}
+  constexpr latomic() noexcept : latomic(T{}) {}
+  constexpr latomic(T desired) noexcept : atomicValue(desired) {
+    if (wmm_enabled) {
+      locationId = wmmGraph.RegisterLocation(desired);
+    }
+  }
   latomic(const latomic&) = delete;
   latomic& operator=(const latomic&) = delete;
   latomic& operator=(const latomic&) volatile = delete;
@@ -45,28 +56,46 @@ class latomic {
   void store(T desired,
              std::memory_order order = std::memory_order_seq_cst) noexcept {
     atomicValue.store(desired, order);
+
+    if (wmm_enabled && this_coro) {
+      // std::cout << "Store: coro id=" << this_coro->GetId() << ", thread=" <<
+      // this_thread_id
+      //           << ", name=" << this_coro->GetName() << std::endl;
+      wmmGraph.Store(locationId, this_thread_id, WmmUtils::OrderFromStd(order),
+                     desired);
+    }
   }
 
   void store(T desired, std::memory_order order =
                             std::memory_order_seq_cst) volatile noexcept {
-    atomicValue.store(desired, order);
+    store(desired, order);
   }
 
   // load
   T load(std::memory_order order = std::memory_order_seq_cst) const noexcept {
+    if (wmm_enabled && this_coro) {
+      // std::cout << "Load: coro id=" << this_coro->GetId() << ", thread=" <<
+      // this_thread_id
+      //           << ", name=" << this_coro->GetName() << std::endl;
+      T value = wmmGraph.Load<T>(locationId, this_thread_id,
+                                 WmmUtils::OrderFromStd(order));
+      return value;
+    }
+
     return atomicValue.load(order);
   }
 
   T load(std::memory_order order = std::memory_order_seq_cst) const
       volatile noexcept {
-    return atomicValue.load(order);
+    return load(order);
   }
 
   // operator T()
-  operator T() const noexcept { return atomicValue.load(); }
+  operator T() const noexcept { return load(); }
 
-  operator T() const volatile noexcept { return atomicValue.load(); }
+  operator T() const volatile noexcept { return load(); }
 
+  // TODO: add wmm support for exchange
   // exchange
   T exchange(T desired,
              std::memory_order order = std::memory_order_seq_cst) noexcept {
@@ -78,57 +107,95 @@ class latomic {
     return atomicValue.exchange(desired, order);
   }
 
-  // compare_exchange_weak
+  // TODO: for CASes there more complex rule how to get 'failure' order from
+  // 'success', implement them instead of blind defaults compare_exchange_weak
   bool compare_exchange_weak(T& expected, T desired, std::memory_order success,
                              std::memory_order failure) noexcept {
-    return atomicValue.compare_exchange_weak(expected, desired, success,
-                                             failure);
+    // we want to prevent actual atomics from overriding 'expected' value on rmw
+    // failure
+    T myExpected = expected;
+    bool value = atomicValue.compare_exchange_weak(myExpected, desired, success,
+                                                   failure);
+
+    if (wmm_enabled && this_coro) {
+      // std::cout << "Compare exchange weak: coro id=" << this_coro->GetId() <<
+      // ", thread=" << this_thread_id
+      //           << ", name=" << this_coro->GetName() << std::endl;
+      auto [rmwSuccess, readValue] = wmmGraph.ReadModifyWrite(
+          locationId, this_thread_id, &expected, desired,
+          WmmUtils::OrderFromStd(success), WmmUtils::OrderFromStd(failure));
+      value = rmwSuccess;
+    } else {
+      // update expected only if we are not in a coroutine
+      expected = myExpected;
+    }
+
+    return value;
   }
 
   bool compare_exchange_weak(T& expected, T desired, std::memory_order success,
                              std::memory_order failure) volatile noexcept {
-    return atomicValue.compare_exchange_weak(expected, desired, success,
-                                             failure);
+    return compare_exchange_weak(expected, desired, success, failure);
   }
 
   bool compare_exchange_weak(
       T& expected, T desired,
       std::memory_order order = std::memory_order_seq_cst) noexcept {
-    return atomicValue.compare_exchange_weak(expected, desired, order);
+    return compare_exchange_weak(expected, desired, order,
+                                 std::memory_order_seq_cst);
   }
 
   bool compare_exchange_weak(
       T& expected, T desired,
       std::memory_order order = std::memory_order_seq_cst) volatile noexcept {
-    return atomicValue.compare_exchange_weak(expected, desired, order);
+    return compare_exchange_weak(expected, desired, order,
+                                 std::memory_order_seq_cst);
   }
 
   // compare_exchange_strong
   bool compare_exchange_strong(T& expected, T desired,
                                std::memory_order success,
                                std::memory_order failure) noexcept {
-    return atomicValue.compare_exchange_strong(expected, desired, success,
-                                               failure);
+    // we want to prevent actual atomics from overriding 'expected' value on rmw
+    // failure
+    T myExpected = expected;
+    bool value = atomicValue.compare_exchange_strong(myExpected, desired,
+                                                     success, failure);
+
+    if (wmm_enabled && this_coro) {
+      auto [rmwSuccess, readValue] = wmmGraph.ReadModifyWrite(
+          locationId, this_thread_id, &expected, desired,
+          WmmUtils::OrderFromStd(success), WmmUtils::OrderFromStd(failure));
+      value = rmwSuccess;
+    } else {
+      // update expected only if we are not in a coroutine
+      expected = myExpected;
+    }
+
+    return value;
   }
 
   bool compare_exchange_strong(T& expected, T desired,
                                std::memory_order success,
                                std::memory_order failure) volatile noexcept {
-    return atomicValue.compare_exchange_strong(expected, desired, success,
-                                               failure);
+    return compare_exchange_strong(expected, desired, success, failure);
   }
 
   bool compare_exchange_strong(
       T& expected, T desired,
       std::memory_order order = std::memory_order_seq_cst) noexcept {
-    return atomicValue.compare_exchange_strong(expected, desired, order);
+    return compare_exchange_strong(expected, desired, order,
+                                   std::memory_order_seq_cst);
   }
 
   bool compare_exchange_strong(
       T& expected, T desired,
       std::memory_order order = std::memory_order_seq_cst) volatile noexcept {
-    return atomicValue.compare_exchange_strong(expected, desired, order);
+    return compare_exchange_strong(expected, desired, order,
+                                   std::memory_order_seq_cst);
   }
+
+  // TODO: operations below need to be implemented in WMM graph as well
 
 // wait
 #if __cplusplus >= 202002L  // C++20

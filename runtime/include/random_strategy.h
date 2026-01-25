@@ -80,6 +80,14 @@ struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
     return std::nullopt;
   }
 
+  void SetCustomRound(CustomRound &custom_round) override {
+    PickStrategy<TargetObj, Verifier>::SetCustomRound(custom_round);
+
+    size_t custom_threads_count = custom_round.threads.size();
+    weights.resize(custom_threads_count, 1);
+    pick_weights.clear();
+  }
+
  private:
   std::vector<int> weights;
   std::vector<int> pick_weights;

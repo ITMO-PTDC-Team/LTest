@@ -29,8 +29,8 @@ function(verify_target_without_plugin target)
             COMMAND ${CLANG_TOOL_EXECUTABLE}
                     -p=${CMAKE_BINARY_DIR}/compile_commands.json # passing compilation database, make sure CMAKE_EXPORT_COMPILE_COMMANDS flag is set
                     --temp-prefix ${CLANG_TOOL_TMP_PREFIX}
-                    --replace-names ::std::mutex,::std::shared_mutex,::std::condition_variable
-                    --insert-names  ltest::mutex,ltest::shared_mutex,ltest::condition_variable
+                    --replace-names ::std::mutex,::std::shared_mutex,::std::condition_variable,::std::atomic
+                    --insert-names  ltest::mutex,ltest::shared_mutex,ltest::condition_variable,ltest::latomic
                     ${CMAKE_CURRENT_SOURCE_DIR}/${source_name}
             DEPENDS ${CLANG_TOOL}
             COMMENT "Running Clang Pass Tool on ${source_name}"

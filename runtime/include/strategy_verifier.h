@@ -9,4 +9,6 @@ struct DefaultStrategyTaskVerifier {
   inline std::optional<std::string> ReleaseTask(size_t thread_id) {
     return std::nullopt;
   }
+
+  inline void Reset() {}
 };

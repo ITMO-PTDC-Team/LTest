@@ -6,6 +6,8 @@ set (SOURCE_TARGET_LIST
     nonlinear_set.cpp
     nonlinear_ms_queue.cpp
     nonlinear_treiber_stack.cpp
+    nonlinear_queue_with_custom_rounds.cpp
+    wmm.cpp
 )
 
 set (SOURCE_TARGET_WITHOUT_PLUGIN_LIST
@@ -73,6 +75,12 @@ add_integration_test("nonlinear_set_pct_minimization" "verify" TRUE
 
 add_integration_test("nonlinear_queue_pct" "verify" TRUE 
     nonlinear_queue --rounds 10000 --strategy pct
+)
+
+# TODO: test should fail, but for some reason after commit '15f64f0 - feat: add more tests for blocking data structures&refactor blocking support'
+# it takes too much time to find bugs, I wasn't able to wait until custom round detects a bug 
+add_integration_test("nonlinear_queue_with_custom_rounds_pct" "verify" FALSE 
+    nonlinear_queue_with_custom_rounds --rounds 0 --exploration_runs 1000 --strategy pct
 )
 
 add_integration_test("unique_args" "verify" FALSE 

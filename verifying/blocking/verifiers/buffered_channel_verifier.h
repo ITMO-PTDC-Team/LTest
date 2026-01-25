@@ -46,8 +46,14 @@ struct BufferedChannelVerifier {
     return std::nullopt;
   }
 
-  size_t senders_;
-  size_t receivers_;
-  size_t size_;
+  void Reset() {
+    senders_ = 0;
+    receivers_ = 0;
+    size_ = 0;
+  }
+
+  size_t senders_ = 0;
+  size_t receivers_ = 0;
+  size_t size_ = 0;
 };
 }  // namespace spec

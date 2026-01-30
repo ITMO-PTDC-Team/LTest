@@ -395,6 +395,8 @@ struct StrategyScheduler : public SchedulerWithReplay {
       }
       auto [next_task, is_new, thread_id] = t.value();
 
+      next_task->clearWakeupCondition();
+
       // fill the sequential history
       if (is_new) {
         sequential_history.emplace_back(Invoke(next_task, thread_id));

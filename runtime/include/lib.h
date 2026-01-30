@@ -50,7 +50,15 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   // Check if the coroutine is returned.
   bool IsReturned() const;
 
-  // TODO(bitree):: getReady?
+  void setWakeupCondition(std::function<bool()> cond);
+
+  void clearWakeupCondition();
+
+  bool hasWakeupCondition() const;
+
+  bool checkWakeupCondition() const;
+
+  bool isReadyToRun() const;
 
   // Returns task id.
   int GetId() const;
@@ -84,7 +92,8 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
 
   BlockState GetBlockState() { return fstate; }
 
-  bool IsBlocked() { return block_manager.IsBlocked(fstate, this); }
+  // TODO(bitree):: timely added isReadyToRun()
+  bool IsBlocked() { return block_manager.IsBlocked(fstate, this) && isReadyToRun(); }
 
   // Checks if the coroutine is parked.
   bool IsParked() const;
@@ -108,6 +117,8 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   ValueWrapper ret{};
   // Is coroutine returned.
   bool is_returned{};
+  // condition of wake up
+  std::function<bool()> wakeup_condition_{nullptr};
   // Futex state on which coroutine is blocked.
   BlockState fstate{};
   // Name.

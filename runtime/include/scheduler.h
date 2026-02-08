@@ -11,6 +11,7 @@
 
 #include "lib.h"
 #include "lincheck.h"
+#include "lincheck_dual.h"
 #include "logger.h"
 #include "minimization.h"
 #include "minimization_smart.h"
@@ -232,6 +233,12 @@ struct BaseStrategyWithThreads : public Strategy {
   // We do it in a dangerous way: in random order.
   // Actually, we assume obstruction free here.
   void TerminateTasks() {
+    // Enter termination mode so blocked dual operations can exit their wait loops.
+    ltest_round_terminating = true;
+
+    // Wake everybody up: after this IsBlocked() becomes false for all tasks
+    // (until they block again), so termination can make progress.
+    block_manager.queues.clear();
     auto& round_schedule = this->round_schedule;
     assert(round_schedule.size() == this->threads.size() &&
            "sizes expected to be the same");
@@ -282,6 +289,7 @@ struct BaseStrategyWithThreads : public Strategy {
         }
       }
     }
+    ltest_round_terminating = false;
     state.reset(new TargetObj{});
   }
 
@@ -857,4 +865,116 @@ struct TLAScheduler : Scheduler {
   StableVector<Frame> frames;
   Verifier verifier{};
   std::function<void()> cancel;
+};
+
+// DualStrategyScheduler: builds dual history by:
+// - writing RequestInvoke for dual tasks when task is_new
+// - draining task->DrainDualEvents() after each Resume()
+// Checker is DualModelChecker.
+template <StrategyTaskVerifier Verifier>
+struct DualStrategyScheduler : public DualScheduler {
+  DualStrategyScheduler(Strategy& sched_class, DualModelChecker& checker,
+                        PrettyPrinter& pretty_printer,
+                        size_t max_tasks, size_t max_rounds)
+      : strategy(sched_class),
+        checker(checker),
+        pretty_printer(pretty_printer),
+        max_tasks(max_tasks),
+        max_rounds(max_rounds) {}
+
+  DualScheduler::Result Run() override {
+    for (size_t i = 0; i < max_rounds; ++i) {
+      log() << "run round: " << i << "\n";
+      auto res = RunRound();
+      if (res.has_value()) {
+        return res;
+      }
+      log() << "===============================================\n\n";
+      log().flush();
+      strategy.StartNextRound();
+    }
+    return std::nullopt;
+  }
+
+ private:
+  DualScheduler::Result RunRound() {
+    DualScheduler::SeqHistory seq;
+    DualScheduler::FullHistory full;
+
+    bool deadlock_detected{false};
+
+    for (size_t finished_tasks = 0; finished_tasks < max_tasks;) {
+      auto t = strategy.Next();
+      if (!t.has_value()) {
+        deadlock_detected = true;
+        break;
+      }
+      auto [task, is_new, thread_id] = t.value();
+
+      // Start event.
+      if (is_new) {
+        if (task->IsDual()) {
+          seq.emplace_back(RequestInvoke(task, static_cast<int>(thread_id)));
+        } else {
+          seq.emplace_back(Invoke(task, static_cast<int>(thread_id)));
+        }
+      }
+
+      full.emplace_back(task);
+
+      task->Resume();
+
+      // Drain dual events emitted from inside the task (request_done/followup...).
+      if (task->IsDual()) {
+        auto events = task->DrainDualEvents();
+        for (auto& e : events) {
+          switch (e.kind) {
+            case CoroBase::DualEventKind::RequestResponse:
+              seq.emplace_back(RequestResponse(task, static_cast<int>(thread_id)));
+              break;
+            case CoroBase::DualEventKind::FollowUpInvoke:
+              seq.emplace_back(FollowUpInvoke(task, static_cast<int>(thread_id)));
+              break;
+            case CoroBase::DualEventKind::FollowUpResponse:
+              seq.emplace_back(
+                  FollowUpResponse(task, e.result, static_cast<int>(thread_id)));
+              break;
+          }
+        }
+      }
+
+      // Finish.
+      if (task->IsReturned()) {
+        finished_tasks++;
+        strategy.OnVerifierTaskFinish(task, thread_id);
+
+        if (!task->IsDual()) {
+          auto result = task->GetRetVal();
+          seq.emplace_back(Response(task, result, static_cast<int>(thread_id)));
+        }
+      }
+    }
+
+    // Print dual history for debugging.
+    pretty_printer.PrettyPrint(seq, log());
+
+    if (deadlock_detected) {
+      return DualScheduler::NonLinearizableHistory{
+          full, seq, DualScheduler::NonLinearizableHistory::Reason::DEADLOCK};
+    }
+
+    if (!checker.Check(seq)) {
+      return DualScheduler::NonLinearizableHistory{
+          full, seq,
+          DualScheduler::NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY};
+    }
+
+    return std::nullopt;
+  }
+
+  Strategy& strategy;
+  DualModelChecker& checker;
+  PrettyPrinter& pretty_printer;
+  size_t max_tasks;
+  size_t max_rounds;
 };

@@ -1,401 +1,169 @@
-## План
-
-- не запускать корутину с не выполненым условием
-сделал 
-- при запуске обнулять условие
-сделал
-- при засыпанием проверить условие
-- на паузе. Надо пробросить
-- определять какой тип засыпания:
-а) наш илд -> ничего особенного
-б) его илд -> значит следующий будет followup
-- WIP (прикрепить scheduler_dual_state.h в планировщик)
-
-Вопрос:
-а) дедлок? - есть. 
--просто счетчик
--последнию операцию 
-
-б)
-
-await_ready/await_suspend
-
-pipeline 
+## 1. Детали спецификации
 
 
+### 1) Термины
 
-# поддержка в целом корутин
+- **Обычная (тотальная) операция**: всегда может завершиться (не ждёт).
+- **Дуальная операция**: может завершиться сразу или зарегистрировать ожидание и завершиться позже после матчинга.
 
-LTest уже имеет механизм для инструментирования C++20 корутин?
-Вроде да - codegen/yieldpacc.cpp
+---
 
-Вставка вызовов для переключения вокруг:
+### 2) Модель дуальной операции: request + follow-up
 
-* await_ready - проверка готовности
+Каждая дуальная операция рассматривается как двухфазная:
 
-* await_suspend - приостановка корутины
+1) **Request**  
+   Операция делает попытку выполниться или регистрирует ожидание (reservation).
+   После request операция либо готова завершиться (если матчинг сразу), либо становится **blocked**.
 
-* await_resume - возобновление корутины
+2) **Follow-up**  
+   Когда условие выполнено (пришёл matching send/receive), операция завершает выполнение и выдаёт итоговый результат.
 
-* initial_suspend/final_suspend - точки жизни корутины
+---
 
-Сейчас вроде умеем: 
-Было:
+### 3) История для checker’а (SeqHistory) в dual режиме
+
+Для обычных операций остаются:
+- `Invoke(op)`
+- `Response(op, result)`
+
+Для дуальных операций вводим 4 события:
+- `RequestInvoke(op)`
+- `RequestResponse(op)`  — request завершён (без результата)
+- `FollowUpInvoke(op)`
+- `FollowUpResponse(op, result)` — итоговый результат операции
+
+---
+
+### 4) Жёсткий порядок событий внутри одной dual-операции
+
+В бета фиксируем правило:
+
+Всегда:
+`RequestInvoke → RequestResponse → FollowUpInvoke → FollowUpResponse`
+
+Даже если реализация структуры “разбудила” другую корутину внутри `await_suspend`, логирование должно быть приведено к этому порядку 
+
+---
+
+### 5) Что считается blocked и как трактуется “все ждут”
+
+- Дуальная операция считается **blocked**, если:
+  - request уже завершён (ожидание зарегистрировано),
+  - follow-up ещё не завершён (результата нет).
+
+- Если в раунде **нет runnable задач**, потому что все активные операции blocked и никто не может их разбудить 
+- -> это **DEADLOCK** как результат выполнения (а не падение/assert).
+
+---
+
+### 6) Незавершённые операции (truncated history)
+
+- request может быть без follow-up (операция не дождалась матчинга в пределах раунда).
+---
+
+
+## 2. Добавить публичный API для dual-операций 
+Нужно дать пользователю способ объявлять операции вида `send()/receive()` которые возвращают awaitable/promise и “живут в два этапа”.
+
+Что:
+- `SpecDual` — отдельный режим запуска, где используется dual-checker.
+- `LTEST_ENTRYPOINT_DUAL` (или общий entrypoint с флагом режима).
+- `target_method_dual(...)` — регистрация dual-метода:
+  - генератор аргументов,
+  - имя операции,
+  - способ вызвать request-фазу,
+  - способ получить результат на followup-фазе.
+
+---
+
+## 3. Представление dual в рантайме: runnable/blocked без ассертов
+- Ввести внутреннее состояние dual-операции:
+  - `request_started/request_finished`
+  - `followup_finished`
+  - “есть ли сейчас право продолжать” (runnable) / “ждёт” (blocked)
+- Явно определить, что состояние:
+  - `request_finished && !followup_finished` -> **blocked**
+- Встроить это в scheduler/strategy так же, как сейчас встроены `Task::IsBlocked()` через `BlockManager`:
+  - стратегии **не выбирают** blocked dual-задачи,
+  - если все задачи blocked -> scheduler возвращает `DEADLOCK` как результат(временно легко скинуть).
+
+---
+
+## 4. Генерация и запись истории для dual (request/followup)
+Нужно выбрать, как dual будет виден checker’у.
+
+- расширить формат `SeqHistory`, чтобы включать события:
+  - `RequestInvoke/RequestResponse`
+  - `FollowUpInvoke/FollowUpResponse`
+  - плюс обычные `Invoke/Response` для не-dual операций
+
+
+- стабильную идентичность “одной dual-операции” между request и followup (общий id/handle);
+- корректный real-time порядок событий (чтобы followup не “писался асинхронно” вне контроля scheduler).
+
+
+---
+
+## 5. Dual checker 
+Сделать отдельный `DualModelChecker`
+
+- поддерживает метод-map, где метод может быть:
+  - обычным (nonblocking) как сейчас,
+  - или “blocking spec method” (factory), который создаёт объект “ожидающей операции” в спецификации.
+- При линеаризации:
+  - `RequestInvoke` → запускаем spec-метод и сохраняем “pending request” в структуре активных request’ов (по id).
+  - `FollowUpInvoke` → разрешаем линеаризовать только если соответствующий pending request в спецификации уже “готов”, и результат совпадает.
+
+- использовать `ValueWrapper` вместо `int`
+---
+
+## 6. Инструментация C++20 coroutine - не сделано
+Что сделать:
+- использовать текущий `coyieldpass` (или расширить его), чтобы:
+  - вставлять маркеры/yield в ключевые coroutine-точки, релевантные для dual (await_ready/await_suspend/await_resume, initial/final suspend),
+  - обеспечить, что resuming другой coroutine не превращается в кусок без переключений.
+
+---
+
+## 7. Инфраструктура: pretty print, логирование, реплей
+Чтобы dual было реально использовать:
+- расширить pretty printer: печать request/followup событий и их связки (id).
+- обязательно обеспечить корректный reset round: никаких висячих корутин/ожиданий, корректная зачистка blocked.
+- если dual-операции требуют “особой” зачистки, сделать явный механизм (аналог `ReleaseTask`, но корректный).
+
+---
+
+Можно смотреть генерить
+
+## 8. Производительность - думаю?
+Старая ветка имела replay-from-start и отсутствие кеша. В основной ветке стоит заранее заложить улучшение:
+
+- Разделить спецификацию на:
+  - копируемое “логическое состояние структуры”
+  - и абстрактное представление pending requests (тоже копируемое)
+- Тогда можно включить кеширование, как в WGL checker (пара “маска линеризации + spec state”), вместо постоянного replay.
+
+
+---
+
+## Шаг 9. Другие dual структуры запустить - не делал
+
+## Шаг 10. Минимизатор - не делал
+
 ```c++
-co_await mutex.lock();
-
+Result res = co_await expr;
 ```
-Стало:
+-->
 
 ```c++
-CoroutineStatusChange("mutex_lock_suspend", true);  
-co_await mutex.lock();
-CoroutineStatusChange("mutex_lock_suspend", false); 
-
-```
-
-CoroutineStatusChange в lib.cpp
-```c++
-extern "C" void CoroutineStatusChange(char* name, bool start) {
-// assert(!coroutine_status.has_value());
-coroutine_status.emplace(name, start);
-CoroYield();
+auto&& awaiter = expr;
+if (!awaiter.await_ready()) {
+  auto suspend_result = awaiter.await_suspend(handle);
 }
+Result val = awaiter.await_resume();
+return val;
 ```
 
-Чего не делает:
 
-* Не регистрирует корутину в BlockManager
-
-* Не связывает ожидание с конкретным условием
-
-* Не управляет пробуждением
-
-Нужно создать связь:
-
-Когда C++20 корутина ждет мьютекса -> соответствующая LTest корутина тоже ждет
-
-? Когда C++20 корутина пробуждается -> LTest корутина тоже пробуждается
-(или просто дается возможность пробудиться)
-
-Подзадача:
-
-* проверить точно ли так сейчас делает LLVM IR?
-* поддерживает разные типы корутин
-
-# History 
-
-
-# BlockManager  + CoroutineStatusChange
-
-Надо научиться регаться на ожидание.
-Заходим и засыпаем на co_await.
-
-Пробуждение - новая точка линеризации будет.
-
-# Scheduler  + Strategy
-
-# strategy_verifier?
-
-# LinearizabilityChecker
-WGL - у каждой функции одна точка линеризации 
-
-Из-за этого хочется разбить на две функции. Чтобы не трогать эту часть.
-
-У нас в коде частичный метод (например lock) он как один. Так что если мы запустили  lock, то мы уже не сможем выйти из него без успеха. WGL не хочется менять. Надо просто от вызов разбить на Invoke(request), Response(Request), Invoke(FollowUp), Response(FollowUp, false)..., Invoke(FollowUp), Response(FollowUp, true) и тогда ничего в WGL не надо менять
-
-
-Предложение что-то типо:
-
-```c++
-extern "C" void CoroutineStatusChange(char* name, bool start) {
-  coroutine_status.emplace(name, start);
-  
-  if (start) {
-    // Вход в co_await - завершаем текущую операцию
-    if (/* это первое ожидание для этой корутины */) {
-      this_coro->CompleteOperation(REQUEST_COMPLETE, generate_token());
-    } else {
-      this_coro->CompleteOperation(FOLLOWUP_FAILED, current_token());
-    }
-    
-    // Регистрируем в BlockManager
-    BlockState state = parse_state(name);
-    block_manager.BlockOn(state, this_coro.get());
-    
-  } else {
-    // Выход из co_await - начинаем новую операцию
-    if (/* условие выполнено */) {
-      scheduler->CreateFollowupOperation(this_coro, FOLLOWUP_SUCCESS);
-    } else {
-      scheduler->CreateFollowupOperation(this_coro, FOLLOWUP_RETRY);
-    }
-  }
-  
-  CoroYield();
-}
-```
-
-Кажется будет достаточно модификации планировщикая
-+ пробросить инфу на этот уровень как-то?
-
-LTest: 
-
-1. вопрос валидация
-strategy - дает функцию и поток (same)
-checker - same
-
-точек переключения = старые 
-+ новые (специальную обработку)
-+ scheduler меняю
-
-Invoke(request), Response(Request), 
-Invoke(FollowUp), Response(FollowUp, false),
-...
-Invoke(FollowUp), Response(FollowUp, false),
-Invoke(FollowUp), Response(FollowUp, true)
-
-2. вопрос нельзя дальше запускать
-
-
-
-3. вопрос про promise?
-
-
-
-
-Разберись в LTEST СНАЧАЛА: # LTEST
-библиотека для проверки структур данных на линеризуемость (корректность в многопточном мире).
-
-Немного о архитектуре:
-
-- codegen раставляет в методах, где нужно точки переключения (используются корутины)
-- strategy - выбирает следующую операцию, где будет исполняться до переключения
-  (ищет не линеризуемое исполнение)
-- checket - проверяет на существование эквивалентного последовательного исполнения сохранящее отнонение happens-before.
-  (проверяет линеризуемо ли исполнение)
-- minimizer - пытается уменьшить исполнение, чтобы оно оставалось некоректным.
-
-Задача: я сейчас разбираюсь с проектом. Буду кидать файлы, а ты должен мне будешь объяснять что написано. Первое что кидаю, структуру проекта. Попытайся объяснить для чего основные файлы(tree -L 3): .
-├── CMakeLists.txt
-├── Dockerfile
-├── README.md
-├── TODO.md
-├── build
-│   ├── CMakeCache.txt
-│   ├── CMakeFiles
-│   │   ├── 3.25.1
-│   │   ├── CMakeError.log
-│   │   ├── CMakeOutput.log
-│   │   ├── TargetDirectories.txt
-│   │   ├── cmake.check_cache
-│   │   ├── pkgRedirects
-│   │   └── rules.ninja
-│   ├── CPackConfig.cmake
-│   ├── CPackSourceConfig.cmake
-│   ├── CTestTestfile.cmake
-│   ├── DartConfiguration.tcl
-│   ├── Testing
-│   │   └── Temporary
-│   ├── _deps
-│   │   ├── abseil-cpp-build
-│   │   ├── abseil-cpp-src
-│   │   ├── abseil-cpp-subbuild
-│   │   ├── antlr_cpp-build
-│   │   ├── antlr_cpp-src
-│   │   ├── antlr_cpp-subbuild
-│   │   ├── fuzztest-build
-│   │   ├── fuzztest-src
-│   │   ├── fuzztest-subbuild
-│   │   ├── googletest-build
-│   │   ├── googletest-src
-│   │   ├── googletest-subbuild
-│   │   ├── re2-build
-│   │   ├── re2-src
-│   │   └── re2-subbuild
-│   ├── bin
-│   ├── build.ninja
-│   ├── clangpass
-│   │   ├── CMakeFiles
-│   │   ├── CTestTestfile.cmake
-│   │   ├── ClangPassTool
-│   │   └── cmake_install.cmake
-│   ├── cmake_install.cmake
-│   ├── codegen
-│   │   ├── CMakeFiles
-│   │   ├── CTestTestfile.cmake
-│   │   ├── cmake_install.cmake
-│   │   ├── libYieldPass.so -> libYieldPass.so.19.1
-│   │   └── libYieldPass.so.19.1
-│   ├── compile_commands.json
-│   ├── lib
-│   │   └── pkgconfig
-│   ├── options-pinned.h
-│   ├── runtime
-│   │   ├── CMakeFiles
-│   │   ├── CTestTestfile.cmake
-│   │   ├── cmake_install.cmake
-│   │   └── libruntime.so
-│   ├── syscall_intercept
-│   │   ├── CMakeFiles
-│   │   ├── CTestTestfile.cmake
-│   │   └── cmake_install.cmake
-│   ├── test
-│   │   ├── CMakeFiles
-│   │   ├── CTestTestfile.cmake
-│   │   ├── cmake_install.cmake
-│   │   └── runtime
-│   ├── third_party
-│   │   ├── CMakeFiles
-│   │   └── cmake_install.cmake
-│   └── verifying
-│       ├── CMakeFiles
-│       ├── CTestTestfile.cmake
-│       ├── blocking
-│       ├── cmake_install.cmake
-│       └── targets
-├── clangpass
-│   ├── CMakeLists.txt
-│   ├── ast_consumer.cpp
-│   ├── clangpass_tool.cpp
-│   ├── include
-│   │   └── clangpass.h
-│   └── refactor_matcher.cpp
-├── cmake-build-debug
-│   ├── CMakeCache.txt
-│   ├── CMakeFiles
-│   │   ├── 3.28.3
-│   │   ├── CMakeConfigureLog.yaml
-│   │   ├── CMakeScratch
-│   │   ├── clion-Debug-log.txt
-│   │   ├── clion-environment.txt
-│   │   ├── cmake.check_cache
-│   │   └── pkgRedirects
-│   ├── CPackConfig.cmake
-│   ├── CPackSourceConfig.cmake
-│   ├── DartConfiguration.tcl
-│   ├── Testing
-│   │   └── Temporary
-│   ├── _deps
-│   │   ├── abseil-cpp-build
-│   │   ├── abseil-cpp-src
-│   │   ├── abseil-cpp-subbuild
-│   │   ├── antlr_cpp-build
-│   │   ├── antlr_cpp-src
-│   │   ├── antlr_cpp-subbuild
-│   │   ├── fuzztest-build
-│   │   ├── fuzztest-src
-│   │   ├── fuzztest-subbuild
-│   │   ├── googletest-build
-│   │   ├── googletest-src
-│   │   ├── googletest-subbuild
-│   │   ├── re2-build
-│   │   ├── re2-src
-│   │   └── re2-subbuild
-│   ├── clangpass
-│   │   └── CMakeFiles
-│   ├── options-pinned.h
-│   └── third_party
-│       └── CMakeFiles
-├── codegen
-│   ├── CMakeLists.txt
-│   ├── coyieldpass.cpp
-│   └── yieldpass.cpp
-├── docker-compose.yml
-├── example
-│   └── siisti.cpp
-├── runtime
-│   ├── CMakeLists.txt
-│   ├── coro_ctx_guard.cpp
-│   ├── generators.cpp
-│   ├── include
-│   │   ├── block_manager.h
-│   │   ├── block_state.h
-│   │   ├── blocking_primitives.h
-│   │   ├── coro_ctx_guard.h
-│   │   ├── generators.h
-│   │   ├── lib.h
-│   │   ├── lincheck.h
-│   │   ├── lincheck_recursive.h
-│   │   ├── logger.h
-│   │   ├── minimization.h
-│   │   ├── minimization_smart.h
-│   │   ├── pct_strategy.h
-│   │   ├── pick_strategy.h
-│   │   ├── pretty_print.h
-│   │   ├── random_strategy.h
-│   │   ├── round_robin_strategy.h
-│   │   ├── scheduler.h
-│   │   ├── scheduler_fwd.h
-│   │   ├── stable_vector.h
-│   │   ├── strategy_verifier.h
-│   │   ├── value_wrapper.h
-│   │   ├── verifying.h
-│   │   └── verifying_macro.h
-│   ├── lib.cpp
-│   ├── lin_check.cpp
-│   ├── logger.cpp
-│   ├── minimization.cpp
-│   ├── minimization_smart.cpp
-│   ├── pretty_printer.cpp
-│   └── verifying.cpp
-├── scripts
-│   ├── check.sh
-│   ├── check_ctx_speed.sh
-│   ├── format_code.sh
-│   └── rund.sh
-├── syscall_intercept
-│   ├── CMakeLists.txt
-│   └── hook.cpp
-├── tempory
-│   └── text
-├── test
-│   ├── CMakeLists.txt
-│   └── runtime
-│       ├── CMakeLists.txt
-│       ├── lin_check_test.cpp
-│       └── stackfulltask_mock.h
-├── third_party
-│   └── CMakeLists.txt
-├── txt
-└── verifying
-├── CMakeLists.txt
-├── README.md
-├── blocking
-│   ├── CMakeLists.txt
-│   ├── bank.cpp
-│   ├── bank_deadlock.cpp
-│   ├── buffered_channel.cpp
-│   ├── folly_flatcombining_queue.cpp
-│   ├── folly_rwspinlock.cpp
-│   ├── folly_sharedmutex.cpp
-│   ├── mutexed_register.cpp
-│   ├── nonlinear_buffered_channel.cpp
-│   ├── nonlinear_mutex.cpp
-│   ├── shared_mutexed_register.cpp
-│   ├── simple_deadlock.cpp
-│   ├── simple_mutex.cpp
-│   └── verifiers
-├── specs
-│   ├── bank.h
-│   ├── buffered_channel.h
-│   ├── mutex.h
-│   ├── queue.h
-│   ├── register.h
-│   ├── set.h
-│   ├── stack.h
-│   └── unique_args.h
-└── targets
-├── CMakeLists.txt
-├── atomic_register.cpp
-├── counique_args.cpp
-├── counique_args.yml
-├── fast_queue.cpp
-├── nonlinear_ms_queue.cpp
-├── nonlinear_queue.cpp
-├── nonlinear_set.cpp
-├── nonlinear_treiber_stack.cpp
-├── race_register.cpp
-└── unique_args.cpp
-
-. Какие файлы скинуть первые?
+https://timsong-cpp.github.io/cppwp/n4861/expr.await

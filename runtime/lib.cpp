@@ -13,12 +13,23 @@ Task this_coro{};
 
 boost::context::fiber_context sched_ctx;
 std::optional<CoroutineStatus> coroutine_status;
+bool ltest_round_terminating = false;
 
 namespace ltest {
 std::vector<TaskBuilder> task_builders{};
 }
 
 Task CoroBase::GetPtr() { return shared_from_this(); }
+
+void CoroBase::EmitDualEvent(DualEventKind kind, ValueWrapper result) {
+  pending_dual_events_.push_back(DualEvent{kind, std::move(result)});
+}
+
+std::vector<CoroBase::DualEvent> CoroBase::DrainDualEvents() {
+  std::vector<DualEvent> out;
+  out.swap(pending_dual_events_);
+  return out;
+}
 
 void CoroBase::Resume() {
   this_coro = this->GetPtr();

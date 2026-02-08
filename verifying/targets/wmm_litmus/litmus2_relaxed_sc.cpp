@@ -17,7 +17,7 @@ struct Exp2Test {
   non_atomic void B() {
     if (x.load(std::memory_order_seq_cst) == 2) {
       r1 = y.load(std::memory_order_relaxed);
-      assert(r1 == 1);
+      rassert(r1 == 1);
     }
   }
 };

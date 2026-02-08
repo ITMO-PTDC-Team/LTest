@@ -14,13 +14,13 @@ struct Exp7Test {
       expected = x.load(std::memory_order_seq_cst);
     } while (!x.compare_exchange_weak(expected, expected + 1,
                                       std::memory_order_seq_cst));
-    assert(expected == 0);
-    assert(x.load(std::memory_order_seq_cst) == 1);
+    rassert(expected == 0);
+    rassert(x.load(std::memory_order_seq_cst) == 1);
   }
 
   non_atomic void B() {
     int r = x.load(std::memory_order_seq_cst);
-    assert(r >= 0 && r <= 1);
+    rassert(r >= 0 && r <= 1);
   }
 };
 

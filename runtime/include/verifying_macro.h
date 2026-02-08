@@ -1,6 +1,7 @@
 // Keeps as separated file because use in regression tests.
 #pragma once
 #include <cassert>
+#include <sstream>
 #include <vector>
 
 #include "generators.h"
@@ -10,6 +11,12 @@
 namespace ltest {
 
 extern std::vector<TaskBuilder> task_builders;
+
+inline void LtestFail(const char *expr, const char *file, int line) {
+  std::ostringstream oss;
+  oss << "test failed: " << expr << " at " << file << ":" << line;
+  throw ltest::TestFailure(oss.str());
+}
 
 }  // namespace ltest
 
@@ -24,6 +31,9 @@ extern std::vector<TaskBuilder> task_builders;
 // highly recommend to avoid std:: usage otherwise many interleavings in
 // standard library will not be inserted.
 #define as_atomic attr(ltest_atomic)
+
+#define rassert(expr) \
+  ((expr) ? (void)0 : ltest::LtestFail(#expr, __FILE__, __LINE__))
 
 namespace ltest {
 

@@ -164,7 +164,12 @@ std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
 
 inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
                    PrettyPrinter &pretty_printer) {
+  ltest::ClearTestFailure();
   auto result = scheduler->Run();
+  if (ltest::HasTestFailure()) {
+    std::cout << ltest::GetTestFailureMessage() << "\n";
+    return 1;
+  }
   if (result.has_value()) {
     if (result->reason == Scheduler::NonLinearizableHistory::Reason::DEADLOCK) {
       std::cout << "deadlock detected:\n";

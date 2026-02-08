@@ -21,7 +21,7 @@ struct Exp9Test {
   non_atomic void B() {
     int a = y.load(std::memory_order_relaxed);
     int b = x.load(std::memory_order_relaxed);
-    assert(!(a == 1 && b == 0));  // could fail
+    rassert(!(a == 1 && b == 0));  // could fail
   }
 };
 

@@ -1,6 +1,7 @@
 #include "include/lib.h"
 
 #include <cassert>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -18,6 +19,28 @@ std::optional<CoroutineStatus> coroutine_status;
 namespace ltest {
 std::vector<TaskBuilder> task_builders{};
 }
+
+// Test failure tracking for litmus tests, which could expectedly fail.
+namespace ltest {
+namespace {
+bool test_failed{false};
+std::string test_failure_message{};
+}  // namespace
+
+void SetTestFailure(std::string message) {
+  test_failure_message = std::move(message);
+  test_failed = true;
+}
+
+bool HasTestFailure() { return test_failed; }
+
+const std::string& GetTestFailureMessage() { return test_failure_message; }
+
+void ClearTestFailure() {
+  test_failed = false;
+  test_failure_message.clear();
+}
+}  // namespace ltest
 
 Task CoroBase::GetPtr() { return shared_from_this(); }
 

@@ -12,13 +12,13 @@ struct Exp1Test {
   non_atomic void A() {
     r1 = y.load(std::memory_order_seq_cst);
     x.store(1, std::memory_order_seq_cst);
-    assert(!(r1 == 1 && r2 == 1));
+    rassert(!(r1 == 1 && r2 == 1));
   }
 
   non_atomic void B() {
     r2 = x.load(std::memory_order_seq_cst);
     y.store(1, std::memory_order_seq_cst);
-    assert(!(r1 == 1 && r2 == 1));
+    rassert(!(r1 == 1 && r2 == 1));
   }
 };
 

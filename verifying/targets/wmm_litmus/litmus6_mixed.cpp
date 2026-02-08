@@ -19,14 +19,14 @@ struct Exp6Test {
 
   non_atomic void B() {
     if (x.load(std::memory_order_relaxed) == 10) {
-      assert(y.load(std::memory_order_seq_cst) == 20);
+      rassert(y.load(std::memory_order_seq_cst) == 20);
       y.store(10, std::memory_order_relaxed);
     }
   }
 
   non_atomic void C() {
     if (y.load(std::memory_order_acquire) == 10) {
-      assert(x.load(std::memory_order_acquire) == 10);
+      rassert(x.load(std::memory_order_acquire) == 10);
     }
   }
 };

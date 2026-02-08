@@ -14,7 +14,7 @@ using namespace wmm;
 template <class T>
 class latomic {
   std::atomic<T> atomicValue;
-  int locationId;
+  int locationId = -1;
   ExecutionGraph& wmmGraph = ExecutionGraph::getInstance();
 
  public:
@@ -57,7 +57,7 @@ class latomic {
              std::memory_order order = std::memory_order_seq_cst) noexcept {
     atomicValue.store(desired, order);
 
-    if (wmm_enabled && this_coro) {
+    if (wmm_enabled && this_coro && locationId >= 0 && this_thread_id >= 0) {
       // std::cout << "Store: coro id=" << this_coro->GetId() << ", thread=" <<
       // this_thread_id
       //           << ", name=" << this_coro->GetName() << std::endl;
@@ -73,7 +73,7 @@ class latomic {
 
   // load
   T load(std::memory_order order = std::memory_order_seq_cst) const noexcept {
-    if (wmm_enabled && this_coro) {
+    if (wmm_enabled && this_coro && locationId >= 0 && this_thread_id >= 0) {
       // std::cout << "Load: coro id=" << this_coro->GetId() << ", thread=" <<
       // this_thread_id
       //           << ", name=" << this_coro->GetName() << std::endl;
@@ -117,7 +117,7 @@ class latomic {
     bool value = atomicValue.compare_exchange_weak(myExpected, desired, success,
                                                    failure);
 
-    if (wmm_enabled && this_coro) {
+    if (wmm_enabled && this_coro && locationId >= 0 && this_thread_id >= 0) {
       // std::cout << "Compare exchange weak: coro id=" << this_coro->GetId() <<
       // ", thread=" << this_thread_id
       //           << ", name=" << this_coro->GetName() << std::endl;
@@ -162,7 +162,7 @@ class latomic {
     bool value = atomicValue.compare_exchange_strong(myExpected, desired,
                                                      success, failure);
 
-    if (wmm_enabled && this_coro) {
+    if (wmm_enabled && this_coro && locationId >= 0 && this_thread_id >= 0) {
       auto [rmwSuccess, readValue] = wmmGraph.ReadModifyWrite(
           locationId, this_thread_id, &expected, desired,
           WmmUtils::OrderFromStd(success), WmmUtils::OrderFromStd(failure));

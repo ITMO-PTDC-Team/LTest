@@ -3,6 +3,7 @@
 #include <boost/context/fiber.hpp>
 #include <boost/context/fiber_fcontext.hpp>
 #include <cassert>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -31,6 +32,21 @@ struct CoroutineStatus {
   std::string_view name;
   bool has_started;
 };
+
+namespace ltest {
+struct TestFailure : public std::exception {
+  explicit TestFailure(std::string message) : msg(std::move(message)) {}
+  const char* what() const noexcept override { return msg.c_str(); }
+
+ private:
+  std::string msg;
+};
+
+void SetTestFailure(std::string message);
+bool HasTestFailure();
+const std::string& GetTestFailureMessage();
+void ClearTestFailure();
+}  // namespace ltest
 
 extern "C" void CoroYield();
 
@@ -153,7 +169,14 @@ struct Coro final : public CoroBase {
               reinterpret_cast<std::tuple<Args...>*>(c->args.get());
           auto this_arg =
               std::tuple<Target*>{reinterpret_cast<Target*>(c->this_ptr)};
-          c->ret = std::apply(c->func, std::tuple_cat(this_arg, *real_args));
+          try {
+            c->ret = std::apply(c->func, std::tuple_cat(this_arg, *real_args));
+          } catch (const ltest::TestFailure& ex) {
+            ltest::SetTestFailure(ex.what());
+            c->ret = void_v;
+          } catch (...) {
+            throw;
+          }
           c->is_returned = true;
           return std::move(ctx);
         });

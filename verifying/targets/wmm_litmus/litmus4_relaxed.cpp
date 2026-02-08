@@ -1,5 +1,4 @@
 #include <atomic>
-#include <cassert>
 #include <map>
 #include <string>
 
@@ -16,14 +15,14 @@ struct Exp4Test {
 
   non_atomic void B() {
     if (x.load(std::memory_order_relaxed) == 10) {
-      assert(y.load(std::memory_order_relaxed) == 20);  // could fail
+      rassert(y.load(std::memory_order_relaxed) == 20);  // could fail
       y.store(10, std::memory_order_relaxed);
     }
   }
 
   non_atomic void C() {
     if (y.load(std::memory_order_relaxed) == 10) {
-      assert(x.load(std::memory_order_relaxed) == 10);  // could fail
+      rassert(x.load(std::memory_order_relaxed) == 10);  // could fail
     }
   }
 };

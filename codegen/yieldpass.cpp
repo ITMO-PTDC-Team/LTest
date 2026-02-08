@@ -119,7 +119,12 @@ struct YieldInserter {
       }
     }
 
-#ifndef DEBUG
+// This change was added to instrument methods recusively for some VK data
+// structure, which had a lot of methods inside of it. This change allows to
+// insert thread interleavings in the methods without marking them with
+// `non_atomic` attribute. This flag is unset by default, because it might cause
+// wmm tests to instrument the LTest code, which is leads to errors.
+#if defined(LTEST_RECURSIVE_YIELDS)
     for (auto &B : F) {
       for (auto &I : B) {
         if (auto call = dyn_cast<CallInst>(&I)) {

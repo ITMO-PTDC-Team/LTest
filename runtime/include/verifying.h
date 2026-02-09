@@ -7,6 +7,7 @@
 
 #include "blocking_primitives.h"
 #include "lib.h"
+#include "lincheck_dual.h"
 #include "lincheck_recursive.h"
 #include "logger.h"
 #include "pct_strategy.h"
@@ -16,6 +17,8 @@
 #include "scheduler.h"
 #include "strategy_verifier.h"
 #include "verifying_macro.h"
+#include "workload_policy.h"
+#include "strategy_verifier.h"
 
 namespace ltest {
 
@@ -27,6 +30,23 @@ class NoOverride {};
 struct DefaultCanceler {
   static void Cancel() {};
 };
+
+namespace detail {
+
+template <class S>
+concept HasWorkloadPolicy =
+    requires {
+  { S::GetWorkloadPolicy() } -> std::same_as<ltest::WorkloadPolicy>;
+    };
+
+template <class LinearSpec>
+using DefaultVerifierForSpec =
+    std::conditional_t<HasWorkloadPolicy<LinearSpec>,
+                       ReservePolicyVerifier<LinearSpec>,
+                       DefaultStrategyTaskVerifier>;
+
+}  // namespace detail
+
 template <class TargetObj, class LinearSpec,
           class LinearSpecHash = std::hash<LinearSpec>,
           class LinearSpecEquals = std::equal_to<LinearSpec>,
@@ -38,34 +58,36 @@ struct Spec {
   using linear_spec_equals_t = LinearSpecEquals;
   using options_override_t = OptionsOverride;
   using cancel_t = Canceler;
+  using verifier_t = detail::DefaultVerifierForSpec<linear_spec_t>;
+};
+
+template <class TargetObj, class LinearSpec,
+          class LinearSpecHash = std::hash<LinearSpec>,
+          class LinearSpecEquals = std::equal_to<LinearSpec>,
+          class OptionsOverride = NoOverride, class Canceler = DefaultCanceler>
+struct SpecDual {
+  using target_obj_t = TargetObj;
+  using linear_spec_t = LinearSpec;
+  using linear_spec_hash_t = LinearSpecHash;
+  using linear_spec_equals_t = LinearSpecEquals;
+  using options_override_t = OptionsOverride;
+  using cancel_t = Canceler;
+  using verifier_t = detail::DefaultVerifierForSpec<linear_spec_t>;
 };
 
 struct Opts {
-  // Number of threads
   size_t threads;
-  // Number of tasks (operations)
   size_t tasks;
-  // Maximum number of switches
   size_t switches;
-  // Number of testing rounds
   size_t rounds;
-  // Minimize the bugs found?
   bool minimize;
-  // Attempts to find a bug while minimizing
   size_t exploration_runs;
-  // Minimization launches
   size_t minimization_runs;
-  // Depth (only for TLA)
   size_t depth;
-  // Prohibit identical operations in a row?
   bool forbid_all_same;
-  // Detailed output
   bool verbose;
-  // Intercepting system calls
   bool syscall_trap;
-  // Type of strategy (RR, RND, TLA, PCT)
   StrategyType typ;
-  // Thread weights for random strategy
   std::vector<int> thread_weights;
 };
 
@@ -84,9 +106,7 @@ struct DefaultOptions {
 };
 
 void SetOpts(const DefaultOptions &def);
-
 Opts ParseOpts();
-
 std::vector<std::string> split(const std::string &s, char delim);
 
 template <typename TargetObj, StrategyTaskVerifier Verifier>
@@ -121,7 +141,6 @@ std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
 }
 
 // Keeps pointer to strategy to pass reference to base scheduler.
-// TODO: refactor.
 template <StrategyTaskVerifier Verifier>
 struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
   StrategySchedulerWrapper(std::unique_ptr<Strategy> strategy,
@@ -131,7 +150,7 @@ struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
       : strategy(std::move(strategy)),
         StrategyScheduler<Verifier>(*strategy.get(), checker, pretty_printer,
                                     max_tasks, max_rounds, minimize,
-                                    exploration_runs, minimization_runs) {};
+                                    exploration_runs, minimization_runs) {}
 
  private:
   std::unique_ptr<Strategy> strategy;
@@ -154,7 +173,6 @@ std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
       return scheduler;
     }
     case TLA: {
-      // Total Linearization Analysis - the full complete search
       std::cout << "tla\n";
       auto scheduler = std::make_unique<TLAScheduler<TargetObj, Verifier>>(
           opts.tasks, opts.rounds, opts.threads, opts.switches, opts.depth,
@@ -174,7 +192,7 @@ inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
     if (result->reason == Scheduler::NonLinearizableHistory::Reason::DEADLOCK) {
       std::cout << "deadlock detected:\n";
       pretty_printer.PrettyPrint(result->seq, std::cout);
-      return 4;  // see https://tldp.org/LDP/abs/html/exitcodes.html
+      return 4;
     } else if (result->reason == Scheduler::NonLinearizableHistory::Reason::
                                      NON_LINEARIZABLE_HISTORY) {
       std::cout << "non linearized:\n";
@@ -189,8 +207,76 @@ inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
   }
 }
 
+// ---- dual runner ----
+
+// A checker stub for: always "passes".
+// Step 5 will introduce a real dual checker.
+struct NoopDualChecker final : DualModelChecker {
+  bool Check(const std::vector<DualHistoryEvent>&) override { return true; }
+};
+
+template <StrategyTaskVerifier Verifier>
+struct DualStrategySchedulerWrapper : DualStrategyScheduler<Verifier> {
+  DualStrategySchedulerWrapper(std::unique_ptr<Strategy> strategy,
+                               DualModelChecker& checker,
+                               PrettyPrinter& pretty_printer,
+                               size_t max_tasks, size_t max_rounds)
+      : strategy(std::move(strategy)),
+        DualStrategyScheduler<Verifier>(*strategy.get(), checker, pretty_printer,
+                                        max_tasks, max_rounds) {}
+
+ private:
+  std::unique_ptr<Strategy> strategy;
+};
+
+template <typename TargetObj, StrategyTaskVerifier Verifier>
+std::unique_ptr<DualScheduler> MakeDualScheduler(DualModelChecker& checker,
+                                                 Opts& opts,
+                                                 const std::vector<TaskBuilder>& l,
+                                                 PrettyPrinter& pretty_printer) {
+  std::cout << "strategy = ";
+  // We support RR/RND/PCT the same way as normal.
+  switch (opts.typ) {
+    case RR:
+    case PCT:
+    case RND: {
+      auto strategy = MakeStrategy<TargetObj, Verifier>(opts, std::move(l));
+      return std::make_unique<DualStrategySchedulerWrapper<Verifier>>(
+          std::move(strategy), checker, pretty_printer, opts.tasks, opts.rounds);
+    }
+    case TLA: {
+      // TODO(bitree): not supported for dual yet.
+      throw std::invalid_argument("TLA strategy is not supported in dual mode yet");
+    }
+    default:
+      assert(false);
+  }
+}
+
+inline int TrapRunDual(std::unique_ptr<DualScheduler>&& scheduler,
+                       PrettyPrinter& pretty_printer) {
+  auto result = scheduler->Run();
+  if (result.has_value()) {
+    if (result->reason == DualScheduler::NonLinearizableHistory::Reason::DEADLOCK) {
+      std::cout << "deadlock detected:\n";
+      pretty_printer.PrettyPrint(result->seq, std::cout);
+      return 4;
+    } else if (result->reason ==
+               DualScheduler::NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY) {
+      std::cout << "non linearized:\n";
+      pretty_printer.PrettyPrint(result->seq, std::cout);
+      return 3;
+    } else {
+      std::abort();
+    }
+  } else {
+    std::cout << "success!\n";
+    return 0;
+  }
+}
+
 template <class Spec,
-          StrategyTaskVerifier Verifier = DefaultStrategyTaskVerifier>
+          StrategyTaskVerifier Verifier = typename Spec::verifier_t>
 int Run(int argc, char *argv[]) {
   if constexpr (!std::is_same_v<typename Spec::options_override_t,
                                 ltest::NoOverride>) {
@@ -229,6 +315,39 @@ int Run(int argc, char *argv[]) {
   return TrapRun(std::move(scheduler), pretty_printer);
 }
 
+template <class SpecDual,
+          StrategyTaskVerifier Verifier = typename SpecDual::verifier_t>
+int RunDual(int argc, char *argv[]) {
+  if constexpr (!std::is_same_v<typename SpecDual::options_override_t,
+                                ltest::NoOverride>) {
+    SetOpts(SpecDual::options_override_t::GetOptions());
+  }
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  Opts opts = ParseOpts();
+
+  logger_init(opts.verbose);
+  std::cout << "[DUAL MODE - step4: dual history request/followup]\n";
+  std::cout << "verbose: " << std::boolalpha << opts.verbose << "\n";
+  std::cout << "threads  = " << opts.threads << "\n";
+  std::cout << "tasks    = " << opts.tasks << "\n";
+  std::cout << "switches = " << opts.switches << "\n";
+  std::cout << "rounds   = " << opts.rounds << "\n";
+  std::cout << "targets  = " << task_builders.size() << "\n";
+
+  PrettyPrinter pretty_printer{opts.threads};
+
+  using dual_checker_t =
+    LinearizabilityDualCheckerRecursive<typename SpecDual::linear_spec_t>;
+  dual_checker_t checker{SpecDual::linear_spec_t::GetDualMethods(),
+                         typename SpecDual::linear_spec_t{}};
+  auto scheduler = MakeDualScheduler<typename SpecDual::target_obj_t, Verifier>(
+      checker, opts, std::move(task_builders), pretty_printer);
+  std::cout << "\n\n";
+  std::cout.flush();
+  return TrapRunDual(std::move(scheduler), pretty_printer);
+
+}
+
 }  // namespace ltest
 
 #define LTEST_ENTRYPOINT_CONSTRAINT(spec_obj_t, strategy_verifier) \
@@ -239,4 +358,14 @@ int Run(int argc, char *argv[]) {
 #define LTEST_ENTRYPOINT(spec_obj_t)           \
   int main(int argc, char *argv[]) {           \
     return ltest::Run<spec_obj_t>(argc, argv); \
-  }\
+  }
+
+#define LTEST_ENTRYPOINT_DUAL_CONSTRAINT(spec_obj_t, strategy_verifier) \
+  int main(int argc, char *argv[]) {                                    \
+    return ltest::RunDual<spec_obj_t, strategy_verifier>(argc, argv);   \
+  }
+
+#define LTEST_ENTRYPOINT_DUAL(spec_obj_t)          \
+  int main(int argc, char *argv[]) {               \
+    return ltest::RunDual<spec_obj_t>(argc, argv); \
+  }

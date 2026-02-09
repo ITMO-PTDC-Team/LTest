@@ -180,6 +180,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     // this->state.Reset();
 
     UpdateStatistics();
+
+    this->sched_checker.OnRoundStart(this->threads_count);
   }
 
   void ResetCurrentRound() override {

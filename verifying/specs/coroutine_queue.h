@@ -10,6 +10,7 @@
 
 #include "../../runtime/include/lincheck_dual.h"
 #include "../../runtime/include/value_wrapper.h"
+#include "../../runtime/include/workload_policy.h"
 
 namespace spec {
 
@@ -23,6 +24,30 @@ struct CoroutineQueue {
   // readiness after matching
   std::unordered_map<int, int> ready_receive_value;  // op_id -> value
   std::unordered_set<int> ready_send;                // op_id
+
+  static ltest::WorkloadPolicy GetWorkloadPolicy() {
+    ltest::WorkloadPolicy p;
+
+    // If there are blocked receivers, keep one free thread to start send.
+    {
+      ltest::ReserveRule r;
+      r.wait_method = "receive";
+      r.progress_methods = {"send"};
+      r.reserve_threads = 1;
+      p.reserve.push_back(std::move(r));
+    }
+
+    // If there are blocked senders, keep one free thread to start receive.
+    {
+      ltest::ReserveRule r;
+      r.wait_method = "send";
+      r.progress_methods = {"receive"};
+      r.reserve_threads = 1;
+      p.reserve.push_back(std::move(r));
+    }
+
+    return p;
+  }
 
   // ----- request handlers -----
   void RequestSend(int op_id, int v) {

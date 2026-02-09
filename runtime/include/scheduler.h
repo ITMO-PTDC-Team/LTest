@@ -8,6 +8,7 @@
 #include <random>
 #include <string_view>
 #include <utility>
+#include <string>
 
 #include "lib.h"
 #include "lincheck.h"
@@ -18,6 +19,7 @@
 #include "pretty_print.h"
 #include "scheduler_fwd.h"
 #include "stable_vector.h"
+#include "workload_policy.h"
 
 struct TaskWithMetaData {
   Task& task;
@@ -31,10 +33,22 @@ struct TaskWithMetaData {
 /// UB.
 template <typename T>
 concept StrategyTaskVerifier = requires(T a) {
-  {
-    a.Verify(std::declval<const std::string&>(), size_t())
-  } -> std::same_as<bool>;
+  // --- New API for workload policies (Reserve rules etc.) ---
+  { a.OnRoundStart(size_t()) } -> std::same_as<void>;
+
+  { a.OnTaskStarted(std::declval<const std::string&>(), size_t(), int()) }
+  -> std::same_as<void>;
+
+  { a.VerifyStart(std::declval<const std::string&>(), size_t(),
+                  std::declval<const ltest::StartContext&>()) }
+  -> std::same_as<bool>;
+
+  // --- Existing API (protocol constraints / UB-prevention) ---
+  { a.Verify(std::declval<const std::string&>(), size_t()) }
+  -> std::same_as<bool>;
+
   { a.OnFinished(std::declval<Task&>(), size_t()) } -> std::same_as<void>;
+
   { a.ReleaseTask(size_t()) } -> std::same_as<std::optional<std::string>>;
 };
 
@@ -129,6 +143,8 @@ struct BaseStrategyWithThreads : public Strategy {
 
     std::random_device dev;
     rng = std::mt19937(dev());
+
+    sched_checker.OnRoundStart(threads_count);
   }
 
   std::optional<std::tuple<Task&, int>> GetTask(int task_id) override {
@@ -207,22 +223,58 @@ struct BaseStrategyWithThreads : public Strategy {
     bool is_new = threads[thread_index].empty() ||
                   threads[thread_index].back()->IsReturned();
     if (is_new) {
-      // a task has finished or the queue is empty, so we add a new task
-      std::shuffle(this->constructors.begin(), this->constructors.end(), rng);
-      size_t verified_constructor = -1;
-      for (size_t i = 0; i < this->constructors.size(); ++i) {
-        TaskBuilder constructor = this->constructors.at(i);
-        if (this->sched_checker.Verify(constructor.GetName(), thread_index)) {
-          verified_constructor = i;
-          break;
+      // Build start context (Blocked-trigger).
+      ltest::StartContext ctx{};
+      ctx.threads = this->threads.size();
+
+      for (size_t tid = 0; tid < this->threads.size(); ++tid) {
+        bool is_free = this->threads[tid].empty() ||
+                       this->threads[tid].back()->IsReturned();
+        if (is_free) {
+          ctx.free_threads++;
+          continue;
+        }
+
+        // Active task exists and is not returned.
+        auto& active = this->threads[tid].back();
+        std::string name = std::string(active->GetName());
+
+        // NEW: count in-flight operations by method name
+        ctx.active_by_method[name]++;
+
+        // Keep blocked too (might be useful later)
+        if (active->IsBlocked()) {
+          ctx.blocked_by_method[name]++;
         }
       }
-      if (verified_constructor == -1) {
+
+
+      // Choose constructor subject to verifier policy.
+      std::shuffle(this->constructors.begin(), this->constructors.end(), rng);
+      size_t verified_constructor = static_cast<size_t>(-1);
+
+      for (size_t i = 0; i < this->constructors.size(); ++i) {
+        const TaskBuilder& constructor = this->constructors.at(i);
+
+        if (this->sched_checker.VerifyStart(constructor.GetName(), thread_index,
+                                            ctx) &&
+            this->sched_checker.Verify(constructor.GetName(), thread_index)) {
+          verified_constructor = i;
+          break;
+            }
+      }
+
+      if (verified_constructor == static_cast<size_t>(-1)) {
         return std::nullopt;
       }
-      threads[thread_index].emplace_back(
-          this->constructors[verified_constructor].Build(
-              this->state.get(), thread_index, this->new_task_id++));
+
+      const TaskBuilder& chosen = this->constructors[verified_constructor];
+      const std::string& method_name = chosen.GetName();
+
+      Task task = chosen.Build(this->state.get(), thread_index, this->new_task_id++);
+      this->sched_checker.OnTaskStarted(method_name, thread_index, task->GetId());
+
+      threads[thread_index].emplace_back(std::move(task));
     }
 
     return TaskWithMetaData{threads[thread_index].back(), is_new, thread_index};

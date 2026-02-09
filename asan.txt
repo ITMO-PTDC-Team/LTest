@@ -1,0 +1,153 @@
+[DUAL MODE - step4: dual history request/followup]
+verbose: true
+threads  = 2
+tasks    = 10
+switches = 100000000
+rounds   = 50
+targets  = 2
+strategy = round-robin
+
+
+==63==WARNING: ASan is ignoring requested __asan_handle_no_return: stack type: default top: 0x7ffd2961a000; bottom 0x74b219a76000; size: 0x0b4b0fba4000 (12417014317056)
+False positive error reports may follow
+For details see https://github.com/google/sanitizers/issues/189
+run round: 0
+*--------------------------------------------------*--------------------------------------------------*
+|                        T0                        |                        T1                        |
+*--------------------------------------------------*--------------------------------------------------*
+| [0] REQ pop()                                    |                                                  |
+|                                                  | [1] push(3)                                      |
+|                                                  | <-- void                                         |
+|                                                  | [2] push(6)                                      |
+| <-- request_done                                 |                                                  |
+| FOLLOWUP                                         |                                                  |
+| <-- 3                                            |                                                  |
+| [3] REQ pop()                                    |                                                  |
+|                                                  | <-- void                                         |
+|                                                  | [4] push(7)                                      |
+| <-- request_done                                 |                                                  |
+| FOLLOWUP                                         |                                                  |
+| <-- 6                                            |                                                  |
+| [5] REQ pop()                                    |                                                  |
+|                                                  | <-- void                                         |
+|                                                  | [6] push(5)                                      |
+| <-- request_done                                 |                                                  |
+| FOLLOWUP                                         |                                                  |
+| <-- 7                                            |                                                  |
+| [7] push(3)                                      |                                                  |
+|                                                  | <-- void                                         |
+|                                                  | [8] REQ pop()                                    |
+|                                                  | <-- request_done                                 |
+|                                                  | FOLLOWUP                                         |
+|                                                  | <-- 5                                            |
+|                                                  | [9] push(5)                                      |
+| <-- void                                         |                                                  |
+| [10] REQ pop()                                   |                                                  |
+| <-- request_done                                 |                                                  |
+| FOLLOWUP                                         |                                                  |
+| <-- 3                                            |                                                  |
+*--------------------------------------------------*--------------------------------------------------*
+===============================================
+
+Terminated: 1
+run round: 1
+*--------------------------------------------------*--------------------------------------------------*
+|                        T0                        |                        T1                        |
+*--------------------------------------------------*--------------------------------------------------*
+|                                                  | [0] push(6)                                      |
+| [1] push(2)                                      |                                                  |
+|                                                  | <-- void                                         |
+|                                                  | [2] push(9)                                      |
+| <-- void                                         |                                                  |
+| [3] push(1)                                      |                                                  |
+|                                                  | <-- void                                         |
+|                                                  | [4] push(2)                                      |
+| <-- void                                         |                                                  |
+| [5] push(7)                                      |                                                  |
+|                                                  | <-- void                                         |
+|                                                  | [6] push(0)                                      |
+| <-- void                                         |                                                  |
+| [7] REQ pop()                                    |                                                  |
+| <-- request_done                                 |                                                  |
+| FOLLOWUP                                         |                                                  |
+| <-- 7                                            |                                                  |
+| [8] REQ pop()                                    |                                                  |
+|                                                  | <-- void                                         |
+|                                                  | [9] push(9)                                      |
+| <-- request_done                                 |                                                  |
+| FOLLOWUP                                         |                                                  |
+| <-- 0                                            |                                                  |
+| [10] REQ pop()                                   |                                                  |
+|                                                  | <-- void                                         |
+*--------------------------------------------------*--------------------------------------------------*
+===============================================
+
+Terminated: 0
+=================================================================
+==63==ERROR: AddressSanitizer: heap-use-after-free on address 0x503000008238 at pc 0x6418c08f3def bp 0x74b2073769c0 sp 0x74b2073769b8
+READ of size 1 at 0x503000008238 thread T0
+    #0 0x6418c08f3dee in std::variant<int, std::__n4861::coroutine_handle<void>>::index() const /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/variant:1592:17
+    #1 0x6418c08f2bfe in bool std::holds_alternative<std::__n4861::coroutine_handle<void>, int, std::__n4861::coroutine_handle<void>>(std::variant<int, std::__n4861::coroutine_handle<void>> const&) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/variant:1113:18
+    #2 0x6418c08f220d in coro::async_stack<int>::push(int) /Ltest/verifying/targets/__tmp_coro_async_stack.cpp:98:13
+    #3 0x6418c08ecf9a in CoroAsyncStackTarget::push(int) /Ltest/verifying/targets/__tmp_coro_async_stack.cpp:218:36
+    #4 0x6418c08f9fef in void std::__invoke_impl<void, void (CoroAsyncStackTarget::*&)(int), CoroAsyncStackTarget*, int>(std::__invoke_memfun_deref, void (CoroAsyncStackTarget::*&)(int), CoroAsyncStackTarget*&&, int&&) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/bits/invoke.h:74:14
+    #5 0x6418c08f9dcc in std::enable_if<is_invocable_r_v<void, void (CoroAsyncStackTarget::*&)(int), CoroAsyncStackTarget*, int>, void>::type std::__invoke_r<void, void (CoroAsyncStackTarget::*&)(int), CoroAsyncStackTarget*, int>(void (CoroAsyncStackTarget::*&)(int), CoroAsyncStackTarget*&&, int&&) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/bits/invoke.h:111:2
+    #6 0x6418c08f99b4 in std::_Function_handler<void (CoroAsyncStackTarget*, int), void (CoroAsyncStackTarget::*)(int)>::_M_invoke(std::_Any_data const&, CoroAsyncStackTarget*&&, int&&) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/bits/std_function.h:290:9
+    #7 0x6418c0911f7a in std::function<void (CoroAsyncStackTarget*, int)>::operator()(CoroAsyncStackTarget*, int) const /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/bits/std_function.h:590:9
+    #8 0x6418c0911d1a in ltest::TargetMethod<void, CoroAsyncStackTarget, int>::TargetMethod(std::basic_string_view<char, std::char_traits<char>>, std::function<std::tuple<int> (unsigned long)>, std::function<void (CoroAsyncStackTarget*, int)>)::'lambda'(void*, unsigned long, int)::operator()(void*, unsigned long, int) const::'lambda'(void*, int&&)::operator()(void*, int&&) const /Ltest/verifying/targets/../../runtime/include/verifying_macro.h:96:9
+    #9 0x6418c0911c14 in ValueWrapper std::__invoke_impl<ValueWrapper, ltest::TargetMethod<void, CoroAsyncStackTarget, int>::TargetMethod(std::basic_string_view<char, std::char_traits<char>>, std::function<std::tuple<int> (unsigned long)>, std::function<void (CoroAsyncStackTarget*, int)>)::'lambda'(void*, unsigned long, int)::operator()(void*, unsigned long, int) const::'lambda'(void*, int&&)&, CoroAsyncStackTarget*, int>(std::__invoke_other, ltest::TargetMethod<void, CoroAsyncStackTarget, int>::TargetMethod(std::basic_string_view<char, std::char_traits<char>>, std::function<std::tuple<int> (unsigned long)>, std::function<void (CoroAsyncStackTarget*, int)>)::'lambda'(void*, unsigned long, int)::operator()(void*, unsigned long, int) const::'lambda'(void*, int&&)&, CoroAsyncStackTarget*&&, int&&) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/bits/invoke.h:61:14
+    #10 0x6418c0911a6f in std::enable_if<is_invocable_r_v<ValueWrapper, ltest::TargetMethod<void, CoroAsyncStackTarget, int>::TargetMethod(std::basic_string_view<char, std::char_traits<char>>, std::function<std::tuple<int> (unsigned long)>, std::function<void (CoroAsyncStackTarget*, int)>)::'lambda'(void*, unsigned long, int)::operator()(void*, unsigned long, int) const::'lambda'(void*, int&&)&, CoroAsyncStackTarget*, int>, ValueWrapper>::type std::__invoke_r<ValueWrapper, ltest::TargetMethod<void, CoroAsyncStackTarget, int>::TargetMethod(std::basic_string_view<char, std::char_traits<char>>, std::function<std::tuple<int> (unsigned long)>, std::function<void (CoroAsyncStackTarget*, int)>)::'lambda'(void*, unsigned long, int)::operator()(void*, unsigned long, int) const::'lambda'(void*, int&&)&, CoroAsyncStackTarget*, int>(ltest::TargetMethod<void, CoroAsyncStackTarget, int>::TargetMethod(std::basic_string_view<char, std::char_traits<char>>, std::function<std::tuple<int> (unsigned long)>, std::function<void (CoroAsyncStackTarget*, int)>)::'lambda'(void*, unsigned long, int)::operator()(void*, unsigned long, int) const::'lambda'(void*, int&&)&, CoroAsyncStackTarget*&&, int&&) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/bits/invoke.h:114:9
+    #11 0x6418c09114f7 in std::_Function_handler<ValueWrapper (CoroAsyncStackTarget*, int), ltest::TargetMethod<void, CoroAsyncStackTarget, int>::TargetMethod(std::basic_string_view<char, std::char_traits<char>>, std::function<std::tuple<int> (unsigned long)>, std::function<void (CoroAsyncStackTarget*, int)>)::'lambda'(void*, unsigned long, int)::operator()(void*, unsigned long, int) const::'lambda'(void*, int&&)>::_M_invoke(std::_Any_data const&, CoroAsyncStackTarget*&&, int&&) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/bits/std_function.h:290:9
+    #12 0x6418c090e617 in std::function<ValueWrapper (CoroAsyncStackTarget*, int)>::operator()(CoroAsyncStackTarget*, int) const /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/bits/std_function.h:590:9
+    #13 0x6418c090e3d7 in ValueWrapper std::__invoke_impl<ValueWrapper, std::function<ValueWrapper (CoroAsyncStackTarget*, int)>&, CoroAsyncStackTarget*, int>(std::__invoke_other, std::function<ValueWrapper (CoroAsyncStackTarget*, int)>&, CoroAsyncStackTarget*&&, int&&) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/bits/invoke.h:61:14
+    #14 0x6418c090e13f in std::__invoke_result<std::function<ValueWrapper (CoroAsyncStackTarget*, int)>&, CoroAsyncStackTarget*, int>::type std::__invoke<std::function<ValueWrapper (CoroAsyncStackTarget*, int)>&, CoroAsyncStackTarget*, int>(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>&, CoroAsyncStackTarget*&&, int&&) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/bits/invoke.h:96:14
+    #15 0x6418c090e05b in decltype(auto) std::__apply_impl<std::function<ValueWrapper (CoroAsyncStackTarget*, int)>&, std::tuple<CoroAsyncStackTarget*, int>, 0ul, 1ul>(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>&, std::tuple<CoroAsyncStackTarget*, int>&&, std::integer_sequence<unsigned long, 0ul, 1ul>) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/tuple:1854:14
+    #16 0x6418c090d9d7 in decltype(auto) std::apply<std::function<ValueWrapper (CoroAsyncStackTarget*, int)>&, std::tuple<CoroAsyncStackTarget*, int>>(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>&, std::tuple<CoroAsyncStackTarget*, int>&&) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/tuple:1865:14
+    #17 0x6418c090d474 in Coro<CoroAsyncStackTarget, int>::New(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>, void*, std::shared_ptr<void>, std::function<std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>> (std::shared_ptr<void>)>, std::basic_string_view<char, std::char_traits<char>>, int)::'lambda'(boost::context::fiber&&)::operator()(boost::context::fiber&&) const /Ltest/verifying/targets/../specs/../../runtime/include/lib.h:163:20
+    #18 0x6418c090ce27 in boost::context::fiber std::__invoke_impl<boost::context::fiber, Coro<CoroAsyncStackTarget, int>::New(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>, void*, std::shared_ptr<void>, std::function<std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>> (std::shared_ptr<void>)>, std::basic_string_view<char, std::char_traits<char>>, int)::'lambda'(boost::context::fiber&&)&, boost::context::fiber>(std::__invoke_other, Coro<CoroAsyncStackTarget, int>::New(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>, void*, std::shared_ptr<void>, std::function<std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>> (std::shared_ptr<void>)>, std::basic_string_view<char, std::char_traits<char>>, int)::'lambda'(boost::context::fiber&&)&, boost::context::fiber&&) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/bits/invoke.h:61:14
+    #19 0x6418c090cd77 in std::__invoke_result<Coro<CoroAsyncStackTarget, int>::New(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>, void*, std::shared_ptr<void>, std::function<std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>> (std::shared_ptr<void>)>, std::basic_string_view<char, std::char_traits<char>>, int)::'lambda'(boost::context::fiber&&)&, boost::context::fiber>::type std::__invoke<Coro<CoroAsyncStackTarget, int>::New(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>, void*, std::shared_ptr<void>, std::function<std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>> (std::shared_ptr<void>)>, std::basic_string_view<char, std::char_traits<char>>, int)::'lambda'(boost::context::fiber&&)&, boost::context::fiber>(Coro<CoroAsyncStackTarget, int>::New(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>, void*, std::shared_ptr<void>, std::function<std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>> (std::shared_ptr<void>)>, std::basic_string_view<char, std::char_traits<char>>, int)::'lambda'(boost::context::fiber&&)&, boost::context::fiber&&) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/bits/invoke.h:96:14
+    #20 0x6418c090cbb7 in std::invoke_result<Coro<CoroAsyncStackTarget, int>::New(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>, void*, std::shared_ptr<void>, std::function<std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>> (std::shared_ptr<void>)>, std::basic_string_view<char, std::char_traits<char>>, int)::'lambda'(boost::context::fiber&&)&, boost::context::fiber>::type std::invoke<Coro<CoroAsyncStackTarget, int>::New(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>, void*, std::shared_ptr<void>, std::function<std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>> (std::shared_ptr<void>)>, std::basic_string_view<char, std::char_traits<char>>, int)::'lambda'(boost::context::fiber&&)&, boost::context::fiber>(Coro<CoroAsyncStackTarget, int>::New(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>, void*, std::shared_ptr<void>, std::function<std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>> (std::shared_ptr<void>)>, std::basic_string_view<char, std::char_traits<char>>, int)::'lambda'(boost::context::fiber&&)&, boost::context::fiber&&) /usr/lib/gcc/x86_64-linux-gnu/11/../../../../include/c++/11/functional:97:14
+    #21 0x6418c090c814 in boost::context::detail::fiber_record<boost::context::fiber, boost::context::basic_fixedsize_stack<boost::context::stack_traits>, Coro<CoroAsyncStackTarget, int>::New(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>, void*, std::shared_ptr<void>, std::function<std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>> (std::shared_ptr<void>)>, std::basic_string_view<char, std::char_traits<char>>, int)::'lambda'(boost::context::fiber&&)>::run(void*) /usr/include/boost/context/fiber_fcontext.hpp:157:17
+    #22 0x6418c090c09d in void boost::context::detail::fiber_entry<boost::context::detail::fiber_record<boost::context::fiber, boost::context::basic_fixedsize_stack<boost::context::stack_traits>, Coro<CoroAsyncStackTarget, int>::New(std::function<ValueWrapper (CoroAsyncStackTarget*, int)>, void*, std::shared_ptr<void>, std::function<std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>> (std::shared_ptr<void>)>, std::basic_string_view<char, std::char_traits<char>>, int)::'lambda'(boost::context::fiber&&)>>(boost::context::detail::transfer_t) /usr/include/boost/context/fiber_fcontext.hpp:97:23
+    #23 0x74b225c9118e in make_fcontext (/lib/x86_64-linux-gnu/libboost_context.so.1.81.0+0x118e) (BuildId: 813a3206f0b93971fcec1d7052ecc7b8d639b4c0)
+
+0x503000008238 is located 8 bytes inside of 24-byte region [0x503000008230,0x503000008248)
+freed by thread T0 here:
+    #0 0x6418c08e8432 in operator delete(void*, unsigned long) (/Ltest/build/verifying/targets/coro_async_stack+0x1c1432) (BuildId: d3e2c958d0f4c7cee3dbfb01020417a154a5f34b)
+
+previously allocated by thread T0 here:
+    #0 0x6418c08e77cd in operator new(unsigned long) (/Ltest/build/verifying/targets/coro_async_stack+0x1c07cd) (BuildId: d3e2c958d0f4c7cee3dbfb01020417a154a5f34b)
+
+SUMMARY: AddressSanitizer: heap-use-after-free /Ltest/verifying/targets/__tmp_coro_async_stack.cpp:98:13 in coro::async_stack<int>::push(int)
+Shadow bytes around the buggy address:
+  0x503000007f80: fa fa 00 00 00 fa fa fa 00 00 00 00 fa fa fd fd
+  0x503000008000: fd fa fa fa fd fd fd fd fa fa 00 00 00 fa fa fa
+  0x503000008080: 00 00 00 00 fa fa fd fd fd fd fa fa 00 00 00 fa
+  0x503000008100: fa fa fd fd fd fa fa fa fd fd fd fd fa fa 00 00
+  0x503000008180: 00 fa fa fa 00 00 00 00 fa fa fd fd fd fd fa fa
+=>0x503000008200: 00 00 00 fa fa fa fd[fd]fd fa fa fa fd fd fd fd
+  0x503000008280: fa fa 00 00 00 fa fa fa fd fd fd fd fa fa fd fd
+  0x503000008300: fd fd fa fa 00 00 00 fa fa fa 00 00 00 00 fa fa
+  0x503000008380: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x503000008400: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x503000008480: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+Shadow byte legend (one shadow byte represents 8 application bytes):
+  Addressable:           00
+  Partially addressable: 01 02 03 04 05 06 07 
+  Heap left redzone:       fa
+  Freed heap region:       fd
+  Stack left redzone:      f1
+  Stack mid redzone:       f2
+  Stack right redzone:     f3
+  Stack after return:      f5
+  Stack use after scope:   f8
+  Global redzone:          f9
+  Global init order:       f6
+  Poisoned by user:        f7
+  Container overflow:      fc
+  Array cookie:            ac
+  Intra object redzone:    bb
+  ASan internal:           fe
+  Left alloca redzone:     ca
+  Right alloca redzone:    cb
+==63==ABORTING

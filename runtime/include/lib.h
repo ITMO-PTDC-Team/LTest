@@ -190,7 +190,7 @@ struct TaskBuilder {
 
   const std::string& GetName() const { return name; }
 
-  Task Build(void* this_ptr, size_t thread_id, int task_id) {
+  Task Build(void* this_ptr, size_t thread_id, int task_id) const {
     return builder_func(this_ptr, thread_id, task_id);
   }
 

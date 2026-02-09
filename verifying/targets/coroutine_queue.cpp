@@ -76,9 +76,6 @@ auto generateInt(size_t) {
   return ltest::generators::makeSingleArg(rand() % 10 + 1);
 }
 
-// dual operations will block instead of throwing on suspend,
-// and will emit request/followup events internally (scheduler will flush
-// later).
 target_method_dual(ltest::generators::genEmpty, int, CoroutineQueue, receive);
 target_method_dual(generateInt, void, CoroutineQueue, send, int);
 

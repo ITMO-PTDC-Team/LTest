@@ -4,10 +4,12 @@
 #include <vector>
 
 #include "lincheck.h"
+#include "lincheck_dual.h"
 
 struct Strategy;
 struct RoundMinimizor;
 
+// Existing scheduler (non-dual) - unchanged.
 struct Scheduler {
   using FullHistory = std::vector<std::reference_wrapper<Task>>;
   using SeqHistory = std::vector<std::variant<Invoke, Response>>;
@@ -34,13 +36,28 @@ struct SchedulerWithReplay : Scheduler {
   friend class SmartMinimizor;
 
   virtual Result RunRound() = 0;
-
   virtual Result ExploreRound(int runs) = 0;
-
   virtual Result ReplayRound(const std::vector<int>& tasks_ordering) = 0;
-
   virtual Strategy& GetStrategy() const = 0;
-
   virtual void Minimize(NonLinearizableHistory& nonlinear_history,
                         const RoundMinimizor& minimizor) = 0;
+};
+
+// Dual scheduler forward declarations.
+// This does not replace Scheduler; it's a parallel interface for dual-mode.
+struct DualScheduler {
+  using FullHistory = std::vector<std::reference_wrapper<Task>>;
+  using SeqHistory = std::vector<DualHistoryEvent>;
+
+  struct NonLinearizableHistory {
+    enum class Reason { DEADLOCK, NON_LINEARIZABLE_HISTORY };
+    FullHistory full;
+    SeqHistory seq;
+    Reason reason;
+  };
+
+  using Result = std::optional<NonLinearizableHistory>;
+
+  virtual Result Run() = 0;
+  virtual ~DualScheduler() = default;
 };

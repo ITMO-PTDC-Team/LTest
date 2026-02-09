@@ -44,6 +44,8 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         thread.pop_back();
       }
     }
+
+    this->sched_checker.OnRoundStart(this->threads_count);
   }
 
   ~PickStrategy() { this->TerminateTasks(); }

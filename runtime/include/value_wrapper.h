@@ -2,7 +2,10 @@
 
 #include <any>
 #include <functional>
+#include <optional>
 #include <string>
+#include <type_traits>
+
 class ValueWrapper;
 
 using ToStringFunc = std::function<std::string(const ValueWrapper&)>;
@@ -40,22 +43,32 @@ class ValueWrapper {
 };
 template <typename T>
 ToStringFunc GetDefaultToString() {
-  using std::to_string;
-  return [](const ValueWrapper& a) { return to_string(a.GetValue<T>()); };
+  return [](const ValueWrapper& a) -> std::string {
+    if constexpr (std::is_same_v<T, std::nullopt_t>) {
+      return "nullopt";
+    } else {
+      using std::to_string;
+      return to_string(a.GetValue<T>());
+    }
+  };
 }
 
 template <typename T>
 CompFunc GetDefaultCompator() {
   return [](const ValueWrapper& a, const ValueWrapper& b) {
-    if (a.HasValue() != b.HasValue()) {
-      return false;
+    if constexpr (std::is_same_v<T, std::nullopt_t>) {
+      return true;  // all nullopt values are equivalent
+    } else {
+      if (a.HasValue() != b.HasValue()) {
+        return false;
+      }
+      if ((!a.HasValue() && !b.HasValue())) {
+        return true;
+      }
+      auto l = a.GetValue<T>();
+      auto r = b.GetValue<T>();
+      return l == r;
     }
-    if ((!a.HasValue() && !b.HasValue())) {
-      return true;
-    }
-    auto l = a.GetValue<T>();
-    auto r = b.GetValue<T>();
-    return l == r;
   };
 }
 

@@ -7,6 +7,8 @@ set (SOURCE_TARGET_LIST
     nonlinear_ms_queue.cpp
     nonlinear_treiber_stack.cpp
     dual_treiber_stack.cpp
+    coroutine_queue.cpp
+    coro_async_stack.cpp
 )
 
 set (SOURCE_TARGET_WITHOUT_PLUGIN_LIST

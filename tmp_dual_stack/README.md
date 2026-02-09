@@ -1,168 +1,156 @@
-## 1. Детали спецификации
+## Что уже сделано 
 
-
-### 1) Термины
-
-- **Обычная (тотальная) операция**: всегда может завершиться (не ждёт).
-- **Дуальная операция**: может завершиться сразу или зарегистрировать ожидание и завершиться позже после матчинга.
-
----
-
-### 2) Модель дуальной операции: request + follow-up
-
-Каждая дуальная операция рассматривается как двухфазная:
-
-1) **Request**  
-   Операция делает попытку выполниться или регистрирует ожидание (reservation).
-   После request операция либо готова завершиться (если матчинг сразу), либо становится **blocked**.
-
-2) **Follow-up**  
-   Когда условие выполнено (пришёл matching send/receive), операция завершает выполнение и выдаёт итоговый результат.
+### Идея (как dual поддерживаются)
+- Dual‑операция (awaitable) рассматривается как 2 фазы: `Request` и `FollowUp`.
+- Dual‑история содержит события:  
+  `RequestInvoke → RequestResponse → FollowUpInvoke → FollowUpResponse`.
+- Awaitable исполняется внутри LTest Task (fiber), но “resume” устроен так, чтобы структура данных не продолжала другую LTest‑операцию напрямую:
+  - в `await_suspend(h)` передаётся handle waker‑корутины,
+  - структура вызывает `h.resume()` при матчинге,
+  - waker делает `UnblockAllOn(addr)`,
+  - scheduler потом сам возобновляет заблокированную LTest‑таску.
 
 ---
 
-### 3) История для checker’а (SeqHistory) в dual режиме
+# 1) Dual execution: как исполняются dual операции
 
-Для обычных операций остаются:
-- `Invoke(op)`
-- `Response(op, result)`
+### Что сделано
+- Добавлен `target_method_dual` и `TargetDualMethod` wrapper, который:
+  - вручную вызывает `await_ready / await_suspend / await_resume`,
+  - при ожидании делает `SetBlocked + CoroYield` в цикле,
+  - пишет dual-события в буфер задачи (`EmitDualEvent`),
+  - маркирует задачу как dual (`SetDual(true)`).
 
-Для дуальных операций вводим 4 события:
-- `RequestInvoke(op)`
-- `RequestResponse(op)`  — request завершён (без результата)
-- `FollowUpInvoke(op)`
-- `FollowUpResponse(op, result)` — итоговый результат операции
-
----
-
-### 4) Жёсткий порядок событий внутри одной dual-операции
-
-В бета фиксируем правило:
-
-Всегда:
-`RequestInvoke → RequestResponse → FollowUpInvoke → FollowUpResponse`
-
-Даже если реализация структуры “разбудила” другую корутину внутри `await_suspend`, логирование должно быть приведено к этому порядку 
+### Файлы
+- `runtime/include/verifying_macro.h` — `TargetDualMethod`, `target_method_dual`.
 
 ---
 
-### 5) Что считается blocked и как трактуется “все ждут”
+# 2) Dual events: буферизация событий внутри задачи
 
-- Дуальная операция считается **blocked**, если:
-  - request уже завершён (ожидание зарегистрировано),
-  - follow-up ещё не завершён (результата нет).
+### Что сделано
+- В `CoroBase` добавлено:
+  - флаг dual-задачи `SetDual/IsDual`,
+  - очередь dual-событий `pending_dual_events_`,
+  - методы `EmitDualEvent` / `DrainDualEvents`.
 
-- Если в раунде **нет runnable задач**, потому что все активные операции blocked и никто не может их разбудить 
-- -> это **DEADLOCK** как результат выполнения (а не падение/assert).
-
----
-
-### 6) Незавершённые операции (truncated history)
-
-- request может быть без follow-up (операция не дождалась матчинга в пределах раунда).
----
-
-
-## 2. Добавить публичный API для dual-операций 
-Нужно дать пользователю способ объявлять операции вида `send()/receive()` которые возвращают awaitable/promise и “живут в два этапа”.
-
-Что:
-- `SpecDual` — отдельный режим запуска, где используется dual-checker.
-- `LTEST_ENTRYPOINT_DUAL` (или общий entrypoint с флагом режима).
-- `target_method_dual(...)` — регистрация dual-метода:
-  - генератор аргументов,
-  - имя операции,
-  - способ вызвать request-фазу,
-  - способ получить результат на followup-фазе.
+### Файлы
+- `runtime/include/lib.h`, `runtime/lib.cpp`.
 
 ---
 
-## 3. Представление dual в рантайме: runnable/blocked без ассертов
-- Ввести внутреннее состояние dual-операции:
-  - `request_started/request_finished`
-  - `followup_finished`
-  - “есть ли сейчас право продолжать” (runnable) / “ждёт” (blocked)
-- Явно определить, что состояние:
-  - `request_finished && !followup_finished` -> **blocked**
-- Встроить это в scheduler/strategy так же, как сейчас встроены `Task::IsBlocked()` через `BlockManager`:
-  - стратегии **не выбирают** blocked dual-задачи,
-  - если все задачи blocked -> scheduler возвращает `DEADLOCK` как результат(временно легко скинуть).
+# 3) Dual scheduler: сбор dual истории и запуск dual checker
+
+### Что сделано
+- Добавлен отдельный `DualStrategyScheduler`, который:
+  - на старте dual-task пишет `RequestInvoke`,
+  - после каждого `Resume()` сливает `DrainDualEvents()` в историю,
+  - для обычных операций продолжает писать `Invoke/Response`,
+  - при успехе/ошибке печатает dual историю.
+
+### Файлы
+- `runtime/include/scheduler.h` — `DualStrategyScheduler`.
 
 ---
 
-## 4. Генерация и запись истории для dual (request/followup)
-Нужно выбрать, как dual будет виден checker’у.
+# 4) Dual checker: проверка расширенной истории
 
-- расширить формат `SeqHistory`, чтобы включать события:
-  - `RequestInvoke/RequestResponse`
-  - `FollowUpInvoke/FollowUpResponse`
-  - плюс обычные `Invoke/Response` для не-dual операций
+### Что сделано
+- Введены типы dual событий (`RequestInvoke/...`) и `DualHistoryEvent`.
+- Реализован `LinearizabilityDualCheckerRecursive`, который линеаризует request/followup по dual‑спеке.
+- Dual‑спека задаётся через `GetDualMethods()` (nonblocking или request+followup).
 
-
-- стабильную идентичность “одной dual-операции” между request и followup (общий id/handle);
-- корректный real-time порядок событий (чтобы followup не “писался асинхронно” вне контроля scheduler).
-
+### Файлы
+- `runtime/include/lincheck_dual.h`.
 
 ---
 
-## 5. Dual checker 
-Сделать отдельный `DualModelChecker`
+# 5) Dual runner: запуск dual режима
 
-- поддерживает метод-map, где метод может быть:
-  - обычным (nonblocking) как сейчас,
-  - или “blocking spec method” (factory), который создаёт объект “ожидающей операции” в спецификации.
-- При линеаризации:
-  - `RequestInvoke` → запускаем spec-метод и сохраняем “pending request” в структуре активных request’ов (по id).
-  - `FollowUpInvoke` → разрешаем линеаризовать только если соответствующий pending request в спецификации уже “готов”, и результат совпадает.
+### Что сделано
+- Добавлен `SpecDual`, `RunDual`, `LTEST_ENTRYPOINT_DUAL`.
+- Dual режим использует `LinearizabilityDualCheckerRecursive` + `DualStrategyScheduler`.
 
-- использовать `ValueWrapper` вместо `int`
----
-
-## 6. Инструментация C++20 coroutine - не сделано
-Что сделать:
-- использовать текущий `coyieldpass` (или расширить его), чтобы:
-  - вставлять маркеры/yield в ключевые coroutine-точки, релевантные для dual (await_ready/await_suspend/await_resume, initial/final suspend),
-  - обеспечить, что resuming другой coroutine не превращается в кусок без переключений.
+### Файлы
+- `runtime/include/verifying.h`.
 
 ---
 
-## 7. Инфраструктура: pretty print, логирование, реплей
-Чтобы dual было реально использовать:
-- расширить pretty printer: печать request/followup событий и их связки (id).
-- обязательно обеспечить корректный reset round: никаких висячих корутин/ожиданий, корректная зачистка blocked.
-- если dual-операции требуют “особой” зачистки, сделать явный механизм (аналог `ReleaseTask`, но корректный).
+# Что пока НЕ сделано 
+- Dual replay
+- minimization: нет.
+- Dual TLA: не поддержан.
+- 2ой смысл deadlock
+- делегировать резолвинг дедлок пользователю
+- ABA
 
----
-
-Можно смотреть генерить
-
-## 8. Производительность - думаю?
-Старая ветка имела replay-from-start и отсутствие кеша. В основной ветке стоит заранее заложить улучшение:
-
-- Разделить спецификацию на:
-  - копируемое “логическое состояние структуры”
-  - и абстрактное представление pending requests (тоже копируемое)
-- Тогда можно включить кеширование, как в WGL checker (пара “маска линеризации + spec state”), вместо постоянного replay.
+Кажется идейно умею для
+- stack/queue/channel
+- bound/unbound
+- c одной/двух сторон
+- mutex/RW-lock
 
 
----
+Сейчас:
 
-## Шаг 9. Другие dual структуры запустить - не делал
+все история
+текущие состояние
+тред 
+->
+vector<task> 
 
-## Шаг 10. Минимизатор - не делал
+канал go
+libcoro
+folly
+
+
+
+
+`GetWorkloadPolicy()` возвращает правила типа:
+
+- `wait_method` — операция, которая может “занять поток ожиданием” (например `"pop"`)
+- `progress_methods` — операции, которые могут продвинуть систему (например `{"push"}`)
+- `reserve_threads` — сколько потоков надо “оставить” под прогресс (например `1`)
+
+100 потоков
+
+100 пушей 
+99 pop
+
+stack:
+cnt_pop <= cnt_push + cnt_thread - 1
+
+channel:
+cnt_pop <= cnt_push + cnt_thread - 1
+cnt_push <= cnt_pop + cnt_thread - 1
+
+mutex:
+per thread: lock() - unlock()
+
+queue/mutex/exchanger
+hash table with condition 
+
+
+
+Пример для стека:
+- если все pop → последний свободный поток должен выбирать push
+
 
 ```c++
-Result res = co_await expr;
+auto x = co_await something;
 ```
 -->
-
 ```c++
-auto&& awaiter = expr;
-if (!awaiter.await_ready()) {
-  auto suspend_result = awaiter.await_suspend(handle);
+auto a = something; // awaitable
+if (!a.await_ready()) {
+  std::coroutine_handle<> h = /* current coroutine handle */;
+
+  if (a.await_suspend(h)) {
+    return; // управление уйдёт наружу
+  }
 }
-Result val = awaiter.await_resume();
-return val;
+// await_ready==true или await_suspend==false
+auto x = a.await_resume();
 ```
 
 

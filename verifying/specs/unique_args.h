@@ -51,6 +51,7 @@ struct UniqueArgsOptionsOverride {
             .tasks = limit,
             .switches = 100000000,
             .rounds = 10000,
+            .seed = -1,
             .depth = 1,
             .forbid_all_same = false,
             .verbose = false,

@@ -39,5 +39,15 @@ struct RoundRobinStrategy : PickStrategy<TargetObj, Verifier> {
     return std::nullopt;
   }
 
+  size_t ChooseCandidate(size_t candidates_count) override {
+    if (candidates_count == 0) {
+      return 0;
+    }
+    size_t choice = next_candidate % candidates_count;
+    next_candidate++;
+    return choice;
+  }
+
   size_t next_task;
+  size_t next_candidate{0};
 };

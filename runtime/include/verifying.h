@@ -47,6 +47,7 @@ struct Opts {
   size_t tasks;
   size_t switches;
   size_t rounds;
+  int64_t seed;
   bool minimize;
   size_t exploration_runs;
   size_t minimization_runs;
@@ -65,6 +66,7 @@ struct DefaultOptions {
   size_t switches;
   size_t rounds;
   size_t depth;
+  int64_t seed;
   bool forbid_all_same;
   bool verbose;
   const char *strategy;
@@ -85,8 +87,12 @@ std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
   switch (opts.typ) {
     case RR: {
       std::cout << "round-robin\n";
-      return std::make_unique<RoundRobinStrategy<TargetObj, Verifier>>(
+      auto strategy = std::make_unique<RoundRobinStrategy<TargetObj, Verifier>>(
           opts.threads, std::move(l));
+      if (opts.seed >= 0) {
+        strategy->SetSeed(static_cast<uint64_t>(opts.seed));
+      }
+      return strategy;
     }
     case RND: {
       std::cout << "random\n";
@@ -98,13 +104,21 @@ std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
         throw std::invalid_argument{
             "number of threads not equal to number of weights"};
       }
-      return std::make_unique<RandomStrategy<TargetObj, Verifier>>(
+      auto strategy = std::make_unique<RandomStrategy<TargetObj, Verifier>>(
           opts.threads, std::move(l), std::move(weights));
+      if (opts.seed >= 0) {
+        strategy->SetSeed(static_cast<uint64_t>(opts.seed));
+      }
+      return strategy;
     }
     case PCT: {
       std::cout << "pct\n";
-      return std::make_unique<PctStrategy<TargetObj, Verifier>>(opts.threads,
-                                                                std::move(l));
+      auto strategy = std::make_unique<PctStrategy<TargetObj, Verifier>>(
+          opts.threads, std::move(l));
+      if (opts.seed >= 0) {
+        strategy->SetSeed(static_cast<uint64_t>(opts.seed));
+      }
+      return strategy;
     }
     default:
       assert(false && "unexpected type");
@@ -125,7 +139,10 @@ struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
         StrategyScheduler<Verifier>(*strategy.get(), checker,
                                     std::move(custom_rounds), pretty_printer,
                                     max_tasks, max_rounds, minimize,
-                                    exploration_runs, minimization_runs) {};
+                                    exploration_runs, minimization_runs) {
+    // active strategy pointer for wmm choice 
+    SetActiveStrategy(this->strategy.get());
+  }
 
  private:
   std::unique_ptr<Strategy> strategy;
@@ -207,6 +224,7 @@ int Run(int argc, char *argv[], std::vector<CustomRound> custom_rounds = {}) {
   std::cout << "tasks    = " << opts.tasks << "\n";
   std::cout << "switches = " << opts.switches << "\n";
   std::cout << "rounds   = " << opts.rounds << "\n";
+  std::cout << "seed     = " << opts.seed << "\n";
   std::cout << "minimize = " << std::boolalpha << opts.minimize << "\n";
   if (opts.minimize) {
     std::cout << "exploration runs = " << opts.exploration_runs << "\n";

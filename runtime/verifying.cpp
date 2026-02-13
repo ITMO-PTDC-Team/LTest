@@ -72,6 +72,7 @@ DEFINE_int32(threads, 2, "Number of threads");
 DEFINE_int32(tasks, 15, "Number of tasks");
 DEFINE_int32(switches, 100000000, "Number of switches");
 DEFINE_int32(rounds, 5, "Number of rounds");
+DEFINE_int64(seed, -1, "Seed for strategy choice and scheduling");
 DEFINE_bool(minimize, false, "Minimize nonlinear scenario");
 DEFINE_int32(exploration_runs, 15,
              "Number of attempts to find nonlinearized round during each "
@@ -92,6 +93,7 @@ void SetOpts(const DefaultOptions &def) {
   FLAGS_tasks = def.tasks;
   FLAGS_switches = def.switches;
   FLAGS_rounds = def.rounds;
+  FLAGS_seed = def.seed;
   FLAGS_depth = def.depth;
   FLAGS_verbose = def.verbose;
   FLAGS_strategy = def.strategy;
@@ -108,6 +110,7 @@ Opts ParseOpts() {
   opts.tasks = FLAGS_tasks;
   opts.switches = FLAGS_switches;
   opts.rounds = FLAGS_rounds;
+  opts.seed = FLAGS_seed;
   opts.minimize = FLAGS_minimize;  // NOTE(dartiukhov) minimization for
                                    // scenarios with locks is not supported
   opts.exploration_runs = FLAGS_exploration_runs;

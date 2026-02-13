@@ -19,6 +19,14 @@ class Graph {
   Graph() {}
   ~Graph() { Clean(); }
 
+  template <class T>
+  struct ReadCandidate {
+    // тут же можно хранить различные метрики
+    Event* read_event;
+    Event* write_event;
+    T value;
+  };
+
   void Reset(int nThreads) {
     Clean();
     InitThreads(nThreads);
@@ -49,6 +57,42 @@ class Graph {
     assert((event->readFrom->IsWrite() || event->readFrom->IsModifyRMW()) &&
            "Read event must read from write or modifying rmw event");
     return Event::GetReadValue<T>(event);
+  }
+
+  // creates a read event and returns all consistent read-from candidates
+  // caller is responsible for choose
+  template <class T>
+  std::vector<ReadCandidate<T>> GetReadFromCandidates(int location,
+                                                      int threadId,
+                                                      MemoryOrder order) {
+    EventId eventId = events.size();
+    auto event = new ReadEvent<T>(eventId, nThreads, location, threadId, order);
+
+    CreatePoEdgeToEvent(event);  
+
+    std::vector<ReadCandidate<T>> candidates;
+    auto readFromEvents = GetReadFromCandidatesForEvent(event);
+    for (auto writeEvent : readFromEvents) {
+      if (TryCreateRfEdgeWithCommit(writeEvent, event, false)) {
+        candidates.push_back(ReadCandidate<T>{
+            event,
+            writeEvent,
+            Event::GetWrittenValue<T>(writeEvent),
+        });
+      }
+    }
+
+    return candidates;
+  }
+
+  // applies chosen candidate and returns read value
+  template <class T>
+  T ApplyReadCandidate(const ReadCandidate<T>& candidate) {
+    bool ok =
+        TryCreateRfEdgeWithCommit(candidate.write_event, candidate.read_event,
+                                  true);
+    assert(ok && "Chosen read candidate must be consistent");
+    return Event::GetReadValue<T>(candidate.read_event);
   }
 
   template <class T>
@@ -125,6 +169,15 @@ class Graph {
   }
 
  private:
+  std::vector<Event*> GetReadFromCandidatesForEvent(Event* event) {
+    auto filteredEventsView =
+        events | std::views::filter([event](Event* e) {
+          return ((e->IsWrite() || e->IsModifyRMW()) &&
+                  e->location == event->location && e != event);
+        });
+    return {filteredEventsView.begin(), filteredEventsView.end()};
+  }
+
   std::vector<Event*> GetShuffledReadFromCandidates(Event* event) {
     // Shuffle events to randomize the order of read-from edges
     // and allow for more non-sc behaviours
@@ -143,6 +196,12 @@ class Graph {
   // Tries to create a read-from edge between `write` and `read` events (write
   // --rf--> read). Returns `true` if edge was created, `false` otherwise.
   bool TryCreateRfEdge(Event* write, Event* read) {
+    return TryCreateRfEdgeWithCommit(write, read, true);
+  }
+
+  // Tries to create a read-from edge. If commit is false, all changes are
+  // discarded and graph stays intact.
+  bool TryCreateRfEdgeWithCommit(Event* write, Event* read, bool commit) {
     assert(write->IsWriteOrRMW() && read->IsReadOrRMW() &&
            "Write and Read events must be of correct type");
     assert(write->location == read->location &&
@@ -237,27 +296,31 @@ class Graph {
     }
 
     bool isConsistent = IsConsistent();
-    if (isConsistent) {
+    if (isConsistent && commit) {
       log() << "Consistent graph:" << "\n";
       Print(log());
       // preserve added edges and other modifications
       ApplySnapshot();
-    } else {
-      log() << "Not consistent graph:" << "\n";
-      Print(log());
-      // removes all added edges
-      log() << "Discarding snapshot" << "\n";
-      DiscardSnapshot();
-      // remove rf-edge
-      read->SetReadFromEvent(nullptr);
-      // restore old clock if necessary
-      if (isClockUpdated) {
-        read->clock = oldClock;
-      }
-      // restore last seq-cst write event
-      lastSeqCstWriteEvents[read->location] = oldLastSeqCstWriteEvent;
-      Print(log());
+      return true;
     }
+
+    // Non-commit or inconsistent path: rollback state.
+    log() << (isConsistent ? "Candidate accepted (no-commit)" :
+                               "Not consistent graph")
+          << ":" << "\n";
+    Print(log());
+    // removes all added edges
+    log() << "Discarding snapshot" << "\n";
+    DiscardSnapshot();
+    // remove rf-edge
+    read->SetReadFromEvent(nullptr);
+    // restore old clock if necessary
+    if (isClockUpdated) {
+      read->clock = oldClock;
+    }
+    // restore last seq-cst write event
+    lastSeqCstWriteEvents[read->location] = oldLastSeqCstWriteEvent;
+    Print(log());
 
     return isConsistent;
   }

@@ -8,6 +8,8 @@ set (SOURCE_FILES
         minimization.cpp
         minimization_smart.cpp
         coro_ctx_guard.cpp
+        strategy_context.cpp
+        wmm_runtime.cpp
 )
 
 add_library(runtime SHARED ${SOURCE_FILES})

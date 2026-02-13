@@ -46,6 +46,11 @@ concept StrategyTaskVerifier = requires(T a) {
 // will be the next one it can be implemented by different strategies, such as:
 // randomized/tla/fair
 struct Strategy {
+  Strategy() {
+    std::random_device dev;
+    choice_rng.seed(dev());
+  }
+
   virtual std::optional<size_t> NextThreadId() = 0;
 
   virtual std::optional<TaskWithMetaData> Next() = 0;
@@ -102,12 +107,21 @@ struct Strategy {
   // BaseStrategyWithThreads knows about the Verifier and will delegate to that)
   virtual void OnVerifierTaskFinish(Task& task, size_t thread_id) = 0;
 
+  // Chooses read candidate index in [0, candidates_count)
+  virtual size_t ChooseCandidate(size_t candidates_count) = 0;
+
+  // Seeds choice rng for reproducible scheduling and wmm choices
+  virtual void SetSeed(uint64_t seed) { choice_rng.seed(seed); }
+
   virtual ~Strategy() = default;
 
  protected:
   // For current round returns first task index in thread which is greater
   // than `round_schedule[thread]` or the same index if the task is not finished
   virtual int GetNextTaskInThread(int thread_index) const = 0;
+
+  // Rng used by strategy choice; derived strategies can use it directly
+  std::mt19937 choice_rng;
 
   void ResetWmmGraph(int threads_count) {
     if (wmm_enabled) {
@@ -146,6 +160,11 @@ struct BaseStrategyWithThreads : public Strategy {
 
     std::random_device dev;
     rng = std::mt19937(dev());
+  }
+
+  void SetSeed(uint64_t seed) override {
+    Strategy::SetSeed(seed);
+    rng.seed(seed);
   }
 
   std::optional<std::tuple<Task&, int>> GetTask(int task_id) override {
@@ -384,6 +403,10 @@ struct BaseStrategyWithThreads : public Strategy {
       constructors_distribution;
   std::mt19937 rng;
 };
+
+// Active strategy context for wmm choice
+void SetActiveStrategy(Strategy* strategy);
+Strategy* GetActiveStrategy();
 
 // StrategyScheduler generates different sequential histories (using Strategy)
 // and then checks them with the ModelChecker

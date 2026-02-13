@@ -1,6 +1,7 @@
 // Keeps as separated file because use in regression tests.
 #pragma once
 #include <cassert>
+#include <sstream>
 #include <vector>
 
 #include "generators.h"
@@ -10,6 +11,12 @@
 namespace ltest {
 
 extern std::vector<TaskBuilder> task_builders;
+
+inline void LtestFail(const char *expr, const char *file, int line) {
+  std::ostringstream oss;
+  oss << "test failed: " << expr << " at " << file << ":" << line;
+  throw ltest::TestFailure(oss.str());
+}
 
 }  // namespace ltest
 
@@ -24,6 +31,9 @@ extern std::vector<TaskBuilder> task_builders;
 // highly recommend to avoid std:: usage otherwise many interleavings in
 // standard library will not be inserted.
 #define as_atomic attr(ltest_atomic)
+
+#define rassert(expr) \
+  ((expr) ? (void)0 : ltest::LtestFail(#expr, __FILE__, __LINE__))
 
 namespace ltest {
 
@@ -78,6 +88,26 @@ struct TargetMethod {
   }
 };
 
+template <typename Ret, typename Target, typename... Args>
+struct MethodInvocation {
+  using Method = std::function<ValueWrapper(Target *, Args...)>;
+
+  inline static TaskBuilder GetTaskBuilder(std::string_view method_name,
+                                           std::tuple<Args...> params,
+                                           Method method) {
+    auto builder =
+        [method_name, params = std::move(params), method = std::move(method)](
+            void *this_ptr, size_t unused_thread_num, int task_id) -> Task {
+      auto args = std::shared_ptr<void>(new std::tuple(params));
+      auto coro = Coro<Target, Args...>::New(method, this_ptr, args,
+                                             &ltest::toStringArgs<Args...>,
+                                             method_name, task_id);
+      return coro;
+    };
+    return TaskBuilder(std::string(method_name), builder);
+  }
+};
+
 template <typename Target, typename... Args>
 struct TargetMethod<void, Target, Args...> {
   using Method = std::function<void(Target *, Args...)>;
@@ -102,6 +132,31 @@ struct TargetMethod<void, Target, Args...> {
   }
 };
 
+template <typename Target, typename... Args>
+struct MethodInvocation<void, Target, Args...> {
+  using Method = std::function<void(Target *, Args...)>;
+
+  inline static TaskBuilder GetTaskBuilder(std::string_view method_name,
+                                           std::tuple<Args...> params,
+                                           Method method) {
+    auto builder =
+        [method_name, params = std::move(params), method = std::move(method)](
+            void *this_ptr, size_t unused_thread_num, int task_id) -> Task {
+      // auto wrapper = Wrapper<Target, decltype(method), Args...>{method};
+      auto wrapper = [f = std::move(method)](void *this_ptr, Args &&...args) {
+        f(reinterpret_cast<Target *>(this_ptr), std::forward<Args>(args)...);
+        return void_v;
+      };
+      auto args = std::shared_ptr<void>(new std::tuple(params));
+      auto coro = Coro<Target, Args...>::New(wrapper, this_ptr, args,
+                                             &ltest::toStringArgs<Args...>,
+                                             method_name, task_id);
+      return coro;
+    };
+    return TaskBuilder(std::string(method_name), builder);
+  }
+};
+
 }  // namespace ltest
 
 #define declare_task_name(symbol) \
@@ -111,3 +166,11 @@ struct TargetMethod<void, Target, Args...> {
   declare_task_name(symbol);                               \
   ltest::TargetMethod<ret, cls __VA_OPT__(, ) __VA_ARGS__> \
       symbol##_ltest_method_cls{symbol##_task_name, gen, &cls::symbol};
+
+#define stringify_detail(x) #x
+#define stringify(x) stringify_detail(x)
+#define method_invocation(params, ret, cls, symbol, ...)                      \
+  ltest::MethodInvocation<                                                    \
+      ret, cls __VA_OPT__(, ) __VA_ARGS__>::GetTaskBuilder(stringify(symbol), \
+                                                           params,            \
+                                                           &cls::symbol)

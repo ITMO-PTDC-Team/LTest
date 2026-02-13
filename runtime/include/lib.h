@@ -3,6 +3,7 @@
 #include <boost/context/fiber.hpp>
 #include <boost/context/fiber_fcontext.hpp>
 #include <cassert>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -20,6 +21,7 @@ struct CoroutineStatus;
 
 // Current executing coroutine.
 extern std::shared_ptr<CoroBase> this_coro;
+extern int this_thread_id;
 
 // Scheduler context
 extern boost::context::fiber_context sched_ctx;
@@ -30,6 +32,21 @@ struct CoroutineStatus {
   std::string_view name;
   bool has_started;
 };
+
+namespace ltest {
+struct TestFailure : public std::exception {
+  explicit TestFailure(std::string message) : msg(std::move(message)) {}
+  const char* what() const noexcept override { return msg.c_str(); }
+
+ private:
+  std::string msg;
+};
+
+void SetTestFailure(std::string message);
+bool HasTestFailure();
+const std::string& GetTestFailureMessage();
+void ClearTestFailure();
+}  // namespace ltest
 
 extern "C" void CoroYield();
 
@@ -45,7 +62,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   virtual std::shared_ptr<CoroBase> Restart(void* this_ptr) = 0;
 
   // Resume the coroutine to the next yield.
-  void Resume();
+  void Resume(int resumed_thread_id);
 
   // Check if the coroutine is returned.
   bool IsReturned() const;
@@ -70,10 +87,10 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   std::shared_ptr<CoroBase> GetPtr();
 
   // Try to terminate the coroutine.
-  void TryTerminate();
+  void TryTerminate(int running_thread_id);
 
   // Terminate the coroutine.
-  void Terminate();
+  void Terminate(int running_thread_id);
 
   void SetBlocked(const BlockState& state) {
     fstate = state;
@@ -152,7 +169,14 @@ struct Coro final : public CoroBase {
               reinterpret_cast<std::tuple<Args...>*>(c->args.get());
           auto this_arg =
               std::tuple<Target*>{reinterpret_cast<Target*>(c->this_ptr)};
-          c->ret = std::apply(c->func, std::tuple_cat(this_arg, *real_args));
+          try {
+            c->ret = std::apply(c->func, std::tuple_cat(this_arg, *real_args));
+          } catch (const ltest::TestFailure& ex) {
+            ltest::SetTestFailure(ex.what());
+            c->ret = void_v;
+          } catch (...) {
+            throw;
+          }
           c->is_returned = true;
           return std::move(ctx);
         });

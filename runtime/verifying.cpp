@@ -9,6 +9,10 @@
 
 namespace ltest {
 
+namespace wmm {
+bool wmm_enabled = false;
+}  // namespace wmm
+
 template <>
 std::string toString<int>(const int &a) {
   return std::to_string(a);
@@ -68,12 +72,16 @@ DEFINE_int32(threads, 2, "Number of threads");
 DEFINE_int32(tasks, 15, "Number of tasks");
 DEFINE_int32(switches, 100000000, "Number of switches");
 DEFINE_int32(rounds, 5, "Number of rounds");
+DEFINE_int64(seed, -1, "Seed for strategy choice and scheduling");
 DEFINE_bool(minimize, false, "Minimize nonlinear scenario");
 DEFINE_int32(exploration_runs, 15,
              "Number of attempts to find nonlinearized round during each "
              "minimization step");
 DEFINE_int32(minimization_runs, 15,
              "Number of minimization runs for smart minimizor");
+DEFINE_bool(wmm_enabled, false,
+            "Enable WMM graph usage (all atomic operations will be performed "
+            "via this graph");
 DEFINE_int32(depth, 0,
              "How many tasks can be executed on one thread(Only for TLA)");
 DEFINE_bool(verbose, false, "Verbosity");
@@ -85,12 +93,14 @@ void SetOpts(const DefaultOptions &def) {
   FLAGS_tasks = def.tasks;
   FLAGS_switches = def.switches;
   FLAGS_rounds = def.rounds;
+  FLAGS_seed = def.seed;
   FLAGS_depth = def.depth;
   FLAGS_verbose = def.verbose;
   FLAGS_strategy = def.strategy;
   FLAGS_weights = def.weights;
   FLAGS_exploration_runs = def.exploration_runs;
   FLAGS_minimization_runs = def.minimization_runs;
+  FLAGS_wmm_enabled = def.wmm_enabled;
 }
 
 // Extracts required opts, returns the rest of args.
@@ -100,10 +110,12 @@ Opts ParseOpts() {
   opts.tasks = FLAGS_tasks;
   opts.switches = FLAGS_switches;
   opts.rounds = FLAGS_rounds;
+  opts.seed = FLAGS_seed;
   opts.minimize = FLAGS_minimize;  // NOTE(dartiukhov) minimization for
                                    // scenarios with locks is not supported
   opts.exploration_runs = FLAGS_exploration_runs;
   opts.minimization_runs = FLAGS_minimization_runs;
+  opts.wmm_enabled = wmm_enabled = FLAGS_wmm_enabled;
   opts.verbose = FLAGS_verbose;
   opts.typ = FromLiteral(std::move(FLAGS_strategy));
   opts.depth = FLAGS_depth;

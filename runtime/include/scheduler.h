@@ -9,6 +9,7 @@
 #include <string_view>
 #include <utility>
 
+#include "custom_round.h"
 #include "lib.h"
 #include "lincheck.h"
 #include "logger.h"
@@ -17,6 +18,9 @@
 #include "pretty_print.h"
 #include "scheduler_fwd.h"
 #include "stable_vector.h"
+#include "wmm/wmm.h"
+
+using namespace ltest::wmm;
 
 struct TaskWithMetaData {
   Task& task;
@@ -35,12 +39,18 @@ concept StrategyTaskVerifier = requires(T a) {
   } -> std::same_as<bool>;
   { a.OnFinished(std::declval<Task&>(), size_t()) } -> std::same_as<void>;
   { a.ReleaseTask(size_t()) } -> std::same_as<std::optional<std::string>>;
+  { a.Reset() } -> std::same_as<void>;
 };
 
 // Strategy is the general strategy interface which decides which task
 // will be the next one it can be implemented by different strategies, such as:
 // randomized/tla/fair
 struct Strategy {
+  Strategy() {
+    std::random_device dev;
+    choice_rng.seed(dev());
+  }
+
   virtual std::optional<size_t> NextThreadId() = 0;
 
   virtual std::optional<TaskWithMetaData> Next() = 0;
@@ -78,6 +88,11 @@ struct Strategy {
   // Resets the state of all created tasks in the strategy.
   virtual void ResetCurrentRound() = 0;
 
+  // Sets custom round provided by the user for execution.
+  // The round should be executed via `Scheduler::ExploreRound` method
+  // instead of `Scheduler::GenerateAndRunRound`.
+  virtual void SetCustomRound(CustomRound& custom_round) = 0;
+
   // Returns the number of non-removed tasks
   virtual int GetValidTasksCount() const = 0;
 
@@ -92,12 +107,27 @@ struct Strategy {
   // BaseStrategyWithThreads knows about the Verifier and will delegate to that)
   virtual void OnVerifierTaskFinish(Task& task, size_t thread_id) = 0;
 
+  // Chooses read candidate index in [0, candidates_count)
+  virtual size_t ChooseCandidate(size_t candidates_count) = 0;
+
+  // Seeds choice rng for reproducible scheduling and wmm choices
+  virtual void SetSeed(uint64_t seed) { choice_rng.seed(seed); }
+
   virtual ~Strategy() = default;
 
  protected:
   // For current round returns first task index in thread which is greater
   // than `round_schedule[thread]` or the same index if the task is not finished
   virtual int GetNextTaskInThread(int thread_index) const = 0;
+
+  // Rng used by strategy choice; derived strategies can use it directly
+  std::mt19937 choice_rng;
+
+  void ResetWmmGraph(int threads_count) {
+    if (wmm_enabled) {
+      wmm_graph.Reset(threads_count);
+    }
+  }
 
   // id of next generated task
   int new_task_id = 0;
@@ -106,16 +136,18 @@ struct Strategy {
   // when generated round is explored this vector stores indexes of tasks
   // that will be invoked next in each thread
   std::vector<int> round_schedule;
+  ExecutionGraph& wmm_graph = ExecutionGraph::getInstance();
 };
 
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 struct BaseStrategyWithThreads : public Strategy {
   BaseStrategyWithThreads(size_t threads_count,
                           std::vector<TaskBuilder> constructors)
-      : state(std::make_unique<TargetObj>()),
-        threads_count(threads_count),
-        constructors(std::move(constructors)) {
+      : threads_count(threads_count), constructors(std::move(constructors)) {
+    // must be called before instantiating `TargetObj`
+    ResetWmmGraph(this->threads_count);
     round_schedule.resize(threads_count, -1);
+    state = std::make_unique<TargetObj>();
 
     constructors_distribution =
         std::uniform_int_distribution<std::mt19937::result_type>(
@@ -128,6 +160,11 @@ struct BaseStrategyWithThreads : public Strategy {
 
     std::random_device dev;
     rng = std::mt19937(dev());
+  }
+
+  void SetSeed(uint64_t seed) override {
+    Strategy::SetSeed(seed);
+    rng.seed(seed);
   }
 
   std::optional<std::tuple<Task&, int>> GetTask(int task_id) override {
@@ -153,6 +190,32 @@ struct BaseStrategyWithThreads : public Strategy {
     return threads;
   }
 
+  void StartNextRound() override {
+    this->new_task_id = 0;
+    // also resets the state
+    this->TerminateTasks();  // TODO: what about different threads count for
+                             // wmm_graph?
+
+    // this could happen if we run custom scenarios
+    // (which could have arbitrary number of threads)
+    if (this->threads.size() != this->threads_count) {
+      this->threads.clear();
+      for (size_t i = 0; i < this->threads_count; ++i) {
+        this->threads.emplace_back();
+      }
+    } else {
+      // more optimal allocations-wise implementation
+      for (auto& thread : this->threads) {
+        // We don't have to keep references alive
+        while (thread.size() > 0) {
+          thread.pop_back();
+        }
+      }
+    }
+
+    this->round_schedule.resize(this->threads_count, -1);
+  }
+
   void ResetCurrentRound() override {
     TerminateTasks();
     for (auto& thread : threads) {
@@ -162,6 +225,29 @@ struct BaseStrategyWithThreads : public Strategy {
           thread[i] = thread[i]->Restart(state.get());
         }
       }
+    }
+  }
+
+  void SetCustomRound(CustomRound& custom_round) override {
+    size_t custom_threads_count = custom_round.threads.size();
+
+    // custom round threads count might differ from the generated rounds
+    this->threads.resize(custom_threads_count);
+    this->round_schedule.resize(custom_threads_count, -1);
+    this->sched_checker.Reset();
+    ResetWmmGraph(custom_threads_count);
+    this->state = std::make_unique<TargetObj>();
+
+    for (size_t current_thread = 0; current_thread < custom_threads_count;
+         ++current_thread) {
+      auto& builders = custom_round.threads[current_thread];
+      StableVector<Task> thread_tasks;
+      for (auto& task_builder : builders) {
+        auto task =
+            task_builder.Build(state.get(), current_thread, new_task_id++);
+        thread_tasks.emplace_back(task);
+      }
+      this->threads[current_thread] = std::move(thread_tasks);
     }
   }
 
@@ -274,7 +360,7 @@ struct BaseStrategyWithThreads : public Strategy {
           auto& task = thread[task_index];
           has_nonterminated_threads = true;
           // do a single step in this task
-          task->Resume();
+          task->Resume(thread_index);
           if (task->IsReturned()) {
             OnVerifierTaskFinish(task, thread_index);
             debug(stderr, "Terminated: %ld\n", thread_index);
@@ -282,6 +368,11 @@ struct BaseStrategyWithThreads : public Strategy {
         }
       }
     }
+    // must appear before state reset, so that constructors of atomics in
+    // data structure under test register themselves in the new execution graph
+    // TODO: for custom scenarios threads number might differ, check for places
+    // where `threads.size()` cannot be used
+    ResetWmmGraph(threads.size());
     state.reset(new TargetObj{});
   }
 
@@ -313,6 +404,10 @@ struct BaseStrategyWithThreads : public Strategy {
   std::mt19937 rng;
 };
 
+// Active strategy context for wmm choice
+void SetActiveStrategy(Strategy* strategy);
+Strategy* GetActiveStrategy();
+
 // StrategyScheduler generates different sequential histories (using Strategy)
 // and then checks them with the ModelChecker
 template <StrategyTaskVerifier Verifier>
@@ -320,11 +415,13 @@ struct StrategyScheduler : public SchedulerWithReplay {
   // max_switches represents the maximal count of switches. After this count
   // scheduler will end execution of the Run function
   StrategyScheduler(Strategy& sched_class, ModelChecker& checker,
+                    std::vector<CustomRound> custom_rounds,
                     PrettyPrinter& pretty_printer, size_t max_tasks,
                     size_t max_rounds, bool minimize, size_t exploration_runs,
                     size_t minimization_runs)
       : strategy(sched_class),
         checker(checker),
+        custom_rounds(std::move(custom_rounds)),
         pretty_printer(pretty_printer),
         max_tasks(max_tasks),
         max_rounds(max_rounds),
@@ -336,28 +433,40 @@ struct StrategyScheduler : public SchedulerWithReplay {
   // history is a history with all events, where each element in the vector is a
   // Resume operation on the corresponding task
   Scheduler::Result Run() override {
-    for (size_t i = 0; i < max_rounds; ++i) {
-      log() << "run round: " << i << "\n";
-      auto histories = RunRound();
+    for (size_t j = 0; j < custom_rounds.size() + max_rounds; ++j) {
+      bool is_running_custom_scenarios = (j < custom_rounds.size());
+      Result histories;
+
+      if (is_running_custom_scenarios) {
+        log() << "explore custom round: " << j << "\n";
+        strategy.SetCustomRound(custom_rounds[j]);
+        histories = ExploreRound(exploration_runs, true);
+      } else {
+        size_t i = j - custom_rounds.size();
+        log() << "run round: " << i << "\n";
+        debug(stderr, "run round: %zu\n", i);
+        histories = RunRound();
+      }
 
       if (histories.has_value()) {
         auto& [full_history, sequential_history, reason] = histories.value();
+        int threads_num = GetStartegyThreadsCount();
 
         if (should_minimize_history) {
           log() << "Full nonlinear scenario: \n";
-          pretty_printer.PrettyPrint(sequential_history, log());
+          pretty_printer.PrettyPrint(sequential_history, threads_num, log());
 
           log() << "Minimizing same interleaving...\n";
           Minimize(histories.value(), SameInterleavingMinimizor());
           log() << "Minimized to:\n";
-          pretty_printer.PrettyPrint(sequential_history, log());
+          pretty_printer.PrettyPrint(sequential_history, threads_num, log());
 
           log() << "Minimizing with rescheduling (exploration runs: "
                 << exploration_runs << ")...\n";
           Minimize(histories.value(),
                    StrategyExplorationMinimizor(exploration_runs));
           log() << "Minimized to:\n";
-          pretty_printer.PrettyPrint(sequential_history, log());
+          pretty_printer.PrettyPrint(sequential_history, threads_num, log());
 
           log() << "Minimizing with smart minimizor (exploration runs: "
                 << exploration_runs
@@ -375,6 +484,10 @@ struct StrategyScheduler : public SchedulerWithReplay {
     }
 
     return std::nullopt;
+  }
+
+  int GetStartegyThreadsCount() const override {
+    return strategy.GetThreadsCount();
   }
 
  protected:
@@ -401,7 +514,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
       }
       full_history.emplace_back(next_task);
 
-      next_task->Resume();
+      next_task->Resume(thread_id);
       if (next_task->IsReturned()) {
         finished_tasks++;
         strategy.OnVerifierTaskFinish(next_task, thread_id);
@@ -412,7 +525,8 @@ struct StrategyScheduler : public SchedulerWithReplay {
       }
     }
 
-    pretty_printer.PrettyPrint(sequential_history, log());
+    pretty_printer.PrettyPrint(sequential_history, GetStartegyThreadsCount(),
+                               log());
 
     if (deadlock_detected) {
       return NonLinearizableHistory(full_history, sequential_history,
@@ -429,7 +543,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
   }
 
   // Runs different interleavings of the current round
-  Result ExploreRound(int runs) override {
+  Result ExploreRound(int runs, bool log_each_interleaving) override {
     for (int i = 0; i < runs; ++i) {
       // log() << "Run " << i + 1 << "/" << runs << "\n";
       strategy.ResetCurrentRound();
@@ -452,7 +566,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
         }
         full_history.emplace_back(next_task);
 
-        next_task->Resume();
+        next_task->Resume(thread_id);
         if (next_task->IsReturned()) {
           tasks_to_run--;
           strategy.OnVerifierTaskFinish(next_task, thread_id);
@@ -463,6 +577,12 @@ struct StrategyScheduler : public SchedulerWithReplay {
         }
       }
 
+      if (log_each_interleaving) {
+        pretty_printer.PrettyPrint(sequential_history,
+                                   GetStartegyThreadsCount(), log());
+        log() << "\n";
+      }
+
       if (deadlock_detected) {
         return NonLinearizableHistory(full_history, sequential_history,
                                       NonLinearizableHistory::Reason::DEADLOCK);
@@ -470,7 +590,8 @@ struct StrategyScheduler : public SchedulerWithReplay {
 
       if (!checker.Check(sequential_history)) {
         // log() << "New nonlinearized scenario:\n";
-        // pretty_printer.PrettyPrint(sequential_history, log());
+        // pretty_printer.PrettyPrint(sequential_history,
+        //                            GetStartegyThreadsCount(), log());
         return NonLinearizableHistory(
             full_history, sequential_history,
             NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY);
@@ -519,10 +640,10 @@ struct StrategyScheduler : public SchedulerWithReplay {
       // if this is the last time this task appears in `tasks_ordering`, then
       // complete it fully.
       if (resumes_count[next_task_id] == 0) {
-        next_task->Terminate();
+        next_task->Terminate(thread_id);
       } else {
         resumes_count[next_task_id]--;
-        next_task->Resume();
+        next_task->Resume(thread_id);
       }
 
       if (next_task->IsReturned()) {
@@ -554,6 +675,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
  private:
   Strategy& strategy;
   ModelChecker& checker;
+  std::vector<CustomRound> custom_rounds;
   PrettyPrinter& pretty_printer;
   size_t max_tasks;
   size_t max_rounds;
@@ -614,6 +736,8 @@ struct TLAScheduler : Scheduler {
   struct Frame {
     // Pointer to the in task thread.
     Task* task{};
+    // Id of the thread in which the task is running.
+    int thread_id{};
     // Is true if the task was created at this step.
     bool is_new{};
   };
@@ -624,11 +748,11 @@ struct TLAScheduler : Scheduler {
   // cancel() func takes care for graceful shutdown
   void TerminateTasks() {
     cancel();
-    for (size_t i = 0; i < threads.size(); ++i) {
-      for (size_t j = 0; j < threads[i].tasks.size(); ++j) {
-        auto& task = threads[i].tasks[j];
+    for (size_t thread_id = 0; thread_id < threads.size(); ++thread_id) {
+      for (size_t j = 0; j < threads[thread_id].tasks.size(); ++j) {
+        auto& task = threads[thread_id].tasks[j];
         if (!task->IsReturned()) {
-          task->Terminate();
+          task->Terminate(thread_id);
         }
       }
     }
@@ -651,7 +775,7 @@ struct TLAScheduler : Scheduler {
       } else {
         // It was a not new task, hence, we recreated in early.
       }
-      (*task)->Resume();
+      (*task)->Resume(frame.thread_id);
     }
     coroutine_status.reset();
   }
@@ -698,6 +822,7 @@ struct TLAScheduler : Scheduler {
     }
     auto& task = thread.tasks.back();
     frame.task = &task;
+    frame.thread_id = thread_id;
 
     thread_id_history.push_back(thread_id);
     if (is_new) {
@@ -705,7 +830,7 @@ struct TLAScheduler : Scheduler {
     }
 
     assert(!task->IsBlocked());
-    task->Resume();
+    task->Resume(thread_id);
     UpdateFullHistory(thread_id, task, is_new);
     bool is_finished = task->IsReturned();
     if (is_finished) {
@@ -724,7 +849,8 @@ struct TLAScheduler : Scheduler {
       }
     } else {
       log() << "run round: " << finished_rounds << "\n";
-      pretty_printer.PrettyPrint(full_history, log());
+      pretty_printer.PrettyPrint(full_history, GetStartegyThreadsCount(),
+                                 log());
       log() << "===============================================\n\n";
       log().flush();
       // Stop, check if the the generated history is linearizable.
@@ -813,7 +939,7 @@ struct TLAScheduler : Scheduler {
           }
           frame.is_new = true;
           auto size_before = tasks.size();
-          tasks.emplace_back(cons.Build(&state, i, -1/* TODO: fix task id for tla, because it is Scheduler and not Strategy class for some reason */));
+          tasks.emplace_back(cons.Build(state.get(), i, -1/* TODO: fix task id for tla, because it is Scheduler and not Strategy class for some reason */));
           started_tasks++;
           auto [is_over, res] = ResumeTask(frame, step, switches, thread, true);
           if (is_over || res.has_value()) {
@@ -833,6 +959,8 @@ struct TLAScheduler : Scheduler {
     frames.pop_back();
     return {false, {}};
   }
+
+  int GetStartegyThreadsCount() const override { return threads.size(); }
 
   PrettyPrinter& pretty_printer;
   size_t max_tasks;

@@ -166,25 +166,38 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   }
 
   void StartNextRound() override {
-    this->new_task_id = 0;
-    //    log() << "depth: " << current_depth << "\n";
-    // Reconstruct target as we start from the beginning.
-    this->TerminateTasks();
-    for (auto& thread : this->threads) {
-      // We don't have to keep references alive
-      while (thread.size() > 0) {
-        thread.pop_back();
-      }
-      thread = StableVector<Task>();
-    }
-    // this->state.Reset();
-
+    BaseStrategyWithThreads<TargetObj, Verifier>::StartNextRound();
     UpdateStatistics();
   }
 
   void ResetCurrentRound() override {
     BaseStrategyWithThreads<TargetObj, Verifier>::ResetCurrentRound();
     UpdateStatistics();
+  }
+
+  void SetCustomRound(CustomRound& custom_round) override {
+    BaseStrategyWithThreads<TargetObj, Verifier>::SetCustomRound(custom_round);
+    // reinitialize pct internals to avoid oob
+    current_schedule_length = 0;
+    count_chosen_same = 0;
+    fair_stage = 0;
+    fair_start = 0;
+    last_chosen = 0;
+    PrepareForDepth(current_depth, 1);
+  }
+
+  size_t ChooseCandidate(size_t candidates_count) override {
+    // uniform choice for wmm candidates
+    if (candidates_count == 0) {
+      return 0;
+    }
+    std::uniform_int_distribution<size_t> dist(0, candidates_count - 1);
+    return dist(this->choice_rng);
+  }
+
+  void SetSeed(uint64_t seed) override {
+    BaseStrategyWithThreads<TargetObj, Verifier>::SetSeed(seed);
+    rng.seed(seed);
   }
 
   ~PctStrategy() { this->TerminateTasks(); }
@@ -210,7 +223,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
   void PrepareForDepth(size_t depth, size_t k) {
     // Generates priorities
-    priorities = std::vector<int>(this->threads_count);
+    priorities = std::vector<int>(this->threads.size());
     for (size_t i = 0; i < priorities.size(); ++i) {
       priorities[i] = current_depth + i;
     }

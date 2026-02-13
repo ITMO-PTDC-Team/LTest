@@ -3,12 +3,13 @@ set (SOURCE_FILES
         lib.cpp
         lin_check.cpp
         logger.cpp
-        pretty_printer.cpp
         verifying.cpp 
         generators.cpp
         minimization.cpp
         minimization_smart.cpp
         coro_ctx_guard.cpp
+        strategy_context.cpp
+        wmm_runtime.cpp
 )
 
 add_library(runtime SHARED ${SOURCE_FILES})

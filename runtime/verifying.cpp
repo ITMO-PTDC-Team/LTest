@@ -67,7 +67,11 @@ StrategyType FromLiteral(std::string &&a) {
 DEFINE_int32(threads, 2, "Number of threads");
 DEFINE_int32(tasks, 15, "Number of tasks");
 DEFINE_int32(switches, 100000000, "Number of switches");
-DEFINE_int32(rounds, 5, "Number of rounds");
+DEFINE_int32(
+    rounds, 5,
+    "Number of rounds. When custom rounds are added, this value will show the "
+    "number of generated rounds to run after all custom ones. This can be "
+    "set to zero in case if you want to run only custom rounds");
 DEFINE_bool(minimize, false, "Minimize nonlinear scenario");
 DEFINE_int32(exploration_runs, 15,
              "Number of attempts to find nonlinearized round during each "

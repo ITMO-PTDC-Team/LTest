@@ -8,7 +8,7 @@ venv
 tmp/
 third_party/**
 !third_party/CMakeLists.txt
-dist
+gidist
 .idea/
 cmake-build-debug/
 

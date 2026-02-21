@@ -1,5 +1,6 @@
 __pycache__
 build
+build-debug
 venv
 .vscode
 .devcontainer/**
@@ -10,3 +11,4 @@ third_party/**
 dist
 .idea/
 cmake-build-debug/
+

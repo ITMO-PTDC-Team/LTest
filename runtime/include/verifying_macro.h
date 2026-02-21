@@ -117,45 +117,56 @@ struct TargetDualMethod {
                    std::function<std::tuple<Args...>(size_t)> gen,
                    MethodPtr method_ptr) {
     auto wrapper = [method_ptr](Target* obj, Args... args) -> ValueWrapper {
-      // Cleanup path: do not start a new dual wait during round termination.
-      if (ltest_round_terminating) {
+      auto terminated_value = []() -> ValueWrapper {
         if constexpr (std::is_same_v<Ret, void>) {
           return void_v;
         } else {
           return ValueWrapper(Ret{});
         }
+      };
+      // Cleanup path: do not start a new dual wait during round termination.
+      if (ltest_round_terminating) {
+        return terminated_value();
       }
 
-      auto awaitable =
-          std::invoke(method_ptr, obj, std::forward<Args>(args)...);
+      assert(this_coro && "TargetDualMethod wrapper must run inside LTest task");
 
-      // Helper to emit RequestResponse + FollowUpInvoke exactly once.
+      // Heap-allocate awaitable and keep alive until end-of-round cleanup.
+      auto tmp = std::invoke(method_ptr, obj, std::forward<Args>(args)...);
+      using AwaitableT = std::decay_t<decltype(tmp)>;
+      auto awaitable = std::make_shared<AwaitableT>(std::move(tmp));
+      this_coro->KeepAlive(awaitable);
+
+      // Emit "request done" (ONLY request response).
       auto emit_request_done = []() {
         assert(this_coro);
-        this_coro->EmitDualEvent(CoroBase::DualEventKind::RequestResponse,
-                                 void_v);
-        this_coro->EmitDualEvent(CoroBase::DualEventKind::FollowUpInvoke,
-                                 void_v);
+        this_coro->EmitDualEvent(CoroBase::DualEventKind::RequestResponse, void_v);
       };
 
-      // Helper to emit FollowUpResponse(result)
+      // Emit "follow-up started" (moved to just before await_resume()).
+      auto emit_followup_invoke = []() {
+        assert(this_coro);
+        this_coro->EmitDualEvent(CoroBase::DualEventKind::FollowUpInvoke, void_v);
+      };
+
+      // Emit follow-up response(result)
       auto emit_followup_done = [](ValueWrapper res) {
         assert(this_coro);
         this_coro->EmitDualEvent(CoroBase::DualEventKind::FollowUpResponse,
                                  std::move(res));
       };
 
-      // Immediate path.
-      // TODO(bitree): записать сюда контекст
-
-      if (awaitable.await_ready()) {
+      // ---- Immediate path ----
+      if (awaitable->await_ready()) {
         emit_request_done();
+        emit_followup_invoke();
+
         if constexpr (std::is_same_v<Ret, void>) {
-          (void)awaitable.await_resume();
+          (void)awaitable->await_resume();
           emit_followup_done(void_v);
           return void_v;
         } else {
-          auto r = awaitable.await_resume();
+          auto r = awaitable->await_resume();
           ValueWrapper vw{static_cast<Ret>(r)};
           emit_followup_done(vw);
           return vw;
@@ -170,8 +181,7 @@ struct TargetDualMethod {
       auto st = std::make_shared<DualWaitState>();
       st->addr = reinterpret_cast<std::intptr_t>(st.get());
 
-      // Small coroutine that is resumed by the matching operation.
-      // It unblocks current LTest task.
+      // Small coroutine resumed by matching operation (wakes LTest task).
       struct Waker {
         struct promise_type {
           Waker get_return_object() {
@@ -190,63 +200,56 @@ struct TargetDualMethod {
         block_manager.UnblockAllOn(st->addr);
         co_return;
       };
-      /*
-       * T0: request done. T0 -> unblocking
-       *
-       * T1: request done.
-       */
 
       Waker w = make_waker(st);
       std::coroutine_handle<> h = w.h;
 
+      // Defer handle destruction to end-of-round cleanup (Phase 1).
+      this_coro->DeferDestroy(h);
+
       // Try to suspend.
-      bool suspended = awaitable.await_suspend(h);
+      bool suspended = awaitable->await_suspend(h);
       if (!suspended) {
         // No waiting => complete now.
-        if (h) h.destroy();
         emit_request_done();
+        emit_followup_invoke();
+
         if constexpr (std::is_same_v<Ret, void>) {
-          (void)awaitable.await_resume();
+          (void)awaitable->await_resume();
           emit_followup_done(void_v);
           return void_v;
         } else {
-          auto r = awaitable.await_resume();
+          auto r = awaitable->await_resume();
           ValueWrapper vw{static_cast<Ret>(r)};
           emit_followup_done(vw);
           return vw;
         }
       }
 
-      // Waiting => request phase is finished now.
+      // Waiting => request phase finished now.
       emit_request_done();
 
       // Block current LTest task until waker runs.
       while (!st->ready && !ltest_round_terminating) {
-        assert(this_coro && "dual wrapper called outside of task context");
         this_coro->SetBlocked(BlockState{st->addr, 0});
         CoroYield();
       }
 
-      // Cleanup waker coroutine.
-      if (h) h.destroy();
-
-      // Termination cleanup path: exit without await_resume() and without FollowUpResponse.
+      // Termination: exit without follow-up events.
       if (ltest_round_terminating) {
-        if constexpr (std::is_same_v<Ret, void>) {
-          return void_v;
-        } else {
-          return ValueWrapper(Ret{});
-        }
+        return terminated_value();
       }
 
-      // Normal completion.
+      // Now follow-up really starts.
       assert(st->ready);
+      emit_followup_invoke();
+
       if constexpr (std::is_same_v<Ret, void>) {
-        (void)awaitable.await_resume();
+        (void)awaitable->await_resume();
         emit_followup_done(void_v);
         return void_v;
       } else {
-        auto r = awaitable.await_resume();
+        auto r = awaitable->await_resume();
         ValueWrapper vw{static_cast<Ret>(r)};
         emit_followup_done(vw);
         return vw;
@@ -260,7 +263,6 @@ struct TargetDualMethod {
       auto coro = Coro<Target, Args...>::New(wrapper, this_ptr, args,
                                              &ltest::toStringArgs<Args...>,
                                              method_name, task_id);
-      // Mark this task as dual so scheduler (later) can treat it specially.
       coro->SetDual(true);
       return coro;
     };

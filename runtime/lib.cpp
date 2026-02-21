@@ -21,6 +21,33 @@ std::vector<TaskBuilder> task_builders{};
 
 Task CoroBase::GetPtr() { return shared_from_this(); }
 
+// ---- deferred cleanup / keepalive ----
+void CoroBase::KeepAlive(std::shared_ptr<void> p) {
+  if (!p) return;
+  keepalive_.push_back(std::move(p));
+}
+
+void CoroBase::DeferDestroy(std::coroutine_handle<> h) {
+  if (!h) return;
+  deferred_destroy_.push_back(h);
+}
+
+void CoroBase::RunDeferredCleanup() {
+  // Destroy deferred coroutine handles
+  for (auto h : deferred_destroy_) {
+    if (h) {
+      h.destroy();
+    }
+  }
+  deferred_destroy_.clear();
+
+  // Release kept-alive heap objects
+  keepalive_.clear();
+
+  // (Optional safety) drop any pending dual events; at round end they should not matter.
+  pending_dual_events_.clear();
+}
+
 void CoroBase::EmitDualEvent(DualEventKind kind, ValueWrapper result) {
   pending_dual_events_.push_back(DualEvent{kind, std::move(result)});
 }
@@ -77,6 +104,9 @@ ValueWrapper CoroBase::GetRetVal() const {
 }
 
 CoroBase::~CoroBase() {
+  // Ensure no leaked coroutine handles if cleanup wasn't called explicitly.
+  RunDeferredCleanup();
+
   // The coroutine must be returned if we want to restart it.
   // We can't just Terminate() it because it is the runtime responsibility to
   // decide, in which order the tasks should be terminated.

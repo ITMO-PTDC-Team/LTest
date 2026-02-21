@@ -341,6 +341,19 @@ struct BaseStrategyWithThreads : public Strategy {
         }
       }
     }
+    // --- NEW: run deferred cleanup for all tasks of this round ---
+    // This destroys deferred coroutine handles (wakers) and releases heap objects
+    // kept alive by KeepAlive() (e.g. heap-allocated awaitables for intrusive waiters).
+    for (auto& thread : this->threads) {
+      for (size_t i = 0; i < thread.size(); ++i) {
+        thread[i]->RunDeferredCleanup();
+      }
+    }
+
+    // Clear any remaining block queues that may still reference coroutines
+    // from this round (avoid stale pointers across rounds).
+    block_manager.queues.clear();
+
     ltest_round_terminating = false;
     state.reset(new TargetObj{});
   }

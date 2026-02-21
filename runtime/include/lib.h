@@ -1,6 +1,7 @@
 #pragma once
 #include <boost/context/fiber.hpp>
 #include <cassert>
+#include <coroutine>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -76,7 +77,9 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   BlockState GetBlockState() { return fstate; }
 
   // NOTE: you already modified IsBlocked to depend on wakeup condition.
-  bool IsBlocked() { return block_manager.IsBlocked(fstate, this) && isReadyToRun(); }
+  bool IsBlocked() {
+    return block_manager.IsBlocked(fstate, this) && isReadyToRun();
+  }
 
   bool IsParked() const;
 
@@ -102,6 +105,23 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   std::vector<DualEvent> DrainDualEvents();
   bool HasDualEvents() const { return !pending_dual_events_.empty(); }
 
+  // ---- lifetime management for dual termination safety ----
+  //
+  // KeepAlive: hold arbitrary heap state until end of round (e.g. awaitable object).
+  // DeferDestroy: postpone coroutine_handle<>::destroy() until end of round.
+  //
+  void KeepAlive(std::shared_ptr<void> p);
+
+  template <class T>
+  void KeepAlive(std::shared_ptr<T> p) {
+    KeepAlive(std::static_pointer_cast<void>(std::move(p)));
+  }
+
+  void DeferDestroy(std::coroutine_handle<> h);
+
+  // Must be called when no further target code can resume deferred handles.
+  // Safe to call multiple times.
+  void RunDeferredCleanup();
 
   virtual ~CoroBase();
 
@@ -129,6 +149,12 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
  private:
   bool is_dual_task_{false};
   std::vector<DualEvent> pending_dual_events_{};
+
+  // Keep heap objects alive until round end (awaitables, shared state, etc.)
+  std::vector<std::shared_ptr<void>> keepalive_{};
+
+  // Destroy coroutine handles at round end (waker handles passed to await_suspend()).
+  std::vector<std::coroutine_handle<>> deferred_destroy_{};
 };
 
 template <typename Target, typename... Args>

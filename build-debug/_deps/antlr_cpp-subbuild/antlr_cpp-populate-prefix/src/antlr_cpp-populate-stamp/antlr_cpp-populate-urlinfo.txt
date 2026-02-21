@@ -1,0 +1,12 @@
+# This is a generated file and its contents are an internal implementation detail.
+# The download step will be re-executed if anything in this file changes.
+# No other meaning or use of this file is supported.
+
+method=url
+command=/usr/bin/cmake;-P;/Ltest/build-debug/_deps/antlr_cpp-subbuild/antlr_cpp-populate-prefix/src/antlr_cpp-populate-stamp/download-antlr_cpp-populate.cmake;COMMAND;/usr/bin/cmake;-P;/Ltest/build-debug/_deps/antlr_cpp-subbuild/antlr_cpp-populate-prefix/src/antlr_cpp-populate-stamp/verify-antlr_cpp-populate.cmake;COMMAND;/usr/bin/cmake;-P;/Ltest/build-debug/_deps/antlr_cpp-subbuild/antlr_cpp-populate-prefix/src/antlr_cpp-populate-stamp/extract-antlr_cpp-populate.cmake
+source_dir=/Ltest/build-debug/_deps/antlr_cpp-src
+work_dir=/Ltest/build-debug/_deps
+url(s)=https://www.antlr.org/download/antlr4-cpp-runtime-4.12.0-source.zip
+hash=MD5=acf7371bd7562188712751266d8a7b90
+no_extract=
+

@@ -6,9 +6,9 @@
 #include <limits>
 #include <optional>
 #include <random>
+#include <string>
 #include <string_view>
 #include <utility>
-#include <string>
 
 #include "lib.h"
 #include "lincheck.h"
@@ -36,16 +36,19 @@ concept StrategyTaskVerifier = requires(T a) {
   // --- New API for workload policies (Reserve rules etc.) ---
   { a.OnRoundStart(size_t()) } -> std::same_as<void>;
 
-  { a.OnTaskStarted(std::declval<const std::string&>(), size_t(), int()) }
-  -> std::same_as<void>;
+  {
+    a.OnTaskStarted(std::declval<const std::string&>(), size_t(), int())
+  } -> std::same_as<void>;
 
-  { a.VerifyStart(std::declval<const std::string&>(), size_t(),
-                  std::declval<const ltest::StartContext&>()) }
-  -> std::same_as<bool>;
+  {
+    a.VerifyStart(std::declval<const std::string&>(), size_t(),
+                  std::declval<const ltest::StartContext&>())
+  } -> std::same_as<bool>;
 
   // --- Existing API (protocol constraints / UB-prevention) ---
-  { a.Verify(std::declval<const std::string&>(), size_t()) }
-  -> std::same_as<bool>;
+  {
+    a.Verify(std::declval<const std::string&>(), size_t())
+  } -> std::same_as<bool>;
 
   { a.OnFinished(std::declval<Task&>(), size_t()) } -> std::same_as<void>;
 
@@ -248,7 +251,6 @@ struct BaseStrategyWithThreads : public Strategy {
         }
       }
 
-
       // Choose constructor subject to verifier policy.
       std::shuffle(this->constructors.begin(), this->constructors.end(), rng);
       size_t verified_constructor = static_cast<size_t>(-1);
@@ -261,7 +263,7 @@ struct BaseStrategyWithThreads : public Strategy {
             this->sched_checker.Verify(constructor.GetName(), thread_index)) {
           verified_constructor = i;
           break;
-            }
+        }
       }
 
       if (verified_constructor == static_cast<size_t>(-1)) {
@@ -271,8 +273,10 @@ struct BaseStrategyWithThreads : public Strategy {
       const TaskBuilder& chosen = this->constructors[verified_constructor];
       const std::string& method_name = chosen.GetName();
 
-      Task task = chosen.Build(this->state.get(), thread_index, this->new_task_id++);
-      this->sched_checker.OnTaskStarted(method_name, thread_index, task->GetId());
+      Task task =
+          chosen.Build(this->state.get(), thread_index, this->new_task_id++);
+      this->sched_checker.OnTaskStarted(method_name, thread_index,
+                                        task->GetId());
 
       threads[thread_index].emplace_back(std::move(task));
     }
@@ -285,7 +289,8 @@ struct BaseStrategyWithThreads : public Strategy {
   // We do it in a dangerous way: in random order.
   // Actually, we assume obstruction free here.
   void TerminateTasks() {
-    // Enter termination mode so blocked dual operations can exit their wait loops.
+    // Enter termination mode so blocked dual operations can exit their wait
+    // loops.
     ltest_round_terminating = true;
 
     // Wake everybody up: after this IsBlocked() becomes false for all tasks
@@ -342,8 +347,9 @@ struct BaseStrategyWithThreads : public Strategy {
       }
     }
     // --- NEW: run deferred cleanup for all tasks of this round ---
-    // This destroys deferred coroutine handles (wakers) and releases heap objects
-    // kept alive by KeepAlive() (e.g. heap-allocated awaitables for intrusive waiters).
+    // This destroys deferred coroutine handles (wakers) and releases heap
+    // objects kept alive by KeepAlive() (e.g. heap-allocated awaitables for
+    // intrusive waiters).
     for (auto& thread : this->threads) {
       for (size_t i = 0; i < thread.size(); ++i) {
         thread[i]->RunDeferredCleanup();
@@ -559,54 +565,63 @@ struct StrategyScheduler : public SchedulerWithReplay {
   Result ReplayRound(const std::vector<int>& tasks_ordering) override {
     strategy.ResetCurrentRound();
 
-    // History of invoke and response events which is required for the checker
     FullHistory full_history;
     SeqHistory sequential_history;
-    // TODO: `IsRunning` field might be added to `Task` instead
-    std::unordered_set<int> started_tasks;
-    std::unordered_map<int, int>
-        resumes_count;  // task id -> number of appearences in `tasks_ordering`
 
-    for (int next_task_id : tasks_ordering) {
-      resumes_count[next_task_id]++;
+    // task id -> last position in tasks_ordering
+    std::unordered_map<int, size_t> last_pos;
+    last_pos.reserve(tasks_ordering.size());
+    for (size_t i = 0; i < tasks_ordering.size(); ++i) {
+      last_pos[tasks_ordering[i]] = i;
     }
 
-    for (int next_task_id : tasks_ordering) {
-      bool is_new = started_tasks.contains(next_task_id)
-                        ? false
-                        : started_tasks.insert(next_task_id).second;
+    // Tracks whether Invoke for this task has been emitted already.
+    std::unordered_set<int> started_tasks;
+    started_tasks.reserve(tasks_ordering.size());
+
+    for (size_t step = 0; step < tasks_ordering.size(); ++step) {
+      int next_task_id = tasks_ordering[step];
+
+      bool is_new = started_tasks.insert(next_task_id).second;
       auto task_info = strategy.GetTask(next_task_id);
 
       if (!task_info.has_value()) {
-        std::cerr << "No task with id " << next_task_id << " exists in round"
-                  << std::endl;
+        std::cerr << "No task with id " << next_task_id << " exists in round\n";
         throw std::runtime_error("Invalid task id");
       }
 
       auto [next_task, thread_id] = task_info.value();
+
+      // Keep replay semantics closer to RunRound()
+      next_task->clearWakeupCondition();
+
       if (is_new) {
         sequential_history.emplace_back(Invoke(next_task, thread_id));
       }
       full_history.emplace_back(next_task);
 
-      if (next_task->IsReturned()) continue;
+      if (next_task->IsReturned()) {
+        continue;
+      }
 
-      // if this is the last time this task appears in `tasks_ordering`, then
-      // complete it fully.
-      if (resumes_count[next_task_id] == 0) {
+      const bool is_last = (last_pos[next_task_id] == step);
+
+      if (is_last) {
+        // Last appearance => finish task completely.
         next_task->Terminate();
       } else {
-        resumes_count[next_task_id]--;
+        // Otherwise do just one step.
         next_task->Resume();
       }
 
       if (next_task->IsReturned()) {
+        // IMPORTANT: keep verifier state consistent with RunRound/ExploreRound
+        strategy.OnVerifierTaskFinish(next_task, thread_id);
+
         auto result = next_task->GetRetVal();
         sequential_history.emplace_back(Response(next_task, result, thread_id));
       }
     }
-
-    // pretty_printer.PrettyPrint(sequential_history, log());
 
     if (!checker.Check(sequential_history)) {
       return NonLinearizableHistory(
@@ -939,8 +954,8 @@ struct TLAScheduler : Scheduler {
 template <StrategyTaskVerifier Verifier>
 struct DualStrategyScheduler : public DualScheduler {
   DualStrategyScheduler(Strategy& sched_class, DualModelChecker& checker,
-                        PrettyPrinter& pretty_printer,
-                        size_t max_tasks, size_t max_rounds)
+                        PrettyPrinter& pretty_printer, size_t max_tasks,
+                        size_t max_rounds)
       : strategy(sched_class),
         checker(checker),
         pretty_printer(pretty_printer),
@@ -989,20 +1004,23 @@ struct DualStrategyScheduler : public DualScheduler {
 
       task->Resume();
 
-      // Drain dual events emitted from inside the task (request_done/followup...).
+      // Drain dual events emitted from inside the task
+      // (request_done/followup...).
       if (task->IsDual()) {
         auto events = task->DrainDualEvents();
         for (auto& e : events) {
           switch (e.kind) {
             case CoroBase::DualEventKind::RequestResponse:
-              seq.emplace_back(RequestResponse(task, static_cast<int>(thread_id)));
+              seq.emplace_back(
+                  RequestResponse(task, static_cast<int>(thread_id)));
               break;
             case CoroBase::DualEventKind::FollowUpInvoke:
-              seq.emplace_back(FollowUpInvoke(task, static_cast<int>(thread_id)));
+              seq.emplace_back(
+                  FollowUpInvoke(task, static_cast<int>(thread_id)));
               break;
             case CoroBase::DualEventKind::FollowUpResponse:
-              seq.emplace_back(
-                  FollowUpResponse(task, e.result, static_cast<int>(thread_id)));
+              seq.emplace_back(FollowUpResponse(task, e.result,
+                                                static_cast<int>(thread_id)));
               break;
           }
         }
@@ -1031,7 +1049,8 @@ struct DualStrategyScheduler : public DualScheduler {
     if (!checker.Check(seq)) {
       return DualScheduler::NonLinearizableHistory{
           full, seq,
-          DualScheduler::NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY};
+          DualScheduler::NonLinearizableHistory::Reason::
+              NON_LINEARIZABLE_HISTORY};
     }
 
     return std::nullopt;

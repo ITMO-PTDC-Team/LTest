@@ -359,7 +359,10 @@ struct BaseStrategyWithThreads : public Strategy {
   // references can't be invalidated before the end of the round,
   // so we have to contains all tasks in queues(queue doesn't invalidate the
   // references)
-  size_t threads_count;
+  size_t threads_count;  // number of threads specified in the command string
+                         // (in case if custom rounds are run, their threads
+                         // count might be different from this value which is
+                         // used for generated rounds only)
   std::vector<StableVector<Task>> threads;
   std::vector<TaskBuilder> constructors;
   std::uniform_int_distribution<std::mt19937::result_type>

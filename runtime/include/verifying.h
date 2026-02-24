@@ -18,7 +18,6 @@
 #include "strategy_verifier.h"
 #include "verifying_macro.h"
 #include "workload_policy.h"
-#include "strategy_verifier.h"
 
 namespace ltest {
 
@@ -34,10 +33,9 @@ struct DefaultCanceler {
 namespace detail {
 
 template <class S>
-concept HasWorkloadPolicy =
-    requires {
+concept HasWorkloadPolicy = requires {
   { S::GetWorkloadPolicy() } -> std::same_as<ltest::WorkloadPolicy>;
-    };
+};
 
 template <class LinearSpec>
 using DefaultVerifierForSpec =
@@ -143,16 +141,24 @@ std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
 // Keeps pointer to strategy to pass reference to base scheduler.
 template <StrategyTaskVerifier Verifier>
 struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
-  StrategySchedulerWrapper(std::unique_ptr<Strategy> strategy,
-                           ModelChecker &checker, PrettyPrinter &pretty_printer,
-                           size_t max_tasks, size_t max_rounds, bool minimize,
-                           size_t exploration_runs, size_t minimization_runs)
-      : strategy(std::move(strategy)),
-        StrategyScheduler<Verifier>(*strategy.get(), checker, pretty_printer,
-                                    max_tasks, max_rounds, minimize,
-                                    exploration_runs, minimization_runs) {}
+  StrategySchedulerWrapper(std::unique_ptr<Strategy> strategy_ptr,
+                           ModelChecker& checker,
+                           PrettyPrinter& pretty_printer,
+                           size_t max_tasks, size_t max_rounds,
+                           bool minimize,
+                           size_t exploration_runs,
+                           size_t minimization_runs)
+      : StrategyScheduler<Verifier>(*strategy_ptr.get(),
+                                    checker,
+                                    pretty_printer,
+                                    max_tasks,
+                                    max_rounds,
+                                    minimize,
+                                    exploration_runs,
+                                    minimization_runs),
+        strategy(std::move(strategy_ptr)) {}
 
- private:
+private:
   std::unique_ptr<Strategy> strategy;
 };
 
@@ -212,28 +218,36 @@ inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
 // A checker stub for: always "passes".
 // Step 5 will introduce a real dual checker.
 struct NoopDualChecker final : DualModelChecker {
-  bool Check(const std::vector<DualHistoryEvent>&) override { return true; }
+  bool Check(const std::vector<DualHistoryEvent> &) override { return true; }
 };
 
 template <StrategyTaskVerifier Verifier>
 struct DualStrategySchedulerWrapper : DualStrategyScheduler<Verifier> {
-  DualStrategySchedulerWrapper(std::unique_ptr<Strategy> strategy,
+  DualStrategySchedulerWrapper(std::unique_ptr<Strategy> strategy_ptr,
                                DualModelChecker& checker,
                                PrettyPrinter& pretty_printer,
-                               size_t max_tasks, size_t max_rounds)
-      : strategy(std::move(strategy)),
-        DualStrategyScheduler<Verifier>(*strategy.get(), checker, pretty_printer,
-                                        max_tasks, max_rounds) {}
+                               size_t max_tasks, size_t max_rounds,
+                               bool minimize,
+                               size_t exploration_runs,
+                               size_t minimization_runs)
+      : DualStrategyScheduler<Verifier>(*strategy_ptr.get(),
+                                        checker,
+                                        pretty_printer,
+                                        max_tasks,
+                                        max_rounds,
+                                        minimize,
+                                        exploration_runs,
+                                        minimization_runs),
+        strategy(std::move(strategy_ptr)) {}
 
- private:
+private:
   std::unique_ptr<Strategy> strategy;
 };
 
 template <typename TargetObj, StrategyTaskVerifier Verifier>
-std::unique_ptr<DualScheduler> MakeDualScheduler(DualModelChecker& checker,
-                                                 Opts& opts,
-                                                 const std::vector<TaskBuilder>& l,
-                                                 PrettyPrinter& pretty_printer) {
+std::unique_ptr<DualScheduler> MakeDualScheduler(
+    DualModelChecker &checker, Opts &opts, const std::vector<TaskBuilder> &l,
+    PrettyPrinter &pretty_printer) {
   std::cout << "strategy = ";
   // We support RR/RND/PCT the same way as normal.
   switch (opts.typ) {
@@ -242,27 +256,30 @@ std::unique_ptr<DualScheduler> MakeDualScheduler(DualModelChecker& checker,
     case RND: {
       auto strategy = MakeStrategy<TargetObj, Verifier>(opts, std::move(l));
       return std::make_unique<DualStrategySchedulerWrapper<Verifier>>(
-          std::move(strategy), checker, pretty_printer, opts.tasks, opts.rounds);
+          std::move(strategy), checker, pretty_printer, opts.tasks, opts.rounds,
+          opts.minimize, opts.exploration_runs, opts.minimization_runs);
     }
     case TLA: {
       // TODO(bitree): not supported for dual yet.
-      throw std::invalid_argument("TLA strategy is not supported in dual mode yet");
+      throw std::invalid_argument(
+          "TLA strategy is not supported in dual mode yet");
     }
     default:
       assert(false);
   }
 }
 
-inline int TrapRunDual(std::unique_ptr<DualScheduler>&& scheduler,
-                       PrettyPrinter& pretty_printer) {
+inline int TrapRunDual(std::unique_ptr<DualScheduler> &&scheduler,
+                       PrettyPrinter &pretty_printer) {
   auto result = scheduler->Run();
   if (result.has_value()) {
-    if (result->reason == DualScheduler::NonLinearizableHistory::Reason::DEADLOCK) {
+    if (result->reason ==
+        DualScheduler::NonLinearizableHistory::Reason::DEADLOCK) {
       std::cout << "deadlock detected:\n";
       pretty_printer.PrettyPrint(result->seq, std::cout);
       return 4;
-    } else if (result->reason ==
-               DualScheduler::NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY) {
+    } else if (result->reason == DualScheduler::NonLinearizableHistory::Reason::
+                                     NON_LINEARIZABLE_HISTORY) {
       std::cout << "non linearized:\n";
       pretty_printer.PrettyPrint(result->seq, std::cout);
       return 3;
@@ -275,8 +292,7 @@ inline int TrapRunDual(std::unique_ptr<DualScheduler>&& scheduler,
   }
 }
 
-template <class Spec,
-          StrategyTaskVerifier Verifier = typename Spec::verifier_t>
+template <class Spec, StrategyTaskVerifier Verifier = typename Spec::verifier_t>
 int Run(int argc, char *argv[]) {
   if constexpr (!std::is_same_v<typename Spec::options_override_t,
                                 ltest::NoOverride>) {
@@ -332,12 +348,17 @@ int RunDual(int argc, char *argv[]) {
   std::cout << "tasks    = " << opts.tasks << "\n";
   std::cout << "switches = " << opts.switches << "\n";
   std::cout << "rounds   = " << opts.rounds << "\n";
+  std::cout << "minimize = " << std::boolalpha << opts.minimize << "\n";
+  if (opts.minimize) {
+    std::cout << "exploration runs = " << opts.exploration_runs << "\n";
+    std::cout << "minimization runs = " << opts.minimization_runs << "\n";
+  }
   std::cout << "targets  = " << task_builders.size() << "\n";
 
   PrettyPrinter pretty_printer{opts.threads};
 
   using dual_checker_t =
-    LinearizabilityDualCheckerRecursive<typename SpecDual::linear_spec_t>;
+      LinearizabilityDualCheckerRecursive<typename SpecDual::linear_spec_t>;
   dual_checker_t checker{SpecDual::linear_spec_t::GetDualMethods(),
                          typename SpecDual::linear_spec_t{}};
   auto scheduler = MakeDualScheduler<typename SpecDual::target_obj_t, Verifier>(
@@ -345,7 +366,6 @@ int RunDual(int argc, char *argv[]) {
   std::cout << "\n\n";
   std::cout.flush();
   return TrapRunDual(std::move(scheduler), pretty_printer);
-
 }
 
 }  // namespace ltest

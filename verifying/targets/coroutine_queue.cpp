@@ -11,6 +11,7 @@ struct CoroutineQueue {
   struct SendPromise;
   struct ReceivePromise;
 
+  ltest::mutex mtx;
   std::deque<ReceivePromise> receivers;
   std::deque<SendPromise> senders;
 
@@ -24,6 +25,7 @@ struct CoroutineQueue {
     bool await_ready() { return false; }
 
     non_atomic bool await_suspend(std::coroutine_handle<> h) {
+      std::unique_lock<ltest::mutex> lk(queue.mtx);
       if (!queue.senders.empty()) {
         SendPromise send_req = queue.senders.front();
         queue.senders.pop_front();
@@ -52,6 +54,7 @@ struct CoroutineQueue {
     bool await_ready() { return false; }
 
     non_atomic bool await_suspend(std::coroutine_handle<> h) {
+      std::unique_lock<ltest::mutex> lk(queue.mtx);
       if (!queue.receivers.empty()) {
         ReceivePromise recv_req = queue.receivers.front();
         queue.receivers.pop_front();

@@ -8,7 +8,32 @@
 #include "lincheck_dual.h"
 
 struct Strategy;
-struct RoundMinimizor;
+
+// NEW: replay mode (to preserve deadlocks during replay)
+enum class ReplayMode {
+  // Old behavior: on the last appearance of a task id we force-complete it via Terminate()
+  CompleteOnLast,
+
+  // Deadlock-friendly: never force-complete tasks (never call Terminate()).
+  // Used to replay schedules without destroying deadlocks.
+  NoForceComplete,
+};
+
+// Forward declarations for templated minimization (header-only plan)
+template <class Event>
+struct RoundMinimizorT;
+
+template <class Event>
+struct GreedyRoundMinimizorT;
+
+template <class Event>
+struct SameInterleavingMinimizorT;
+
+template <class Event>
+struct StrategyExplorationMinimizorT;
+
+template <class Event>
+struct SmartMinimizorT;
 
 // ------------------------------
 // Generic scheduler interfaces
@@ -37,12 +62,14 @@ struct BasicScheduler {
 template <class Event>
 struct BasicSchedulerWithReplay : BasicScheduler<Event> {
  protected:
-  // Friend declarations are ok even if classes are defined later;
-  // this keeps existing minimization code working.
-  friend class GreedyRoundMinimizor;
-  friend class SameInterleavingMinimizor;
-  friend class StrategyExplorationMinimizor;
-  friend class SmartMinimizor;
+  template <class>
+  friend struct GreedyRoundMinimizorT;
+  template <class>
+  friend struct SameInterleavingMinimizorT;
+  template <class>
+  friend struct StrategyExplorationMinimizorT;
+  template <class>
+  friend struct SmartMinimizorT;
 
   using Base = BasicScheduler<Event>;
   using Result = typename Base::Result;
@@ -50,10 +77,15 @@ struct BasicSchedulerWithReplay : BasicScheduler<Event> {
 
   virtual Result RunRound() = 0;
   virtual Result ExploreRound(int runs) = 0;
-  virtual Result ReplayRound(const std::vector<int>& tasks_ordering) = 0;
+
+  // CHANGED: ReplayRound has a mode; default keeps old behavior.
+  virtual Result ReplayRound(const std::vector<int>& tasks_ordering,
+                             ReplayMode mode = ReplayMode::CompleteOnLast) = 0;
+
   virtual Strategy& GetStrategy() const = 0;
+
   virtual void Minimize(NonLinearizableHistory& nonlinear_history,
-                        const RoundMinimizor& minimizor) = 0;
+                        const RoundMinimizorT<Event>& minimizor) = 0;
 };
 
 // ------------------------------
@@ -64,5 +96,4 @@ using SchedulerWithReplay = BasicSchedulerWithReplay<HistoryEvent>;
 
 // Dual-mode types:
 using DualScheduler = BasicScheduler<DualHistoryEvent>;
-
 using DualSchedulerWithReplay = BasicSchedulerWithReplay<DualHistoryEvent>;

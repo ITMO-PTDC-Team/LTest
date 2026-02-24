@@ -6,8 +6,6 @@ set (SOURCE_FILES
         pretty_printer.cpp
         verifying.cpp 
         generators.cpp
-        minimization.cpp
-        minimization_smart.cpp
         coro_ctx_guard.cpp
 )
 

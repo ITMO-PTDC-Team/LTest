@@ -166,6 +166,11 @@ struct Coro final : public CoroBase {
   std::shared_ptr<CoroBase> Restart(void* this_ptr) override {
     assert(IsReturned());
     auto coro = New(func, this_ptr, args, args_to_strings, name, id);
+
+    // Preserve dual marker across round reset / replay.
+    // Otherwise dual tasks turn into non-dual after Restart(), breaking dual history.
+    coro->SetDual(this->IsDual());
+
     return coro;
   }
 

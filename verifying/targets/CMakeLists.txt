@@ -9,6 +9,7 @@ set (SOURCE_TARGET_LIST
     dual_treiber_stack.cpp
     coroutine_queue.cpp
     coro_async_stack.cpp
+    dual_deadlock.cpp
 )
 
 set (SOURCE_TARGET_WITHOUT_PLUGIN_LIST

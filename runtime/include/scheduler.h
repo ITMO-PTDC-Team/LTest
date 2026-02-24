@@ -9,13 +9,13 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "lib.h"
 #include "lincheck.h"
 #include "lincheck_dual.h"
 #include "logger.h"
-#include "minimization.h"
-#include "minimization_smart.h"
 #include "pretty_print.h"
 #include "scheduler_fwd.h"
 #include "stable_vector.h"
@@ -392,6 +392,39 @@ struct BaseStrategyWithThreads : public Strategy {
   std::mt19937 rng;
 };
 
+#include "minimization.h"
+#include "minimization_smart.h"
+
+static inline std::pair<bool, bool> GetUnfinishedAndRunnable(
+    const Strategy& strategy,
+    const std::unordered_set<int>* allowed_ids) {
+  bool has_unfinished = false;
+  bool has_runnable = false;
+
+  const auto& threads = strategy.GetTasks();
+  for (int tid = 0; tid < static_cast<int>(threads.size()); ++tid) {
+    const auto& thr = threads[tid];
+    for (int i = 0; i < static_cast<int>(thr.size()); ++i) {
+      const auto& t = thr[i];
+      int id = t->GetId();
+
+      // NEW: if allowed_ids provided, ignore tasks outside ordering
+      if (allowed_ids && !allowed_ids->contains(id)) continue;
+
+      if (strategy.IsTaskRemoved(id)) continue;
+      if (t->IsReturned()) continue;
+
+      has_unfinished = true;
+      if (!t->IsBlocked()) {
+        has_runnable = true;
+        return {has_unfinished, has_runnable};
+      }
+    }
+  }
+
+  return {has_unfinished, has_runnable};
+}
+
 // StrategyScheduler generates different sequential histories (using Strategy)
 // and then checks them with the ModelChecker
 template <StrategyTaskVerifier Verifier>
@@ -562,82 +595,92 @@ struct StrategyScheduler : public SchedulerWithReplay {
   }
 
   // Replays current round with specified interleaving
-  Result ReplayRound(const std::vector<int>& tasks_ordering) override {
-    strategy.ResetCurrentRound();
+  Result ReplayRound(const std::vector<int>& tasks_ordering,
+                   ReplayMode mode) override {
+  strategy.ResetCurrentRound();
+  std::unordered_set<int> in_ordering;
+  in_ordering.reserve(tasks_ordering.size());
+  for (int id : tasks_ordering) in_ordering.insert(id);
 
-    FullHistory full_history;
-    SeqHistory sequential_history;
+  FullHistory full_history;
+  SeqHistory sequential_history;
 
-    // task id -> last position in tasks_ordering
-    std::unordered_map<int, size_t> last_pos;
-    last_pos.reserve(tasks_ordering.size());
-    for (size_t i = 0; i < tasks_ordering.size(); ++i) {
-      last_pos[tasks_ordering[i]] = i;
-    }
-
-    // Tracks whether Invoke for this task has been emitted already.
-    std::unordered_set<int> started_tasks;
-    started_tasks.reserve(tasks_ordering.size());
-
-    for (size_t step = 0; step < tasks_ordering.size(); ++step) {
-      int next_task_id = tasks_ordering[step];
-
-      bool is_new = started_tasks.insert(next_task_id).second;
-      auto task_info = strategy.GetTask(next_task_id);
-
-      if (!task_info.has_value()) {
-        std::cerr << "No task with id " << next_task_id << " exists in round\n";
-        throw std::runtime_error("Invalid task id");
-      }
-
-      auto [next_task, thread_id] = task_info.value();
-
-      // Keep replay semantics closer to RunRound()
-      next_task->clearWakeupCondition();
-
-      if (is_new) {
-        sequential_history.emplace_back(Invoke(next_task, thread_id));
-      }
-      full_history.emplace_back(next_task);
-
-      if (next_task->IsReturned()) {
-        continue;
-      }
-
-      const bool is_last = (last_pos[next_task_id] == step);
-
-      if (is_last) {
-        // Last appearance => finish task completely.
-        next_task->Terminate();
-      } else {
-        // Otherwise do just one step.
-        next_task->Resume();
-      }
-
-      if (next_task->IsReturned()) {
-        // IMPORTANT: keep verifier state consistent with RunRound/ExploreRound
-        strategy.OnVerifierTaskFinish(next_task, thread_id);
-
-        auto result = next_task->GetRetVal();
-        sequential_history.emplace_back(Response(next_task, result, thread_id));
-      }
-    }
-
-    if (!checker.Check(sequential_history)) {
-      return NonLinearizableHistory(
-          full_history, sequential_history,
-          NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY);
-    }
-
-    return std::nullopt;
+  // task id -> last position in tasks_ordering
+  std::unordered_map<int, size_t> last_pos;
+  last_pos.reserve(tasks_ordering.size());
+  for (size_t i = 0; i < tasks_ordering.size(); ++i) {
+    last_pos[tasks_ordering[i]] = i;
   }
+
+  std::unordered_set<int> started_tasks;
+  started_tasks.reserve(tasks_ordering.size());
+
+  for (size_t step = 0; step < tasks_ordering.size(); ++step) {
+    int next_task_id = tasks_ordering[step];
+
+    bool is_new = started_tasks.insert(next_task_id).second;
+    auto task_info = strategy.GetTask(next_task_id);
+
+    if (!task_info.has_value()) {
+      std::cerr << "No task with id " << next_task_id << " exists in round\n";
+      throw std::runtime_error("Invalid task id");
+    }
+
+    auto [next_task, thread_id] = task_info.value();
+    next_task->clearWakeupCondition();
+
+    if (is_new) {
+      sequential_history.emplace_back(Invoke(next_task, thread_id));
+    }
+    full_history.emplace_back(next_task);
+
+    if (next_task->IsReturned()) continue;
+
+    const bool is_last = (last_pos[next_task_id] == step);
+
+    if (mode == ReplayMode::CompleteOnLast && is_last) {
+      next_task->Terminate();
+    } else {
+      next_task->Resume();
+    }
+
+    if (next_task->IsReturned()) {
+      strategy.OnVerifierTaskFinish(next_task, thread_id);
+      auto result = next_task->GetRetVal();
+      sequential_history.emplace_back(Response(next_task, result, thread_id));
+    }
+  }
+
+  // Deadlock-friendly replay: detect "stuck" after ordering without forcing completion.
+  if (mode == ReplayMode::NoForceComplete) {
+    auto [has_unfinished, has_runnable] = GetUnfinishedAndRunnable(strategy, &in_ordering);
+    if (has_unfinished && !has_runnable) {
+      // If even the prefix is not linearizable => report NON_LINEARIZABLE, else DEADLOCK.
+      if (!checker.Check(sequential_history)) {
+        return NonLinearizableHistory(
+            full_history, sequential_history,
+            NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY);
+      }
+      return NonLinearizableHistory(full_history, sequential_history,
+                                    NonLinearizableHistory::Reason::DEADLOCK);
+    }
+  }
+
+  if (!checker.Check(sequential_history)) {
+    return NonLinearizableHistory(
+        full_history, sequential_history,
+        NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY);
+  }
+
+  return std::nullopt;
+}
 
   Strategy& GetStrategy() const override { return strategy; }
 
   // Minimizes number of tasks in the nonlinearized history preserving threads
   // interleaving. Modifies argument `nonlinear_history`.
   void Minimize(NonLinearizableHistory& nonlinear_history,
-                const RoundMinimizor& minimizor) override {
+                const RoundMinimizorT<HistoryEvent>& minimizor) override {
     minimizor.Minimize(*this, nonlinear_history);
   }
 
@@ -949,24 +992,56 @@ struct TLAScheduler : Scheduler {
 
 // DualStrategyScheduler: builds dual history by:
 // - writing RequestInvoke for dual tasks when task is_new
-// - draining task->DrainDualEvents() after each Resume()
+// - draining task->DrainDualEvents() after each Resume()/Terminate()
 // Checker is DualModelChecker.
+//
+// Step 1 for Dual-minimization:
+// make it DualSchedulerWithReplay by implementing
+// RunRound/ExploreRound/ReplayRound.
 template <StrategyTaskVerifier Verifier>
-struct DualStrategyScheduler : public DualScheduler {
+struct DualStrategyScheduler : public DualSchedulerWithReplay {
   DualStrategyScheduler(Strategy& sched_class, DualModelChecker& checker,
                         PrettyPrinter& pretty_printer, size_t max_tasks,
-                        size_t max_rounds)
+                        size_t max_rounds, bool minimize,
+                      size_t exploration_runs,
+                      size_t minimization_runs)
       : strategy(sched_class),
         checker(checker),
         pretty_printer(pretty_printer),
         max_tasks(max_tasks),
-        max_rounds(max_rounds) {}
+        max_rounds(max_rounds),
+        should_minimize_history(minimize),
+        exploration_runs(exploration_runs),
+        minimization_runs(minimization_runs) {}
 
-  DualScheduler::Result Run() override {
+  DualSchedulerWithReplay::Result Run() override {
     for (size_t i = 0; i < max_rounds; ++i) {
       log() << "run round: " << i << "\n";
       auto res = RunRound();
       if (res.has_value()) {
+        if (should_minimize_history) {
+          log() << "Full nonlinear scenario (DUAL):\n";
+          pretty_printer.PrettyPrint(res->seq, log());
+
+          log() << "Minimizing same interleaving...\n";
+          Minimize(*res, DualSameInterleavingMinimizor{});
+          log() << "Minimized to:\n";
+          pretty_printer.PrettyPrint(res->seq, log());
+
+          log() << "Minimizing with rescheduling (exploration runs: "
+                << exploration_runs << ")...\n";
+          Minimize(*res, DualStrategyExplorationMinimizor(
+                             static_cast<int>(exploration_runs)));
+          log() << "Minimized to:\n";
+          pretty_printer.PrettyPrint(res->seq, log());
+
+          log() << "Minimizing with smart minimizor (exploration runs: "
+                << exploration_runs
+                << ", minimization runs: " << minimization_runs << ")...\n";
+          Minimize(*res, DualSmartMinimizor(static_cast<int>(exploration_runs),
+                                            static_cast<int>(minimization_runs),
+                                            pretty_printer));
+        }
         return res;
       }
       log() << "===============================================\n\n";
@@ -976,10 +1051,42 @@ struct DualStrategyScheduler : public DualScheduler {
     return std::nullopt;
   }
 
- private:
-  DualScheduler::Result RunRound() {
-    DualScheduler::SeqHistory seq;
-    DualScheduler::FullHistory full;
+ protected:
+  // Common helper: start event for new task
+  inline void EmitStartEvent(DualSchedulerWithReplay::SeqHistory& seq,
+                             Task& task, bool is_new, int thread_id) {
+    if (!is_new) return;
+    if (task->IsDual()) {
+      seq.emplace_back(RequestInvoke(task, thread_id));
+    } else {
+      seq.emplace_back(Invoke(task, thread_id));
+    }
+  }
+
+  // Common helper: drain dual events after a step
+  inline void DrainDual(Task& task, int thread_id,
+                        DualSchedulerWithReplay::SeqHistory& seq) {
+    if (!task->IsDual()) return;
+    auto events = task->DrainDualEvents();
+    for (auto& e : events) {
+      switch (e.kind) {
+        case CoroBase::DualEventKind::RequestResponse:
+          seq.emplace_back(RequestResponse(task, thread_id));
+          break;
+        case CoroBase::DualEventKind::FollowUpInvoke:
+          seq.emplace_back(FollowUpInvoke(task, thread_id));
+          break;
+        case CoroBase::DualEventKind::FollowUpResponse:
+          seq.emplace_back(FollowUpResponse(task, e.result, thread_id));
+          break;
+      }
+    }
+  }
+
+  // Runs a round with some interleaving while generating it (dual mode)
+  DualSchedulerWithReplay::Result RunRound() override {
+    DualSchedulerWithReplay::SeqHistory seq;
+    DualSchedulerWithReplay::FullHistory full;
 
     bool deadlock_detected{false};
 
@@ -989,76 +1096,200 @@ struct DualStrategyScheduler : public DualScheduler {
         deadlock_detected = true;
         break;
       }
-      auto [task, is_new, thread_id] = t.value();
+      auto [task, is_new, thread_id_sz] = t.value();
+      int thread_id = static_cast<int>(thread_id_sz);
 
       // Start event.
-      if (is_new) {
-        if (task->IsDual()) {
-          seq.emplace_back(RequestInvoke(task, static_cast<int>(thread_id)));
-        } else {
-          seq.emplace_back(Invoke(task, static_cast<int>(thread_id)));
-        }
-      }
+      EmitStartEvent(seq, task, is_new, thread_id);
 
       full.emplace_back(task);
 
       task->Resume();
 
-      // Drain dual events emitted from inside the task
-      // (request_done/followup...).
-      if (task->IsDual()) {
-        auto events = task->DrainDualEvents();
-        for (auto& e : events) {
-          switch (e.kind) {
-            case CoroBase::DualEventKind::RequestResponse:
-              seq.emplace_back(
-                  RequestResponse(task, static_cast<int>(thread_id)));
-              break;
-            case CoroBase::DualEventKind::FollowUpInvoke:
-              seq.emplace_back(
-                  FollowUpInvoke(task, static_cast<int>(thread_id)));
-              break;
-            case CoroBase::DualEventKind::FollowUpResponse:
-              seq.emplace_back(FollowUpResponse(task, e.result,
-                                                static_cast<int>(thread_id)));
-              break;
-          }
-        }
-      }
+      // Drain dual events emitted from inside the task.
+      DrainDual(task, thread_id, seq);
 
       // Finish.
       if (task->IsReturned()) {
         finished_tasks++;
-        strategy.OnVerifierTaskFinish(task, thread_id);
+        strategy.OnVerifierTaskFinish(task, thread_id_sz);
 
         if (!task->IsDual()) {
           auto result = task->GetRetVal();
-          seq.emplace_back(Response(task, result, static_cast<int>(thread_id)));
+          seq.emplace_back(Response(task, result, thread_id));
         }
       }
     }
 
-    // Print dual history for debugging.
     pretty_printer.PrettyPrint(seq, log());
 
     if (deadlock_detected) {
-      return DualScheduler::NonLinearizableHistory{
-          full, seq, DualScheduler::NonLinearizableHistory::Reason::DEADLOCK};
+      return DualSchedulerWithReplay::NonLinearizableHistory{
+          full, seq,
+          DualSchedulerWithReplay::NonLinearizableHistory::Reason::DEADLOCK};
     }
 
     if (!checker.Check(seq)) {
-      return DualScheduler::NonLinearizableHistory{
+      return DualSchedulerWithReplay::NonLinearizableHistory{
           full, seq,
-          DualScheduler::NonLinearizableHistory::Reason::
+          DualSchedulerWithReplay::NonLinearizableHistory::Reason::
               NON_LINEARIZABLE_HISTORY};
     }
 
     return std::nullopt;
   }
 
+  // Runs different interleavings of the current round (dual mode)
+  DualSchedulerWithReplay::Result ExploreRound(int runs) override {
+    for (int i = 0; i < runs; ++i) {
+      strategy.ResetCurrentRound();
+
+      DualSchedulerWithReplay::SeqHistory seq;
+      DualSchedulerWithReplay::FullHistory full;
+
+      bool deadlock_detected{false};
+
+      for (int tasks_to_run = strategy.GetValidTasksCount();
+           tasks_to_run > 0;) {
+        auto t = strategy.NextSchedule();
+        if (!t.has_value()) {
+          deadlock_detected = true;
+          break;
+        }
+        auto [task, is_new, thread_id_sz] = t.value();
+        int thread_id = static_cast<int>(thread_id_sz);
+
+        EmitStartEvent(seq, task, is_new, thread_id);
+        full.emplace_back(task);
+
+        task->Resume();
+        DrainDual(task, thread_id, seq);
+
+        if (task->IsReturned()) {
+          tasks_to_run--;
+          strategy.OnVerifierTaskFinish(task, thread_id_sz);
+
+          if (!task->IsDual()) {
+            auto result = task->GetRetVal();
+            seq.emplace_back(Response(task, result, thread_id));
+          }
+        }
+      }
+
+      if (deadlock_detected) {
+        return DualSchedulerWithReplay::NonLinearizableHistory{
+            full, seq,
+            DualSchedulerWithReplay::NonLinearizableHistory::Reason::DEADLOCK};
+      }
+
+      if (!checker.Check(seq)) {
+        return DualSchedulerWithReplay::NonLinearizableHistory{
+            full, seq,
+            DualSchedulerWithReplay::NonLinearizableHistory::Reason::
+                NON_LINEARIZABLE_HISTORY};
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  // Replays current round with specified interleaving (dual mode)
+  DualSchedulerWithReplay::Result ReplayRound(const std::vector<int>& tasks_ordering,
+                                            ReplayMode mode) override {
+  strategy.ResetCurrentRound();
+  std::unordered_set<int> in_ordering;
+in_ordering.reserve(tasks_ordering.size());
+for (int id : tasks_ordering) in_ordering.insert(id);
+
+  DualSchedulerWithReplay::FullHistory full;
+  DualSchedulerWithReplay::SeqHistory seq;
+
+  std::unordered_map<int, size_t> last_pos;
+  last_pos.reserve(tasks_ordering.size());
+  for (size_t i = 0; i < tasks_ordering.size(); ++i) {
+    last_pos[tasks_ordering[i]] = i;
+  }
+
+  std::unordered_set<int> started;
+  started.reserve(tasks_ordering.size());
+
+  for (size_t step = 0; step < tasks_ordering.size(); ++step) {
+    int task_id = tasks_ordering[step];
+    bool is_new = started.insert(task_id).second;
+
+    auto task_info = strategy.GetTask(task_id);
+    if (!task_info.has_value()) {
+      std::cerr << "No task with id " << task_id << " exists in round\n";
+      throw std::runtime_error("Invalid task id");
+    }
+
+    auto [task, thread_id_i] = task_info.value();
+    int thread_id = thread_id_i;
+
+    EmitStartEvent(seq, task, is_new, thread_id);
+    full.emplace_back(task);
+
+    if (!task->IsReturned()) {
+      const bool is_last = (last_pos[task_id] == step);
+      if (mode == ReplayMode::CompleteOnLast && is_last) {
+        task->Terminate();
+      } else {
+        task->Resume();
+      }
+    }
+
+    DrainDual(task, thread_id, seq);
+
+    if (task->IsReturned()) {
+      strategy.OnVerifierTaskFinish(task, static_cast<size_t>(thread_id_i));
+      if (!task->IsDual()) {
+        auto result = task->GetRetVal();
+        seq.emplace_back(Response(task, result, thread_id));
+      }
+    }
+  }
+
+  if (mode == ReplayMode::NoForceComplete) {
+    auto [has_unfinished, has_runnable] = GetUnfinishedAndRunnable(strategy, &in_ordering);
+    if (has_unfinished && !has_runnable) {
+      if (!checker.Check(seq)) {
+        return DualSchedulerWithReplay::NonLinearizableHistory{
+            full, seq,
+            DualSchedulerWithReplay::NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY};
+      }
+      return DualSchedulerWithReplay::NonLinearizableHistory{
+          full, seq,
+          DualSchedulerWithReplay::NonLinearizableHistory::Reason::DEADLOCK};
+    }
+  }
+
+  if (!checker.Check(seq)) {
+    return DualSchedulerWithReplay::NonLinearizableHistory{
+        full, seq,
+        DualSchedulerWithReplay::NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY};
+  }
+
+  return std::nullopt;
+}
+
+  Strategy& GetStrategy() const override {
+    return strategy; }
+
+  // Step 1: minimization is not wired for dual yet because RoundMinimizor
+  // currently expects SchedulerWithReplay<HistoryEvent>.
+  // We'll make minimization templated by Event in Step 2.
+  void Minimize(NonLinearizableHistory& nonlinear_history,
+              const RoundMinimizorT<DualHistoryEvent>& minimizor) override {
+    minimizor.Minimize(*this, nonlinear_history);
+  }
+
+ private:
   Strategy& strategy;
   DualModelChecker& checker;
   PrettyPrinter& pretty_printer;
   size_t max_tasks;
   size_t max_rounds;
+  bool should_minimize_history;
+  size_t exploration_runs;
+  size_t minimization_runs;
 };

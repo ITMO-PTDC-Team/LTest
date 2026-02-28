@@ -181,7 +181,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
     UpdateStatistics();
 
-    ltest::verifier_hooks::OnRoundStart(this->sched_checker, this->threads_count)
+    ltest::verifier_hooks::OnRoundStart(this->sched_checker, this->threads_count);
   }
 
   void ResetCurrentRound() override {

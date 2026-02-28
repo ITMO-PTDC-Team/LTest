@@ -45,7 +45,7 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
     }
 
-    this->sched_checker.OnRoundStart(this->threads_count);
+    ltest::verifier_hooks::OnRoundStart(this->sched_checker, this->threads_count)
   }
 
   ~PickStrategy() { this->TerminateTasks(); }

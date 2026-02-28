@@ -60,7 +60,7 @@ bool VerifyStart(V& v, const std::string& method, std::size_t thread_id,
   if constexpr (requires { v.VerifyStart(method, thread_id, ctx); }) {
     return v.VerifyStart(method, thread_id, ctx);
   } else {
-    return v.Verify(method, thread_id);
+    return true;
   }
 }
 

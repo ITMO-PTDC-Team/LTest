@@ -79,6 +79,7 @@ DEFINE_int32(depth, 0,
 DEFINE_bool(verbose, false, "Verbosity");
 DEFINE_string(strategy, GetLiteral(StrategyType::RR), "Strategy");
 DEFINE_string(weights, "", "comma-separated list of weights for threads");
+DEFINE_bool(fail_on_deadlock, true, "Treat deadlock as failure");
 
 void SetOpts(const DefaultOptions &def) {
   FLAGS_threads = def.threads;
@@ -100,6 +101,7 @@ Opts ParseOpts() {
   opts.tasks = FLAGS_tasks;
   opts.switches = FLAGS_switches;
   opts.rounds = FLAGS_rounds;
+  opts.fail_on_deadlock = FLAGS_fail_on_deadlock;
   opts.minimize = FLAGS_minimize;  // NOTE(dartiukhov) minimization for
                                    // scenarios with locks is not supported
   opts.exploration_runs = FLAGS_exploration_runs;

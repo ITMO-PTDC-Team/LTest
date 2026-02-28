@@ -1,10 +1,11 @@
 #include <cstdio>
 
 #include "runtime/include/scheduler.h"
+#include "runtime/include/strategy_verifier.h"
 
 namespace spec {
 
-struct SharedMutexVerifier {
+struct SharedMutexVerifier : DefaultStrategyTaskVerifier {
   enum : int32_t { READER = 4, WRITER = 1, FREE = 0 };
   /// Verify checks the state of a mutex on starting of `ctask`
   bool Verify(const std::string& task_name, size_t thread_id) {

@@ -87,6 +87,7 @@ struct Opts {
   bool syscall_trap;
   StrategyType typ;
   std::vector<int> thread_weights;
+  bool fail_on_deadlock;
 };
 
 struct DefaultOptions {
@@ -139,6 +140,7 @@ std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
 }
 
 // Keeps pointer to strategy to pass reference to base scheduler.
+// Keeps pointer to strategy to pass reference to base scheduler.
 template <StrategyTaskVerifier Verifier>
 struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
   StrategySchedulerWrapper(std::unique_ptr<Strategy> strategy_ptr,
@@ -147,7 +149,8 @@ struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
                            size_t max_tasks, size_t max_rounds,
                            bool minimize,
                            size_t exploration_runs,
-                           size_t minimization_runs)
+                           size_t minimization_runs,
+                           bool fail_on_deadlock)
       : StrategyScheduler<Verifier>(*strategy_ptr.get(),
                                     checker,
                                     pretty_printer,
@@ -155,10 +158,11 @@ struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
                                     max_rounds,
                                     minimize,
                                     exploration_runs,
-                                    minimization_runs),
+                                    minimization_runs,
+                                    fail_on_deadlock),
         strategy(std::move(strategy_ptr)) {}
 
-private:
+ private:
   std::unique_ptr<Strategy> strategy;
 };
 
@@ -174,8 +178,10 @@ std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
     case RND: {
       auto strategy = MakeStrategy<TargetObj, Verifier>(opts, std::move(l));
       auto scheduler = std::make_unique<StrategySchedulerWrapper<Verifier>>(
-          std::move(strategy), checker, pretty_printer, opts.tasks, opts.rounds,
-          opts.minimize, opts.exploration_runs, opts.minimization_runs);
+    	std::move(strategy), checker, pretty_printer,
+    	opts.tasks, opts.rounds,
+    	opts.minimize, opts.exploration_runs, opts.minimization_runs,
+    	opts.fail_on_deadlock);
       return scheduler;
     }
     case TLA: {
@@ -229,7 +235,8 @@ struct DualStrategySchedulerWrapper : DualStrategyScheduler<Verifier> {
                                size_t max_tasks, size_t max_rounds,
                                bool minimize,
                                size_t exploration_runs,
-                               size_t minimization_runs)
+                               size_t minimization_runs,
+                               bool fail_on_deadlock)
       : DualStrategyScheduler<Verifier>(*strategy_ptr.get(),
                                         checker,
                                         pretty_printer,
@@ -237,10 +244,11 @@ struct DualStrategySchedulerWrapper : DualStrategyScheduler<Verifier> {
                                         max_rounds,
                                         minimize,
                                         exploration_runs,
-                                        minimization_runs),
+                                        minimization_runs,
+                                        fail_on_deadlock),
         strategy(std::move(strategy_ptr)) {}
 
-private:
+ private:
   std::unique_ptr<Strategy> strategy;
 };
 
@@ -256,8 +264,9 @@ std::unique_ptr<DualScheduler> MakeDualScheduler(
     case RND: {
       auto strategy = MakeStrategy<TargetObj, Verifier>(opts, std::move(l));
       return std::make_unique<DualStrategySchedulerWrapper<Verifier>>(
-          std::move(strategy), checker, pretty_printer, opts.tasks, opts.rounds,
-          opts.minimize, opts.exploration_runs, opts.minimization_runs);
+    	std::move(strategy), checker, pretty_printer, opts.tasks, opts.rounds,
+    	opts.minimize, opts.exploration_runs, opts.minimization_runs,
+    	opts.fail_on_deadlock);
     }
     case TLA: {
       // TODO(bitree): not supported for dual yet.
@@ -308,6 +317,7 @@ int Run(int argc, char *argv[]) {
   std::cout << "switches = " << opts.switches << "\n";
   std::cout << "rounds   = " << opts.rounds << "\n";
   std::cout << "minimize = " << std::boolalpha << opts.minimize << "\n";
+  std::cout << "fail_on_deadlock = " << std::boolalpha << opts.fail_on_deadlock << "\n";
   if (opts.minimize) {
     std::cout << "exploration runs = " << opts.exploration_runs << "\n";
     std::cout << "minimization runs = " << opts.minimization_runs << "\n";
@@ -349,6 +359,7 @@ int RunDual(int argc, char *argv[]) {
   std::cout << "switches = " << opts.switches << "\n";
   std::cout << "rounds   = " << opts.rounds << "\n";
   std::cout << "minimize = " << std::boolalpha << opts.minimize << "\n";
+  std::cout << "fail_on_deadlock = " << std::boolalpha << opts.fail_on_deadlock << "\n";
   if (opts.minimize) {
     std::cout << "exploration runs = " << opts.exploration_runs << "\n";
     std::cout << "minimization runs = " << opts.minimization_runs << "\n";

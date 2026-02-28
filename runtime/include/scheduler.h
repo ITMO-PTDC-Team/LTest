@@ -434,7 +434,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
   StrategyScheduler(Strategy& sched_class, ModelChecker& checker,
                     PrettyPrinter& pretty_printer, size_t max_tasks,
                     size_t max_rounds, bool minimize, size_t exploration_runs,
-                    size_t minimization_runs)
+                    size_t minimization_runs, bool fail_on_deadlock = true)
       : strategy(sched_class),
         checker(checker),
         pretty_printer(pretty_printer),
@@ -442,7 +442,9 @@ struct StrategyScheduler : public SchedulerWithReplay {
         max_rounds(max_rounds),
         should_minimize_history(minimize),
         exploration_runs(exploration_runs),
-        minimization_runs(minimization_runs) {}
+        minimization_runs(minimization_runs),
+        fail_on_deadlock(fail_on_deadlock)
+      {}
 
   // Run returns full unliniarizable history if such a history is found. Full
   // history is a history with all events, where each element in the vector is a
@@ -529,9 +531,20 @@ struct StrategyScheduler : public SchedulerWithReplay {
     pretty_printer.PrettyPrint(sequential_history, log());
 
     if (deadlock_detected) {
-      return NonLinearizableHistory(full_history, sequential_history,
-                                    NonLinearizableHistory::Reason::DEADLOCK);
-    }
+  		// If deadlock is not considered a failure, accept it if prefix is linearizable.
+  		if (!fail_on_deadlock) {
+    		if (checker.Check(sequential_history)) {
+      			return std::nullopt;  // benign blocking
+    		}
+    		// Prefix already non-linearizable => report as NON_LINEARIZABLE (more informative)
+    		return NonLinearizableHistory(
+        		full_history, sequential_history,
+        		NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY);
+  		}
+
+  		return NonLinearizableHistory(full_history, sequential_history,
+                            NonLinearizableHistory::Reason::DEADLOCK);
+	}
 
     if (!checker.Check(sequential_history)) {
       return NonLinearizableHistory(
@@ -578,9 +591,19 @@ struct StrategyScheduler : public SchedulerWithReplay {
       }
 
       if (deadlock_detected) {
-        return NonLinearizableHistory(full_history, sequential_history,
-                                      NonLinearizableHistory::Reason::DEADLOCK);
-      }
+  		if (!fail_on_deadlock) {
+    		if (checker.Check(sequential_history)) {
+      			// benign blocking in this run -> try next exploration run
+      			continue;
+    		}
+    		return NonLinearizableHistory(
+        		full_history, sequential_history,
+        		NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY);
+  		}
+
+  		return NonLinearizableHistory(full_history, sequential_history,
+                                NonLinearizableHistory::Reason::DEADLOCK);
+	  }
 
       if (!checker.Check(sequential_history)) {
         // log() << "New nonlinearized scenario:\n";
@@ -693,6 +716,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
   bool should_minimize_history;
   size_t exploration_runs;
   size_t minimization_runs;
+  bool fail_on_deadlock;
 };
 
 // TLAScheduler generates all executions satisfying some conditions.
@@ -1001,10 +1025,11 @@ struct TLAScheduler : Scheduler {
 template <StrategyTaskVerifier Verifier>
 struct DualStrategyScheduler : public DualSchedulerWithReplay {
   DualStrategyScheduler(Strategy& sched_class, DualModelChecker& checker,
-                        PrettyPrinter& pretty_printer, size_t max_tasks,
-                        size_t max_rounds, bool minimize,
+                      PrettyPrinter& pretty_printer, size_t max_tasks,
+                      size_t max_rounds, bool minimize,
                       size_t exploration_runs,
-                      size_t minimization_runs)
+                      size_t minimization_runs,
+                      bool fail_on_deadlock = true)
       : strategy(sched_class),
         checker(checker),
         pretty_printer(pretty_printer),
@@ -1012,7 +1037,9 @@ struct DualStrategyScheduler : public DualSchedulerWithReplay {
         max_rounds(max_rounds),
         should_minimize_history(minimize),
         exploration_runs(exploration_runs),
-        minimization_runs(minimization_runs) {}
+        minimization_runs(minimization_runs),
+        fail_on_deadlock(fail_on_deadlock)
+        {}
 
   DualSchedulerWithReplay::Result Run() override {
     for (size_t i = 0; i < max_rounds; ++i) {
@@ -1124,9 +1151,18 @@ struct DualStrategyScheduler : public DualSchedulerWithReplay {
     pretty_printer.PrettyPrint(seq, log());
 
     if (deadlock_detected) {
-      return DualSchedulerWithReplay::NonLinearizableHistory{
+      if (!fail_on_deadlock) {
+        if (checker.Check(seq)) {
+          return std::nullopt;  // benign blocking
+        }
+        return DualSchedulerWithReplay::NonLinearizableHistory{
           full, seq,
-          DualSchedulerWithReplay::NonLinearizableHistory::Reason::DEADLOCK};
+          DualSchedulerWithReplay::NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY};
+      }
+
+      return DualSchedulerWithReplay::NonLinearizableHistory{
+        full, seq,
+        DualSchedulerWithReplay::NonLinearizableHistory::Reason::DEADLOCK};
     }
 
     if (!checker.Check(seq)) {
@@ -1177,10 +1213,19 @@ struct DualStrategyScheduler : public DualSchedulerWithReplay {
       }
 
       if (deadlock_detected) {
-        return DualSchedulerWithReplay::NonLinearizableHistory{
-            full, seq,
-            DualSchedulerWithReplay::NonLinearizableHistory::Reason::DEADLOCK};
-      }
+  		if (!fail_on_deadlock) {
+    	  if (checker.Check(seq)) {
+      		continue;  // benign blocking in this run
+    	  }
+    	  return DualSchedulerWithReplay::NonLinearizableHistory{
+        	full, seq,
+        	DualSchedulerWithReplay::NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY};
+  		}
+
+  		return DualSchedulerWithReplay::NonLinearizableHistory{
+      	  full, seq,
+      	  DualSchedulerWithReplay::NonLinearizableHistory::Reason::DEADLOCK};
+	  }
 
       if (!checker.Check(seq)) {
         return DualSchedulerWithReplay::NonLinearizableHistory{
@@ -1292,4 +1337,5 @@ for (int id : tasks_ordering) in_ordering.insert(id);
   bool should_minimize_history;
   size_t exploration_runs;
   size_t minimization_runs;
+  bool fail_on_deadlock;
 };

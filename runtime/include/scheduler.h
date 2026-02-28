@@ -33,27 +33,38 @@ struct TaskWithMetaData {
 /// UB.
 template <typename T>
 concept StrategyTaskVerifier = requires(T a) {
-  // --- New API for workload policies (Reserve rules etc.) ---
-  { a.OnRoundStart(size_t()) } -> std::same_as<void>;
-
-  {
-    a.OnTaskStarted(std::declval<const std::string&>(), size_t(), int())
-  } -> std::same_as<void>;
-
-  {
-    a.VerifyStart(std::declval<const std::string&>(), size_t(),
-                  std::declval<const ltest::StartContext&>())
-  } -> std::same_as<bool>;
-
-  // --- Existing API (protocol constraints / UB-prevention) ---
-  {
-    a.Verify(std::declval<const std::string&>(), size_t())
-  } -> std::same_as<bool>;
-
+  { a.Verify(std::declval<const std::string&>(), size_t()) } -> std::same_as<bool>;
   { a.OnFinished(std::declval<Task&>(), size_t()) } -> std::same_as<void>;
-
   { a.ReleaseTask(size_t()) } -> std::same_as<std::optional<std::string>>;
 };
+
+namespace ltest::verifier_hooks {
+
+template <class V>
+void OnRoundStart(V& v, std::size_t threads) {
+  if constexpr (requires { v.OnRoundStart(threads); }) {
+    v.OnRoundStart(threads);
+  }
+}
+
+template <class V>
+void OnTaskStarted(V& v, const std::string& method, std::size_t thread_id, int task_id) {
+  if constexpr (requires { v.OnTaskStarted(method, thread_id, task_id); }) {
+    v.OnTaskStarted(method, thread_id, task_id);
+  }
+}
+
+template <class V>
+bool VerifyStart(V& v, const std::string& method, std::size_t thread_id,
+                 const ltest::StartContext& ctx) {
+  if constexpr (requires { v.VerifyStart(method, thread_id, ctx); }) {
+    return v.VerifyStart(method, thread_id, ctx);
+  } else {
+    return v.Verify(method, thread_id);
+  }
+}
+
+} // namespace ltest::verifier_hooks
 
 // Strategy is the general strategy interface which decides which task
 // will be the next one it can be implemented by different strategies, such as:
@@ -147,7 +158,7 @@ struct BaseStrategyWithThreads : public Strategy {
     std::random_device dev;
     rng = std::mt19937(dev());
 
-    sched_checker.OnRoundStart(threads_count);
+    ltest::verifier_hooks::OnRoundStart(sched_checker, threads_count);
   }
 
   std::optional<std::tuple<Task&, int>> GetTask(int task_id) override {
@@ -258,7 +269,7 @@ struct BaseStrategyWithThreads : public Strategy {
       for (size_t i = 0; i < this->constructors.size(); ++i) {
         const TaskBuilder& constructor = this->constructors.at(i);
 
-        if (this->sched_checker.VerifyStart(constructor.GetName(), thread_index,
+        if (ltest::verifier_hooks::VerifyStart(sched_checker, constructor.GetName(), thread_index,
                                             ctx) &&
             this->sched_checker.Verify(constructor.GetName(), thread_index)) {
           verified_constructor = i;
@@ -275,7 +286,7 @@ struct BaseStrategyWithThreads : public Strategy {
 
       Task task =
           chosen.Build(this->state.get(), thread_index, this->new_task_id++);
-      this->sched_checker.OnTaskStarted(method_name, thread_index,
+      ltest::verifier_hooks::OnTaskStarted(sched_checker, method_name, thread_index,
                                         task->GetId());
 
       threads[thread_index].emplace_back(std::move(task));

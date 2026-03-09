@@ -54,6 +54,8 @@ struct SharedMutexVerifier {
     return std::nullopt;
   }
 
+  void Reset() { status.clear(); }
+
   std::unordered_map<size_t, size_t> status;
 };
 }  // namespace spec

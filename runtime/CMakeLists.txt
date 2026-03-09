@@ -3,7 +3,6 @@ set (SOURCE_FILES
         lib.cpp
         lin_check.cpp
         logger.cpp
-        pretty_printer.cpp
         verifying.cpp 
         generators.cpp
         minimization.cpp

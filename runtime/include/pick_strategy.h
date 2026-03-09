@@ -34,18 +34,6 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
                             is_new, current_thread};
   }
 
-  void StartNextRound() override {
-    this->new_task_id = 0;
-
-    this->TerminateTasks();
-    for (auto& thread : this->threads) {
-      // We don't have to keep references alive
-      while (thread.size() > 0) {
-        thread.pop_back();
-      }
-    }
-  }
-
   ~PickStrategy() { this->TerminateTasks(); }
 
  protected:

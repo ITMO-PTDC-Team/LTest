@@ -156,6 +156,14 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       return std::nullopt;
     }
 
+    // Check whether the priority change is required
+    current_schedule_length++;
+    for (size_t i = 0; i < priority_change_points.size(); ++i) {
+      if (current_schedule_length == priority_change_points[i]) {
+        priorities[index_of_max] = current_depth - i;
+      }
+    }
+
     last_chosen = index_of_max;
     // Picked thread is `index_of_max`
     int next_task_index = this->GetNextTaskInThread(index_of_max);
@@ -166,24 +174,17 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   }
 
   void StartNextRound() override {
-    this->new_task_id = 0;
-    //    log() << "depth: " << current_depth << "\n";
-    // Reconstruct target as we start from the beginning.
-    this->TerminateTasks();
-    for (auto& thread : this->threads) {
-      // We don't have to keep references alive
-      while (thread.size() > 0) {
-        thread.pop_back();
-      }
-      thread = StableVector<Task>();
-    }
-    // this->state.Reset();
-
+    BaseStrategyWithThreads<TargetObj, Verifier>::StartNextRound();
     UpdateStatistics();
   }
 
   void ResetCurrentRound() override {
     BaseStrategyWithThreads<TargetObj, Verifier>::ResetCurrentRound();
+    UpdateStatistics();
+  }
+
+  void SetCustomRound(CustomRound& custom_round) override {
+    BaseStrategyWithThreads<TargetObj, Verifier>::SetCustomRound(custom_round);
     UpdateStatistics();
   }
 
@@ -209,8 +210,14 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   }
 
   void PrepareForDepth(size_t depth, size_t k) {
+    // Because we have custom rounds, take the
+    // threads count from the vector size and not
+    // from the threads_count field, which shows the passed threads count
+    // argument from the command string
+    size_t threads_count = this->threads.size();
+
     // Generates priorities
-    priorities = std::vector<int>(this->threads_count);
+    priorities = std::vector<int>(threads_count);
     for (size_t i = 0; i < priorities.size(); ++i) {
       priorities[i] = current_depth + i;
     }

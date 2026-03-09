@@ -6,6 +6,7 @@
 #include <type_traits>
 
 #include "blocking_primitives.h"
+#include "latomic.h"
 #include "custom_round.h"
 #include "lib.h"
 #include "lincheck_recursive.h"

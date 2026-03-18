@@ -18,7 +18,7 @@ add_wmm_litmus(litmus2_relaxed_sc FALSE)
 add_wmm_litmus(litmus3_sc FALSE)
 add_wmm_litmus(litmus4_relaxed TRUE)
 add_wmm_litmus(litmus5_ra FALSE)
-# add_wmm_litmus(litmus6_mixed TRUE) # TODO: requires a fix, see comment in the file
+add_wmm_litmus(litmus6_mixed TRUE) # TODO: requires a fix, see comment in the file
 add_wmm_litmus(litmus7_rmw_sc FALSE)
 add_wmm_litmus(litmus8_rmw_sc FALSE)
 add_wmm_litmus(litmus9_weak_rmw TRUE)

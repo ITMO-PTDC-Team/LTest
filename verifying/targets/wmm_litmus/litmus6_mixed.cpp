@@ -6,9 +6,12 @@
 #include "verifying/targets/wmm_litmus/litmus_common.h"
 
 // Example 6 (TODO: fix mixed memory order accesses, see
-// https://gcc.gnu.org/wiki/Atomic/GCCMM/AtomicSync) Note: Requires further
-// investigation, because it seems that sc support is not sound right now.
-//       Fix it.
+// https://gcc.gnu.org/wiki/Atomic/GCCMM/AtomicSync)
+// Note: Requires further investigation,
+// because it seems that sc support is not sound right now. Fix it.
+// The article says that the test should not fail, but it seems to be wrong.
+// TODO: However, the sc-edges seem to be incorrect anyway, check that out
+// later.
 struct Exp6Test {
   std::atomic<int> x{0}, y{0};
 

@@ -17,6 +17,11 @@ class latomic {
   int locationId = -1;
   ExecutionGraph& wmmGraph = ExecutionGraph::getInstance();
 
+ private:
+  bool IsWmmEnabled() const noexcept {
+    return wmm_enabled && this_coro && locationId >= 0 && this_thread_id >= 0;
+  }
+
  public:
 #if __cplusplus >= 201703L  // C++17
   static constexpr bool is_always_lock_free =
@@ -57,7 +62,7 @@ class latomic {
              std::memory_order order = std::memory_order_seq_cst) noexcept {
     atomicValue.store(desired, order);
 
-    if (wmm_enabled && this_coro && locationId >= 0 && this_thread_id >= 0) {
+    if (IsWmmEnabled()) {
       // std::cout << "Store: coro id=" << this_coro->GetId() << ", thread=" <<
       // this_thread_id
       //           << ", name=" << this_coro->GetName() << std::endl;
@@ -68,12 +73,12 @@ class latomic {
 
   void store(T desired, std::memory_order order =
                             std::memory_order_seq_cst) volatile noexcept {
-    store(desired, order);
+    const_cast<latomic*>(this)->store(desired, order);
   }
 
   // load
   T load(std::memory_order order = std::memory_order_seq_cst) const noexcept {
-    if (wmm_enabled && this_coro && locationId >= 0 && this_thread_id >= 0) {
+    if (IsWmmEnabled()) {
       // std::cout << "Load: coro id=" << this_coro->GetId() << ", thread=" <<
       // this_thread_id
       //           << ", name=" << this_coro->GetName() << std::endl;
@@ -87,7 +92,7 @@ class latomic {
 
   T load(std::memory_order order = std::memory_order_seq_cst) const
       volatile noexcept {
-    return load(order);
+    return const_cast<latomic*>(this)->load(order);
   }
 
   // operator T()
@@ -95,16 +100,21 @@ class latomic {
 
   operator T() const volatile noexcept { return load(); }
 
-  // TODO: add wmm support for exchange
   // exchange
   T exchange(T desired,
              std::memory_order order = std::memory_order_seq_cst) noexcept {
-    return atomicValue.exchange(desired, order);
+    T prev = atomicValue.exchange(desired, order);
+    if (IsWmmEnabled()) {
+      return wmmGraph.UnconditionalReadModifyWrite<T>(
+          locationId, this_thread_id, AtomicRmwOp::Exchange, desired,
+          WmmUtils::OrderFromStd(order));
+    }
+    return prev;
   }
 
   T exchange(T desired, std::memory_order order =
                             std::memory_order_seq_cst) volatile noexcept {
-    return atomicValue.exchange(desired, order);
+    return const_cast<latomic*>(this)->exchange(desired, order);
   }
 
   // TODO: for CASes there more complex rule how to get 'failure' order from
@@ -117,7 +127,7 @@ class latomic {
     bool value = atomicValue.compare_exchange_weak(myExpected, desired, success,
                                                    failure);
 
-    if (wmm_enabled && this_coro && locationId >= 0 && this_thread_id >= 0) {
+    if (IsWmmEnabled()) {
       // std::cout << "Compare exchange weak: coro id=" << this_coro->GetId() <<
       // ", thread=" << this_thread_id
       //           << ", name=" << this_coro->GetName() << std::endl;
@@ -135,7 +145,8 @@ class latomic {
 
   bool compare_exchange_weak(T& expected, T desired, std::memory_order success,
                              std::memory_order failure) volatile noexcept {
-    return compare_exchange_weak(expected, desired, success, failure);
+    return const_cast<latomic*>(this)->compare_exchange_weak(expected, desired,
+                                                             success, failure);
   }
 
   bool compare_exchange_weak(
@@ -148,8 +159,8 @@ class latomic {
   bool compare_exchange_weak(
       T& expected, T desired,
       std::memory_order order = std::memory_order_seq_cst) volatile noexcept {
-    return compare_exchange_weak(expected, desired, order,
-                                 std::memory_order_seq_cst);
+    return const_cast<latomic*>(this)->compare_exchange_weak(
+        expected, desired, order, std::memory_order_seq_cst);
   }
 
   // compare_exchange_strong
@@ -162,7 +173,7 @@ class latomic {
     bool value = atomicValue.compare_exchange_strong(myExpected, desired,
                                                      success, failure);
 
-    if (wmm_enabled && this_coro && locationId >= 0 && this_thread_id >= 0) {
+    if (IsWmmEnabled()) {
       auto [rmwSuccess, readValue] = wmmGraph.ReadModifyWrite(
           locationId, this_thread_id, &expected, desired,
           WmmUtils::OrderFromStd(success), WmmUtils::OrderFromStd(failure));
@@ -178,7 +189,8 @@ class latomic {
   bool compare_exchange_strong(T& expected, T desired,
                                std::memory_order success,
                                std::memory_order failure) volatile noexcept {
-    return compare_exchange_strong(expected, desired, success, failure);
+    return const_cast<latomic*>(this)->compare_exchange_strong(
+        expected, desired, success, failure);
   }
 
   bool compare_exchange_strong(
@@ -191,12 +203,12 @@ class latomic {
   bool compare_exchange_strong(
       T& expected, T desired,
       std::memory_order order = std::memory_order_seq_cst) volatile noexcept {
-    return compare_exchange_strong(expected, desired, order,
-                                   std::memory_order_seq_cst);
+    return const_cast<latomic*>(this)->compare_exchange_strong(
+        expected, desired, order, std::memory_order_seq_cst);
   }
 
-  // TODO: operations below need to be implemented in WMM graph as well
-
+  // Note: wmm support for wait/notify methods are out of scope for now. Tests
+  // which use them are not supported.
 // wait
 #if __cplusplus >= 202002L  // C++20
   void wait(T old, std::memory_order order =
@@ -223,12 +235,18 @@ class latomic {
   // fetch_add
   T fetch_add(T arg,
               std::memory_order order = std::memory_order_seq_cst) noexcept {
-    return atomicValue.fetch_add(arg, order);
+    T prev = atomicValue.fetch_add(arg, order);
+    if (IsWmmEnabled()) {
+      return wmmGraph.UnconditionalReadModifyWrite<T>(
+          locationId, this_thread_id, AtomicRmwOp::FetchAdd, arg,
+          WmmUtils::OrderFromStd(order));
+    }
+    return prev;
   }
 
   T fetch_add(T arg, std::memory_order order =
                          std::memory_order_seq_cst) volatile noexcept {
-    return atomicValue.fetch_add(arg, order);
+    return const_cast<latomic*>(this)->fetch_add(arg, order);
   }
 
   // TODO: fix ambiguity with specialization for T*
@@ -245,12 +263,18 @@ class latomic {
   // fetch_sub
   T fetch_sub(T arg,
               std::memory_order order = std::memory_order_seq_cst) noexcept {
-    return atomicValue.fetch_sub(arg, order);
+    T prev = atomicValue.fetch_sub(arg, order);
+    if (IsWmmEnabled()) {
+      return wmmGraph.UnconditionalReadModifyWrite<T>(
+          locationId, this_thread_id, AtomicRmwOp::FetchSub, arg,
+          WmmUtils::OrderFromStd(order));
+    }
+    return prev;
   }
 
   T fetch_sub(T arg, std::memory_order order =
                          std::memory_order_seq_cst) volatile noexcept {
-    return atomicValue.fetch_sub(arg, order);
+    return const_cast<latomic*>(this)->fetch_sub(arg, order);
   }
 
   // TODO: fix ambiguity with specialization for T*
@@ -265,9 +289,11 @@ class latomic {
   // }
 
   // operator+=
-  T operator+=(T arg) noexcept { return atomicValue.operator+=(arg); }
+  T operator+=(T arg) noexcept { return fetch_add(arg) + arg; }
 
-  T operator+=(T arg) volatile noexcept { return atomicValue.operator+=(arg); }
+  T operator+=(T arg) volatile noexcept {
+    return const_cast<latomic*>(this)->operator+=(arg);
+  }
 
   // TODO: fix ambiguity with specialization for T*
   // T* operator+=(std::ptrdiff_t arg) noexcept {
@@ -279,9 +305,11 @@ class latomic {
   // }
 
   // operator-=
-  T operator-=(T arg) noexcept { return atomicValue.operator-=(arg); }
+  T operator-=(T arg) noexcept { return fetch_sub(arg) - arg; }
 
-  T operator-=(T arg) volatile noexcept { return atomicValue.operator-=(arg); }
+  T operator-=(T arg) volatile noexcept {
+    return const_cast<latomic*>(this)->operator-=(arg);
+  }
 
   // TODO: fix ambiguity with specialization for T*
   // T* operator-=(std::ptrdiff_t arg) noexcept {
@@ -295,90 +323,134 @@ class latomic {
   // fetch_max
   T fetch_max(T arg,
               std::memory_order order = std::memory_order_seq_cst) noexcept {
-    return atomicValue.fetch_max(arg, order);
+    T prev = atomicValue.fetch_max(arg, order);
+    if (IsWmmEnabled()) {
+      return wmmGraph.UnconditionalReadModifyWrite<T>(
+          locationId, this_thread_id, AtomicRmwOp::FetchMax, arg,
+          WmmUtils::OrderFromStd(order));
+    }
+    return prev;
   }
 
   T fetch_max(T arg, std::memory_order order =
                          std::memory_order_seq_cst) volatile noexcept {
-    return atomicValue.fetch_max(arg, order);
+    return const_cast<latomic*>(this)->fetch_max(arg, order);
   }
 
   // fetch_min
   T fetch_min(T arg,
               std::memory_order order = std::memory_order_seq_cst) noexcept {
-    return atomicValue.fetch_min(arg, order);
+    T prev = atomicValue.fetch_min(arg, order);
+    if (IsWmmEnabled()) {
+      return wmmGraph.UnconditionalReadModifyWrite<T>(
+          locationId, this_thread_id, AtomicRmwOp::FetchMin, arg,
+          WmmUtils::OrderFromStd(order));
+    }
+    return prev;
   }
 
   T fetch_min(T arg, std::memory_order order =
                          std::memory_order_seq_cst) volatile noexcept {
-    return atomicValue.fetch_min(arg, order);
+    return const_cast<latomic*>(this)->fetch_min(arg, order);
   }
 
   // operator++
-  T operator++() noexcept { return atomicValue.operator++(); }
+  T operator++() noexcept { return fetch_add(1) + 1; }
 
-  T operator++() volatile noexcept { return atomicValue.operator++(); }
+  T operator++() volatile noexcept {
+    return const_cast<latomic*>(this)->operator++();
+  }
 
-  T operator++(int) noexcept { return atomicValue.operator++(0); }
+  T operator++(int) noexcept { return fetch_add(1); }
 
-  T operator++(int) volatile noexcept { return atomicValue.operator++(0); }
+  T operator++(int) volatile noexcept {
+    return const_cast<latomic*>(this)->operator++(0);
+  }
 
   // operator--
-  T operator--() noexcept { return atomicValue.operator--(); }
+  T operator--() noexcept { return fetch_sub(1) - 1; }
 
-  T operator--() volatile noexcept { return atomicValue.operator--(); }
+  T operator--() volatile noexcept {
+    return const_cast<latomic*>(this)->operator--();
+  }
 
-  T operator--(int) noexcept { return atomicValue.operator--(0); }
+  T operator--(int) noexcept { return fetch_sub(1); }
 
-  T operator--(int) volatile noexcept { return atomicValue.operator--(0); }
+  T operator--(int) volatile noexcept {
+    return const_cast<latomic*>(this)->operator--(0);
+  }
 
   // fetch_and
   T fetch_and(T arg,
               std::memory_order order = std::memory_order_seq_cst) noexcept {
-    return atomicValue.fetch_and(arg, order);
+    T prev = atomicValue.fetch_and(arg, order);
+    if (IsWmmEnabled()) {
+      return wmmGraph.UnconditionalReadModifyWrite<T>(
+          locationId, this_thread_id, AtomicRmwOp::FetchAnd, arg,
+          WmmUtils::OrderFromStd(order));
+    }
+    return prev;
   }
 
   T fetch_and(T arg, std::memory_order order =
                          std::memory_order_seq_cst) volatile noexcept {
-    return atomicValue.fetch_and(arg, order);
+    return const_cast<latomic*>(this)->fetch_and(arg, order);
   }
 
   // fetch_or
   T fetch_or(T arg,
              std::memory_order order = std::memory_order_seq_cst) noexcept {
-    return atomicValue.fetch_or(arg, order);
+    T prev = atomicValue.fetch_or(arg, order);
+    if (IsWmmEnabled()) {
+      return wmmGraph.UnconditionalReadModifyWrite<T>(
+          locationId, this_thread_id, AtomicRmwOp::FetchOr, arg,
+          WmmUtils::OrderFromStd(order));
+    }
+    return prev;
   }
 
   T fetch_or(T arg, std::memory_order order =
                         std::memory_order_seq_cst) volatile noexcept {
-    return atomicValue.fetch_or(arg, order);
+    return const_cast<latomic*>(this)->fetch_or(arg, order);
   }
 
   // fetch_xor
   T fetch_xor(T arg,
               std::memory_order order = std::memory_order_seq_cst) noexcept {
-    return atomicValue.fetch_xor(arg, order);
+    T prev = atomicValue.fetch_xor(arg, order);
+    if (IsWmmEnabled()) {
+      return wmmGraph.UnconditionalReadModifyWrite<T>(
+          locationId, this_thread_id, AtomicRmwOp::FetchXor, arg,
+          WmmUtils::OrderFromStd(order));
+    }
+    return prev;
   }
 
   T fetch_xor(T arg, std::memory_order order =
                          std::memory_order_seq_cst) volatile noexcept {
-    return atomicValue.fetch_xor(arg, order);
+    return const_cast<latomic*>(this)->fetch_xor(arg, order);
   }
 
   // operator&=
-  T operator&=(T arg) noexcept { return atomicValue.operator&=(arg); }
+  T operator&=(T arg) noexcept { return fetch_and(arg) & arg; }
 
-  T operator&=(T arg) volatile noexcept { return atomicValue.operator&=(arg); }
+  T operator&=(T arg) volatile noexcept {
+    return const_cast<latomic*>(this)->operator&=(arg);
+  }
 
   // operator|=
-  T operator|=(T arg) noexcept { return atomicValue.operator|=(arg); }
+  T operator|=(T arg) noexcept { return fetch_or(arg) | arg; }
 
-  T operator|=(T arg) volatile noexcept { return atomicValue.operator|=(arg); }
+  T operator|=(T arg) volatile noexcept {
+    return const_cast<latomic*>(this)->operator|=(arg);
+  }
 
   // operator^=
-  T operator^=(T arg) noexcept { return atomicValue.operator^=(arg); }
+  T operator^=(T arg) noexcept { return fetch_xor(arg) ^ arg; }
 
-  T operator^=(T arg) volatile noexcept { return atomicValue.operator^=(arg); }
+  T operator^=(T arg) volatile noexcept {
+    return const_cast<latomic*>(this)->operator^=(arg);
+  }
 };
 
 }  // namespace ltest

@@ -12,6 +12,18 @@ enum class MemoryOrder { Relaxed, Acquire, Release, AcqRel, SeqCst };
 
 enum class EventType { DUMMY, READ, WRITE, RMW };
 
+/// Operation kind for unconditional RMWs (exchange, fetch_*, etc.).
+enum class AtomicRmwOp {
+  Exchange,
+  FetchAdd,
+  FetchSub,
+  FetchAnd,
+  FetchOr,
+  FetchXor,
+  FetchMin,
+  FetchMax,
+};
+
 enum class EdgeType {
   PO,  // program order / sequenced before
   SC,  // seq-cst edge
@@ -66,6 +78,27 @@ struct WmmUtils {
         return "W";
       case EventType::RMW:
         return "RMW";
+    }
+  }
+
+  inline static std::string AtomicRmwOpToString(AtomicRmwOp op) {
+    switch (op) {
+      case AtomicRmwOp::Exchange:
+        return "exchange";
+      case AtomicRmwOp::FetchAdd:
+        return "fetch_add";
+      case AtomicRmwOp::FetchSub:
+        return "fetch_sub";
+      case AtomicRmwOp::FetchAnd:
+        return "fetch_and";
+      case AtomicRmwOp::FetchOr:
+        return "fetch_or";
+      case AtomicRmwOp::FetchXor:
+        return "fetch_xor";
+      case AtomicRmwOp::FetchMin:
+        return "fetch_min";
+      case AtomicRmwOp::FetchMax:
+        return "fetch_max";
     }
   }
 

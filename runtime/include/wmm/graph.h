@@ -83,8 +83,9 @@ class Graph {
                                  T desired, MemoryOrder successOrder,
                                  MemoryOrder failureOrder) {
     EventId eventId = events.size();
-    auto event = new RMWEvent<T>(eventId, nThreads, location, threadId,
-                                 expected, desired, successOrder, failureOrder);
+    auto event = new CASRMWEvent<T>(eventId, nThreads, location, threadId,
+                                    expected, desired, successOrder,
+                                    failureOrder);
 
     // establish po-edge
     CreatePoEdgeToEvent(event);  // prevInThread --po--> event
@@ -107,6 +108,31 @@ class Graph {
         event->IsModifyRMW(),  // true if RMW is resolved to MODIFY state, false
                                // if rmw failed and resolve to READ state
         Event::GetReadValue<T>(event)};
+  }
+
+  template <class T>
+  T AddUnconditionalRMWEvent(int location, int threadId, AtomicRmwOp op,
+                             T operand, MemoryOrder order) {
+    EventId eventId = events.size();
+    auto event = new UnconditionalRMWEvent<T>(eventId, nThreads, location,
+                                                threadId, op, operand, order);
+
+    CreatePoEdgeToEvent(event);
+
+    auto shuffledEvents = GetShuffledReadFromCandidates(event);
+    for (auto readFromEvent : shuffledEvents) {
+      if (TryCreateRfEdge(readFromEvent, event)) {
+        log() << "Unconditional RMW event " << event->AsString()
+              << " now reads from " << readFromEvent->AsString() << "\n";
+        break;
+      }
+    }
+
+    assert(event->readFrom != nullptr &&
+           "RMW event must have appropriate write event to read from");
+    assert((event->readFrom->IsWrite() || event->readFrom->IsModifyRMW()) &&
+           "RMW event must read from write or modifying rmw event");
+    return Event::GetReadValue<T>(event);
   }
 
   template <typename Out>

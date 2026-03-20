@@ -68,14 +68,11 @@ class ExecutionGraph {
     graph.Print(log());
   }
 
-  // TODO: generalize to any other type of the RMW operation
-  //       (which have different method signature from compare_and_set, e.g.
-  //       fetch_add, etc.)
   template <class T>
   std::pair<bool, T> ReadModifyWrite(int location, int threadId, T* expected,
                                      T desired, MemoryOrder success,
                                      MemoryOrder failure) {
-    log() << "RMW: loc-" << location << ", thread=" << threadId
+    log() << "RMW CAS: loc-" << location << ", thread=" << threadId
           << ", expected=" << *expected << ", desired=" << desired
           << ", success=" << WmmUtils::OrderToString(success)
           << ", failure=" << WmmUtils::OrderToString(failure) << "\n";
@@ -85,6 +82,20 @@ class ExecutionGraph {
     log() << "RMW result: " << (rmwResult.first ? "MODIFY" : "READ")
           << ", value=" << rmwResult.second << "\n";
     return rmwResult;
+  }
+
+  /// Exchange / fetch_* : returns the value read (old) before the write.
+  template <class T>
+  T UnconditionalReadModifyWrite(int location, int threadId, AtomicRmwOp op,
+                                 T operand, MemoryOrder order) {
+    log() << "RMW " << WmmUtils::AtomicRmwOpToString(op) << ": loc-" << location
+          << ", thread=" << threadId << ", operand=" << operand
+          << ", order=" << WmmUtils::OrderToString(order) << "\n";
+    T oldValue = graph.AddUnconditionalRMWEvent<T>(location, threadId, op,
+                                                   operand, order);
+    graph.Print(log());
+    log() << "RMW old value read: " << oldValue << "\n";
+    return oldValue;
   }
 
  private:

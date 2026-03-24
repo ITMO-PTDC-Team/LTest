@@ -22,6 +22,9 @@ add_wmm_litmus(litmus6_mixed TRUE) # TODO: requires a fix, see comment in the fi
 add_wmm_litmus(litmus7_rmw_sc FALSE)
 add_wmm_litmus(litmus8_rmw_sc FALSE)
 add_wmm_litmus(litmus9_weak_rmw TRUE)
+add_wmm_litmus(litmus10_exchange_sc FALSE)
+add_wmm_litmus(litmus11_fetchadd_weak TRUE)
+add_wmm_litmus(litmus12_fetchsub_relacq FALSE)
 
 add_custom_target(verify-litmus
   DEPENDS

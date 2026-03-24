@@ -53,7 +53,7 @@ class ExecutionGraph {
     log() << "Load: loc-" << location << ", thread=" << threadId
           << ", order=" << WmmUtils::OrderToString(order) << "\n";
     T readValue = graph.AddReadEvent<T>(location, threadId, order);
-
+    log() << "Read value: " << readValue << "\n";
     graph.Print(log());
     return readValue;
   }

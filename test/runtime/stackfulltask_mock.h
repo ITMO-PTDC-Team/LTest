@@ -8,7 +8,7 @@
 
 class MockTask : public CoroBase {
  public:
-  MOCK_METHOD(Task, Restart, (void*), (override));
+  MOCK_METHOD(void, Restart, (void*), (override));
   MOCK_METHOD(void, Resume, (), ());
   MOCK_METHOD(bool, IsReturned, (), (const));
   MOCK_METHOD(ValueWrapper, GetRetVal, (), (const, override));

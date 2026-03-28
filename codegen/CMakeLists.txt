@@ -26,3 +26,14 @@ add_custom_target(coplugin_pass
     COMMAND ${CMAKE_COMMAND} -E echo "Plugin dependency set"
 )
 add_dependencies(coplugin_pass CoYieldPass)
+
+
+llvm_add_library(ResMockPass
+        SHARED
+        PARTIAL_SOURCES_INTENDED
+        resmockpass.cpp)
+
+add_custom_target(resmock_pass
+        COMMAND ${CMAKE_COMMAND} -E echo "Plugin dependency set"
+)
+add_dependencies(resmock_pass ResMockPass)

@@ -47,12 +47,7 @@ ValueWrapper CoroBase::GetRetVal() const {
   return ret;
 }
 
-CoroBase::~CoroBase() {
-  // The coroutine must be returned if we want to restart it.
-  // We can't just Terminate() it because it is the runtime responsibility to
-  // decide, in which order the tasks should be terminated.
-  assert(IsReturned());
-}
+CoroBase::~CoroBase() {}
 
 std::string_view CoroBase::GetName() const { return name; }
 
@@ -75,15 +70,7 @@ extern "C" void CoroutineStatusChange(char* name, bool start) {
   CoroYield();
 }
 
-void CoroBase::Terminate() {
-  int tries = 0;
-  while (!IsReturned()) {
-    ++tries;
-    Resume();
-    assert(tries < 1000000 &&
-           "coroutine is spinning too long, possible wrong terminating order");
-  }
-}
+void CoroBase::Terminate() { is_returned = true; }
 
 void CoroBase::TryTerminate() {
   for (size_t i = 0; i < 1000 && !is_returned; ++i) {

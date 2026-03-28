@@ -2,6 +2,7 @@ __pycache__
 build
 venv
 .vscode
+.idea
 .devcontainer/**
 .cache/**
 third_party/**

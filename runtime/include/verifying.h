@@ -32,14 +32,13 @@ struct DefaultCanceler {
 template <class TargetObj, class LinearSpec,
           class LinearSpecHash = std::hash<LinearSpec>,
           class LinearSpecEquals = std::equal_to<LinearSpec>,
-          class OptionsOverride = NoOverride, class Canceler = DefaultCanceler>
+          class OptionsOverride = NoOverride>
 struct Spec {
   using target_obj_t = TargetObj;
   using linear_spec_t = LinearSpec;
   using linear_spec_hash_t = LinearSpecHash;
   using linear_spec_equals_t = LinearSpecEquals;
   using options_override_t = OptionsOverride;
-  using cancel_t = Canceler;
 };
 
 struct Opts {
@@ -133,8 +132,7 @@ template <typename TargetObj, StrategyTaskVerifier Verifier>
 std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
                                          const std::vector<TaskBuilder> &l,
                                          std::vector<CustomRound> custom_rounds,
-                                         PrettyPrinter &pretty_printer,
-                                         const std::function<void()> &cancel) {
+                                         PrettyPrinter &pretty_printer) {
   std::cout << "strategy = ";
   switch (opts.typ) {
     case RR:
@@ -151,7 +149,7 @@ std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
       std::cout << "tla\n";
       auto scheduler = std::make_unique<TLAScheduler<TargetObj, Verifier>>(
           opts.tasks, opts.rounds, opts.threads, opts.switches, opts.depth,
-          std::move(l), checker, pretty_printer, cancel);
+          std::move(l), checker, pretty_printer);
       return scheduler;
     }
     default: {
@@ -218,7 +216,7 @@ int Run(int argc, char *argv[], std::vector<CustomRound> custom_rounds = {}) {
 
   auto scheduler = MakeScheduler<typename Spec::target_obj_t, Verifier>(
       checker, opts, std::move(task_builders), std::move(custom_rounds),
-      pretty_printer, &Spec::cancel_t::Cancel);
+      pretty_printer);
   std::cout << "\n\n";
   std::cout.flush();
   return TrapRun(std::move(scheduler), pretty_printer);

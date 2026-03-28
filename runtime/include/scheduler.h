@@ -15,6 +15,7 @@
 #include "logger.h"
 #include "minimization.h"
 #include "minimization_smart.h"
+#include "os_simulator.h"
 #include "pretty_print.h"
 #include "scheduler_fwd.h"
 #include "stable_vector.h"
@@ -191,7 +192,7 @@ struct BaseStrategyWithThreads : public Strategy {
       size_t tasks_in_thread = thread.size();
       for (size_t i = 0; i < tasks_in_thread; ++i) {
         if (!IsTaskRemoved(thread[i]->GetId())) {
-          thread[i] = thread[i]->Restart(state.get());
+          thread[i]->Restart(state.get());
         }
       }
     }
@@ -282,58 +283,11 @@ struct BaseStrategyWithThreads : public Strategy {
   }
 
  protected:
-  // Terminates all running tasks.
-  // We do it in a dangerous way: in random order.
-  // Actually, we assume obstruction free here.
   void TerminateTasks() {
-    auto& round_schedule = this->round_schedule;
-    assert(round_schedule.size() == this->threads.size() &&
-           "sizes expected to be the same");
-    round_schedule.assign(round_schedule.size(), -1);
-
-    std::vector<size_t> task_indexes(this->threads.size(), 0);
-    bool has_nonterminated_threads = true;
-    while (has_nonterminated_threads) {
-      has_nonterminated_threads = false;
-
-      for (size_t thread_index = 0; thread_index < this->threads.size();
-           ++thread_index) {
-        auto& thread = this->threads[thread_index];
-        auto& task_index = task_indexes[thread_index];
-
-        // find first non-finished task in the thread
-        while (task_index < thread.size() && thread[task_index]->IsReturned()) {
-          task_index++;
-        }
-
-        if (task_index == thread.size()) {
-          std::optional<std::string> releaseTask =
-              this->sched_checker.ReleaseTask(thread_index);
-          // Check if we should schedule release task to unblock other tasks
-          if (releaseTask) {
-            auto constructor =
-                *std::find_if(constructors.begin(), constructors.end(),
-                              [=](const TaskBuilder& b) {
-                                return b.GetName() == *releaseTask;
-                              });
-            auto task =
-                constructor.Build(this->state.get(), thread_index, task_index);
-            auto verified = this->sched_checker.Verify(
-                std::string(task->GetName()), thread_index);
-            thread.emplace_back(task);
-          }
-        }
-
-        if (task_index < thread.size() && !thread[task_index]->IsBlocked()) {
-          auto& task = thread[task_index];
-          has_nonterminated_threads = true;
-          // do a single step in this task
-          task->Resume();
-          if (task->IsReturned()) {
-            OnVerifierTaskFinish(task, thread_index);
-            debug(stderr, "Terminated: %ld\n", thread_index);
-          }
-        }
+    simulator.ResetState();
+    for (auto& thread : threads) {
+      if (!thread.empty() && !thread.back()->IsReturned()) {
+        thread.back()->Terminate();
       }
     }
     state.reset(new TargetObj{});
@@ -368,6 +322,7 @@ struct BaseStrategyWithThreads : public Strategy {
   std::uniform_int_distribution<std::mt19937::result_type>
       constructors_distribution;
   std::mt19937 rng;
+  OSSimulator simulator;
 };
 
 // StrategyScheduler generates different sequential histories (using Strategy)
@@ -653,15 +608,14 @@ struct TLAScheduler : Scheduler {
   TLAScheduler(size_t max_tasks, size_t max_rounds, size_t threads_count,
                size_t max_switches, size_t max_depth,
                std::vector<TaskBuilder> constructors, ModelChecker& checker,
-               PrettyPrinter& pretty_printer, std::function<void()> cancel_func)
+               PrettyPrinter& pretty_printer)
       : max_tasks{max_tasks},
         max_rounds{max_rounds},
         max_switches{max_switches},
         constructors{std::move(constructors)},
         checker{checker},
         pretty_printer{pretty_printer},
-        max_depth(max_depth),
-        cancel(cancel_func) {
+        max_depth(max_depth) {
     for (size_t i = 0; i < threads_count; ++i) {
       threads.emplace_back(Thread{
           .id = i,
@@ -708,7 +662,7 @@ struct TLAScheduler : Scheduler {
   // Actually, we assume obstruction free here.
   // cancel() func takes care for graceful shutdown
   void TerminateTasks() {
-    cancel();
+    simulator.ResetState();
     for (size_t i = 0; i < threads.size(); ++i) {
       for (size_t j = 0; j < threads[i].tasks.size(); ++j) {
         auto& task = threads[i].tasks[j];
@@ -732,7 +686,7 @@ struct TLAScheduler : Scheduler {
       if (frame.is_new) {
         // It was a new task.
         // So restart it from the beginning with the same args.
-        *task = (*task)->Restart(state.get());
+        (*task)->Restart(state.get());
       } else {
         // It was a not new task, hence, we recreated in early.
       }
@@ -942,5 +896,5 @@ struct TLAScheduler : Scheduler {
   StableVector<Thread> threads;
   StableVector<Frame> frames;
   Verifier verifier{};
-  std::function<void()> cancel;
+  OSSimulator simulator;
 };

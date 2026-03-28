@@ -8,6 +8,8 @@ set (SOURCE_FILES
         minimization.cpp
         minimization_smart.cpp
         coro_ctx_guard.cpp
+        os_simulator.cpp
+        mock_res.cpp
 )
 
 add_library(runtime SHARED ${SOURCE_FILES})

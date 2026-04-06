@@ -12,6 +12,7 @@
 #include "llvm/Passes/PassPlugin.h"
 
 using namespace llvm;
+//This pass should be used without dynamic libs
 
 // ignore handling by exceptions memory allocation failure. This is very
 // unlikely case and shouldn't be in tested program.
@@ -19,10 +20,14 @@ using namespace llvm;
 constexpr std::string_view ltest_allocation_fun_name = "LtestMemAlloc";
 constexpr std::string_view ltest_deallocation_fun_name = "LtestMemDealloc";
 
-SmallVector<Value*> collectArgs(CallBase& call) {
+SmallVector<Value*> collectArgs(CallBase& call, size_t n = -1) {
   SmallVector<Value*> res_args;
   for (auto& arg : call.args()) {
+    if (n == 0) {
+      continue;
+    }
     res_args.push_back(arg);
+    n--;
   }
   return res_args;
 }
@@ -43,8 +48,9 @@ class ResMockInserter {
   void Run() {
     IRBuilder<> builder(m.getContext());
     for (auto& f : m) {
-      // dirty hack, but otherwise boost contextes allocation is alos mocked,
-      // which produces warning by asan i couldn't debug double free here
+      // dirty hack, but otherwise boost contextes allocation is also mocked,
+      // which produces warning by asan about double free whichh i couldn't
+      // debug
       std::string demangled_parent = demangle(f.getName());
       if (demangled_parent.find("boost::context") != std::string::npos) {
         continue;
@@ -66,8 +72,14 @@ class ResMockInserter {
           }
           auto [rep_callee, rep_args] = (it->second)(call);
           builder.SetInsertPoint(&in);
-          // todo - need we look at invoke?
-          auto rep = builder.CreateCall(rep_callee, rep_args);
+          CallBase* rep;
+          if (auto* invoke = dyn_cast<InvokeInst>(&call)) {
+            rep = builder.CreateInvoke(rep_callee, invoke->getNormalDest(),
+                                       invoke->getUnwindDest(), rep_args);
+          } else {
+            rep = builder.CreateCall(rep_callee, rep_args);
+          }
+
           call.replaceAllUsesWith(rep);
           to_delete.push_back(&call);
         }
@@ -88,20 +100,37 @@ class ResMockInserter {
   std::map<
       std::string_view,
       std::function<std::pair<FunctionCallee, SmallVector<Value*>>(CallBase&)>>
-      replaces = {{"malloc",
-                   [this](CallBase& a) -> auto {
-                     assert(a.arg_size() == 1 && "args count is 1");
-                     return std::pair{ltest_allocation_fun, collectArgs(a)};
-                   }},
-                  // {"operator new(unsigned long)",
-                  //  [this](CallBase& a) -> auto {
-                  //    assert(a.arg_size() == 1 && "args count is 1");
-                  //    return std::pair{ltest_allocation_fun, collectArgs(a)};
-                  //  }},
-                  {"free", [this](CallBase& a) -> auto {
-                     assert(a.arg_size() == 1 && "args count is 1");
-                     return std::pair{ltest_deallocation_fun, collectArgs(a)};
-                   }}};
+      replaces = {
+          {"malloc",
+           [this](CallBase& a) -> auto {
+             assert(a.arg_size() == 1 && "args count is 1");
+             return std::pair{ltest_allocation_fun, collectArgs(a)};
+           }},
+          {"operator new(unsigned long)",
+           [this](CallBase& a) -> auto {
+             assert(a.arg_size() == 1 && "args count is 1");
+             return std::pair{ltest_allocation_fun, collectArgs(a)};
+           }},
+          {"operator new[](unsigned long)",
+           [this](CallBase& a) -> auto {
+             assert(a.arg_size() == 1 && "args count is 1");
+             return std::pair{ltest_allocation_fun, collectArgs(a)};
+           }},
+          {"free",
+           [this](CallBase& a) -> auto {
+             assert(a.arg_size() == 1 && "args count is 1");
+             return std::pair{ltest_deallocation_fun, collectArgs(a)};
+           }},
+          {"operator delete(void*, unsigned long)",
+           [this](CallBase& a) -> auto {
+             assert(a.arg_size() == 2 && "args count is 2");
+             return std::pair{ltest_deallocation_fun, collectArgs(a, 1)};
+           }},
+          {"operator delete[](void*, unsigned long)",
+           [this](CallBase& a) -> auto {
+             assert(a.arg_size() == 2 && "args count is 2");
+             return std::pair{ltest_deallocation_fun, collectArgs(a, 1)};
+           }}};
 };
 namespace {
 

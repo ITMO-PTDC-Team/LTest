@@ -1,5 +1,6 @@
 #include <libsyscall_intercept_hook_point.h>
 #include <linux/futex.h>
+#include <sys/mman.h>
 #include <sys/syscall.h>
 #include <syscall.h>
 
@@ -40,19 +41,47 @@ static int ltest_futex(long arg0, long arg1, long arg2, long *result) {
   return 0;
 }
 
+static int ltest_mmap(long arg0, long i, long arg2, long arg3, long arg4, long arg5, long *result) {
+  // we need sadly here pass parameters as is to mmap to handle flags correctly
+  void* ptr = mmap(reinterpret_cast<void*>(arg0), i, arg2, arg3, arg4, arg5);
+  memory_handler->RememberRawPtr(ptr, i);
+  *result = reinterpret_cast<long>(ptr);
+  return 0;
+
+}
+
+int ltest_munmap(long arg0, long arg1, long* result) {
+  *result = 0;
+  memory_handler->DeleteRawPtr(reinterpret_cast<void*>(arg0), arg1);
+  return 0;
+}
 static int hook(long syscall_number, long arg0, long arg1, long arg2, long arg3,
                 long arg4, long arg5, long *result) {
   if (!ltest_coro_ctx) {
     return 1;
   }
+  //to avoid infinity catches
+  ltest_coro_ctx = false;
+  int res;
   switch (syscall_number) {
     case SYS_sched_yield:
-      return ltest_sched_yield(result);
+      res = ltest_sched_yield(result);
+      break;
     case SYS_futex:
-      return ltest_futex(arg0, arg1, arg2, result);
+      res = ltest_futex(arg0, arg1, arg2, result);
+      break;
+    case SYS_mmap:
+      res = ltest_mmap(arg0, arg1, arg2, arg3, arg4, arg5, result);
+      break;
+    case SYS_munmap:
+      res = ltest_munmap(arg0, arg1, result);
+      break;
     default:
-      return 1;
+      res = 1;
   }
+
+  ltest_coro_ctx = true;
+  return res;
 }
 
 static __attribute__((constructor)) void init(void) {

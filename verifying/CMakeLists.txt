@@ -59,15 +59,17 @@ endfunction()
 function(verify_target target)
     verify_target_without_plugin(${target})
     add_dependencies(${target} runtime plugin_pass resmock_pass)
-    target_compile_options(${target} PRIVATE -fpass-plugin=${PASS_PATH} -fpass-plugin=${RESMOCK_PASS_PATH} ${CMAKE_ASAN_FLAGS})
+    target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
+    target_compile_options(${target} PRIVATE -fpass-plugin=${PASS_PATH} ${CMAKE_ASAN_FLAGS})
 endfunction()
 
 function(verify_cotarget target)
     verify_target_without_plugin(${target})
     add_dependencies(${target} runtime coplugin_pass resmock_pass)
-    target_compile_options(${target} PRIVATE  -fpass-plugin=${RESMOCK_PASS_PATH} -fplugin=${COPASS_PATH}
+    target_compile_options(${target} PRIVATE -fplugin=${COPASS_PATH}
     -fpass-plugin=${COPASS_PATH} -mllvm -coroutine-file=${CMAKE_CURRENT_SOURCE_DIR}/${target}.yml
      ${CMAKE_ASAN_FLAGS})
+    target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
 endfunction()
 
 function(add_integration_test test_name label fail)
@@ -80,7 +82,9 @@ function(add_integration_test test_name label fail)
     set_tests_properties("${full_name}"
         PROPERTIES
         WILL_FAIL ${fail}
-        LABELS "${label}")
+        LABELS "${label}"
+        ENVIRONMENT_MODIFICATION "LD_PRELOAD=string_append:${CMAKE_BINARY_DIR}/syscall_intercept/libpreload.so"
+)
 endfunction()
 
 add_subdirectory(targets)

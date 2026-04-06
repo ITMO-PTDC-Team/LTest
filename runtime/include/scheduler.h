@@ -285,9 +285,11 @@ struct BaseStrategyWithThreads : public Strategy {
  protected:
   void TerminateTasks() {
     simulator.ResetState();
-    for (auto& thread : threads) {
-      if (!thread.empty() && !thread.back()->IsReturned()) {
-        thread.back()->Terminate();
+    for (size_t i = 0; i < threads_count; i++) {
+      if (!threads[i].empty() && !threads[i].back()->IsReturned()) {
+        threads[i].back()->Terminate();
+        OnVerifierTaskFinish(threads[i].back(), i);
+        debug(stderr, "Terminated: %ld\n", i);
       }
     }
     state.reset(new TargetObj{});

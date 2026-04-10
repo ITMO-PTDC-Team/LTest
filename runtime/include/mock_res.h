@@ -4,9 +4,9 @@
 #include <deque>
 
 class MemoryHandler {
-  //this memory is acuired using malloc/new
+  // this memory is acuired using malloc/new
   std::deque<void*> memory;
-  //this is allocated using mmap
+  // this is allocated using mmap
   std::deque<std::pair<void*, std::size_t>> raw_memory;
 
  public:

@@ -4,6 +4,7 @@
 
 void OSSimulator::ResetState() {
   memory_handler->FreeAllMemory();
+  block_manager.UnblockAll();
 }
 bool OSSimulator::CanThreadContinue(std::size_t number) { return true; }
 

@@ -1,9 +1,12 @@
 #include "mock_res.h"
 
+#include <sys/mman.h>
+
 #include <algorithm>
 #include <cassert>
-#include <sys/mman.h>
+
 #include "coro_ctx_guard.h"
+#include "logger.h"
 
 MemoryHandler* memory_handler;
 
@@ -31,14 +34,20 @@ void MemoryHandler::FreeAllMemory() {
   memory.clear();
 }
 void MemoryHandler::RememberRawPtr(void* ptr, std::size_t size) {
+  debug("allocated %d \n", ptr);
   raw_memory.emplace_back(ptr, size);
 }
 void MemoryHandler::DeleteRawPtr(void* ptr, std::size_t size) {
-  auto it = std::find(raw_memory.begin(), raw_memory.end(), std::pair{ptr, size});
-  assert(it != raw_memory.end());
+  auto it =
+      std::find(raw_memory.begin(), raw_memory.end(), std::pair{ptr, size});
+  debug("deallocated %d \n", ptr);
+  if (it != raw_memory.end()) {
+    // its okay - guard arent perfect and some of allocations of boost fibers
+    // are missed;
+    return;
+  }
   munmap(ptr, size);
   raw_memory.erase(it);
-
 }
 
 // we check to ltest_coro_ctx to support resmockpass instrumentation

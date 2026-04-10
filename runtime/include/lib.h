@@ -42,7 +42,6 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   CoroBase& operator=(CoroBase&&) = delete;
 
   // Restart the coroutine from the beginning passing this_ptr as this.
-  // Returns restarted coroutine.
   virtual void Restart(void* this_ptr) = 0;
 
   // Resume the coroutine to the next yield.
@@ -69,9 +68,6 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   // Returns new pointer to the coroutine.
   // https://en.cppreference.com/w/cpp/memory/enable_shared_from_this
   std::shared_ptr<CoroBase> GetPtr();
-
-  // Try to terminate the coroutine.
-  void TryTerminate();
 
   // Terminate the coroutine.
   void Terminate();

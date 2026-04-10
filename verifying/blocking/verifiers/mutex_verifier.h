@@ -29,11 +29,9 @@ struct MutexVerifier {
     }
   }
 
-  std::optional<std::string> ReleaseTask(size_t thread_id) {
-    if (status[thread_id] == 1) {
-      return {"Unlock"};
-    }
-    return std::nullopt;
+  void Reset() {
+    debug(stderr, "cleared");
+    status.clear();
   }
 
   void Reset() { status.clear(); }

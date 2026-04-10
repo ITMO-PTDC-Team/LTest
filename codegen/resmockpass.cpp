@@ -12,7 +12,7 @@
 #include "llvm/Passes/PassPlugin.h"
 
 using namespace llvm;
-//This pass should be used without dynamic libs
+// This pass should be used without dynamic libs
 
 // ignore handling by exceptions memory allocation failure. This is very
 // unlikely case and shouldn't be in tested program.

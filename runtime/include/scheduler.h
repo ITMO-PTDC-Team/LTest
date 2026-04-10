@@ -36,7 +36,6 @@ concept StrategyTaskVerifier = requires(T a) {
     a.Verify(std::declval<const std::string&>(), size_t())
   } -> std::same_as<bool>;
   { a.OnFinished(std::declval<Task&>(), size_t()) } -> std::same_as<void>;
-  { a.ReleaseTask(size_t()) } -> std::same_as<std::optional<std::string>>;
   { a.Reset() } -> std::same_as<void>;
 };
 
@@ -177,7 +176,7 @@ struct BaseStrategyWithThreads : public Strategy {
       // more optimal allocations-wise implementation
       for (auto& thread : this->threads) {
         // We don't have to keep references alive
-        while (thread.size() > 0) {
+        while (!thread.empty()) {
           thread.pop_back();
         }
       }
@@ -284,14 +283,20 @@ struct BaseStrategyWithThreads : public Strategy {
 
  protected:
   void TerminateTasks() {
+    auto& round_schedule = this->round_schedule;
+    assert(round_schedule.size() == this->threads.size() &&
+           "sizes expected to be the same");
+    round_schedule.assign(round_schedule.size(), -1);
     simulator.ResetState();
-    for (size_t i = 0; i < threads_count; i++) {
-      if (!threads[i].empty() && !threads[i].back()->IsReturned()) {
-        threads[i].back()->Terminate();
-        OnVerifierTaskFinish(threads[i].back(), i);
-        debug(stderr, "Terminated: %ld\n", i);
+    for (size_t i = 0; i < threads.size(); i++) {
+      for (size_t j = 0; j < threads[i].size(); j++) {
+        if (!threads[i][j]->IsReturned()) {
+          threads[i][j]->Terminate();
+          debug(stderr, "Terminated: %ld\n", i);
+        }
       }
     }
+    sched_checker.Reset();
     state.reset(new TargetObj{});
   }
 
@@ -433,7 +438,6 @@ struct StrategyScheduler : public SchedulerWithReplay {
         sequential_history.emplace_back(Invoke(next_task, thread_id));
       }
       full_history.emplace_back(next_task);
-
       next_task->Resume();
       if (next_task->IsReturned()) {
         finished_tasks++;
@@ -659,10 +663,6 @@ struct TLAScheduler : Scheduler {
     bool is_new{};
   };
 
-  // Terminates all running tasks.
-  // We do it in a dangerous way: in random order.
-  // Actually, we assume obstruction free here.
-  // cancel() func takes care for graceful shutdown
   void TerminateTasks() {
     simulator.ResetState();
     for (size_t i = 0; i < threads.size(); ++i) {

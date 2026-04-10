@@ -9,7 +9,7 @@
 #include "verifiers/mutex_verifier.h"
 #include "verifying/specs/mutex.h"
 
-inline void FutexWait(int *value, int expected_value) {
+non_atomic inline void FutexWait(int *value, int expected_value) {
   syscall(SYS_futex, value, FUTEX_WAIT_PRIVATE, expected_value, nullptr,
           nullptr, 0);
 }
@@ -20,7 +20,7 @@ inline void FutexWake(int *value, int count) {
 
 class Mutex {
  private:
-  static int32_t *Addr(std::atomic_int32_t &atomic) {
+  non_atomic static int32_t *Addr(std::atomic_int32_t &atomic) {
     return reinterpret_cast<int32_t *>(&atomic);
   }
   int32_t CompareExchange(int32_t old, int32_t ne) {
@@ -29,7 +29,7 @@ class Mutex {
   }
 
  public:
-  non_atomic int Lock() {
+   non_atomic int Lock() {
     debug(stderr, "Lock\n");
     if (CompareExchange(0, 1) == 0) {
       debug(stderr, "Lock finished\n");
@@ -38,7 +38,7 @@ class Mutex {
     while (CompareExchange(0, 2) != 0) {
       if (CompareExchange(1, 2) > 0) {
         while (locked_.load() == 2) {
-          debug(stderr, "Futex wait spinlock\n");
+           debug(stderr, "Futex wait spinlock\n");
           FutexWait(Addr(locked_), 2);
         }
       }

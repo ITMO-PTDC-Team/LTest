@@ -41,18 +41,18 @@ static int ltest_futex(long arg0, long arg1, long arg2, long *result) {
   return 0;
 }
 
-static int ltest_mmap(long arg0, long i, long arg2, long arg3, long arg4, long arg5, long *result) {
+static int ltest_mmap(long arg0, long i, long arg2, long arg3, long arg4,
+                      long arg5, long *result) {
   // we need sadly here pass parameters as is to mmap to handle flags correctly
-  void* ptr = mmap(reinterpret_cast<void*>(arg0), i, arg2, arg3, arg4, arg5);
+  void *ptr = mmap(reinterpret_cast<void *>(arg0), i, arg2, arg3, arg4, arg5);
   memory_handler->RememberRawPtr(ptr, i);
   *result = reinterpret_cast<long>(ptr);
   return 0;
-
 }
 
-int ltest_munmap(long arg0, long arg1, long* result) {
+int ltest_munmap(long arg0, long arg1, long *result) {
   *result = 0;
-  memory_handler->DeleteRawPtr(reinterpret_cast<void*>(arg0), arg1);
+  memory_handler->DeleteRawPtr(reinterpret_cast<void *>(arg0), arg1);
   return 0;
 }
 static int hook(long syscall_number, long arg0, long arg1, long arg2, long arg3,
@@ -60,7 +60,7 @@ static int hook(long syscall_number, long arg0, long arg1, long arg2, long arg3,
   if (!ltest_coro_ctx) {
     return 1;
   }
-  //to avoid infinity catches
+  // to avoid infinity catches
   ltest_coro_ctx = false;
   int res;
   switch (syscall_number) {

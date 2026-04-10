@@ -52,7 +52,7 @@ function(verify_target_without_plugin target)
     add_dependencies(${target} runtime plugin_pass resmock_pass)
     target_include_directories(${target} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/third_party)
     target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
-    target_compile_options(${target} PRIVATE -fpass-plugin=${RESMOCK_PASS_PATH} ${CMAKE_ASAN_FLAGS})
+    target_compile_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
     target_link_libraries(${target} PRIVATE runtime ${PASS} gflags ${Boost_LIBRARIES})
 endfunction()
 

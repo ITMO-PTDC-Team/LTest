@@ -13,4 +13,3 @@ void test(std::size_t size) {
   // CHECK-NEXT: call void @LtestMemDealloc(ptr %[[res]])
   free(f);
 }
-

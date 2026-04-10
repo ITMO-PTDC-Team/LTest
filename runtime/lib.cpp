@@ -71,9 +71,3 @@ extern "C" void CoroutineStatusChange(char* name, bool start) {
 }
 
 void CoroBase::Terminate() { is_returned = true; }
-
-void CoroBase::TryTerminate() {
-  for (size_t i = 0; i < 1000 && !is_returned; ++i) {
-    Resume();
-  }
-}

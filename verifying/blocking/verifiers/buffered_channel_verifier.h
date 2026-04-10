@@ -39,13 +39,6 @@ struct BufferedChannelVerifier {
     }
   }
 
-  std::optional<std::string> ReleaseTask(size_t thread_id) {
-    if (senders_ > 0) {
-      return {"Recv"};
-    }
-    return std::nullopt;
-  }
-
   void Reset() {
     senders_ = 0;
     receivers_ = 0;

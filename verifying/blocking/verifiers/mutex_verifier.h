@@ -29,11 +29,6 @@ struct MutexVerifier {
     }
   }
 
-  void Reset() {
-    debug(stderr, "cleared");
-    status.clear();
-  }
-
   void Reset() { status.clear(); }
 
   // NOTE(kmitkin): we cannot just store number of thread that holds mutex

@@ -9,4 +9,10 @@ struct CoroCtxGuard {
   ~CoroCtxGuard();
 };
 
+struct SchedCtxGuard {
+  bool tmp;
+  SchedCtxGuard();
+  ~SchedCtxGuard();
+};
+
 }  // namespace ltest

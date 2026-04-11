@@ -188,8 +188,6 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     UpdateStatistics();
   }
 
-  ~PctStrategy() { this->TerminateTasks(); }
-
  private:
   void UpdateStatistics() {
     // Update statistics

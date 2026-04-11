@@ -3,8 +3,8 @@
 #include "block_manager.h"
 
 void OSSimulator::ResetState() {
-  memory_handler->FreeAllMemory();
   block_manager.UnblockAll();
+  memory_handler->FreeAllMemory();
 }
 bool OSSimulator::CanThreadContinue(std::size_t number) { return true; }
 

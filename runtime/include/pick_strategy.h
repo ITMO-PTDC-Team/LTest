@@ -34,8 +34,6 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
                             is_new, current_thread};
   }
 
-  ~PickStrategy() { this->TerminateTasks(); }
-
  protected:
   size_t next_task = 0;
 };

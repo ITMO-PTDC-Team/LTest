@@ -165,13 +165,13 @@ inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
     if (result->reason == Scheduler::NonLinearizableHistory::Reason::DEADLOCK) {
       std::cout << "deadlock detected:\n";
       pretty_printer.PrettyPrint(
-          result->seq, scheduler->GetStartegyThreadsCount(), std::cout);
+          result->seq, scheduler->GetStrategyThreadsCount(), std::cout);
       return 4;  // see https://tldp.org/LDP/abs/html/exitcodes.html
     } else if (result->reason == Scheduler::NonLinearizableHistory::Reason::
                                      NON_LINEARIZABLE_HISTORY) {
       std::cout << "non linearized:\n";
       pretty_printer.PrettyPrint(
-          result->seq, scheduler->GetStartegyThreadsCount(), std::cout);
+          result->seq, scheduler->GetStrategyThreadsCount(), std::cout);
       return 3;
     } else {
       std::abort();

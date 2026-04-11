@@ -164,6 +164,7 @@ struct BaseStrategyWithThreads : public Strategy {
     this->new_task_id = 0;
     // also resets the state
     this->TerminateTasks();
+    simulator.ResetState();
 
     // this could happen if we run custom scenarios
     // (which could have arbitrary number of threads)
@@ -287,7 +288,6 @@ struct BaseStrategyWithThreads : public Strategy {
     assert(round_schedule.size() == this->threads.size() &&
            "sizes expected to be the same");
     round_schedule.assign(round_schedule.size(), -1);
-    simulator.ResetState();
     for (size_t i = 0; i < threads.size(); i++) {
       for (size_t j = 0; j < threads[i].size(); j++) {
         if (!threads[i][j]->IsReturned()) {
@@ -313,7 +313,7 @@ struct BaseStrategyWithThreads : public Strategy {
 
     return task_index;
   }
-
+  OSSimulator simulator;
   Verifier sched_checker{};
   std::unique_ptr<TargetObj> state;
   // Strategy struct is the owner of all tasks, and all
@@ -329,7 +329,6 @@ struct BaseStrategyWithThreads : public Strategy {
   std::uniform_int_distribution<std::mt19937::result_type>
       constructors_distribution;
   std::mt19937 rng;
-  OSSimulator simulator;
 };
 
 // StrategyScheduler generates different sequential histories (using Strategy)
@@ -375,7 +374,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
 
       if (histories.has_value()) {
         auto& [full_history, sequential_history, reason] = histories.value();
-        int threads_num = GetStartegyThreadsCount();
+        int threads_num = GetStrategyThreadsCount();
 
         if (should_minimize_history) {
           log() << "Full nonlinear scenario: \n";
@@ -411,7 +410,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
     return std::nullopt;
   }
 
-  int GetStartegyThreadsCount() const override {
+  int GetStrategyThreadsCount() const override {
     return strategy.GetThreadsCount();
   }
 
@@ -449,7 +448,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
       }
     }
 
-    pretty_printer.PrettyPrint(sequential_history, GetStartegyThreadsCount(),
+    pretty_printer.PrettyPrint(sequential_history, GetStrategyThreadsCount(),
                                log());
 
     if (deadlock_detected) {
@@ -503,7 +502,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
 
       if (log_each_interleaving) {
         pretty_printer.PrettyPrint(sequential_history,
-                                   GetStartegyThreadsCount(), log());
+                                   GetStrategyThreadsCount(), log());
         log() << "\n";
       }
 
@@ -664,7 +663,6 @@ struct TLAScheduler : Scheduler {
   };
 
   void TerminateTasks() {
-    simulator.ResetState();
     for (size_t i = 0; i < threads.size(); ++i) {
       for (size_t j = 0; j < threads[i].tasks.size(); ++j) {
         auto& task = threads[i].tasks[j];
@@ -673,6 +671,7 @@ struct TLAScheduler : Scheduler {
         }
       }
     }
+    simulator.ResetState();
   }
 
   // Replays all actions from 0 to the step_end.
@@ -765,7 +764,7 @@ struct TLAScheduler : Scheduler {
       }
     } else {
       log() << "run round: " << finished_rounds << "\n";
-      pretty_printer.PrettyPrint(full_history, GetStartegyThreadsCount(),
+      pretty_printer.PrettyPrint(full_history, GetStrategyThreadsCount(),
                                  log());
       log() << "===============================================\n\n";
       log().flush();
@@ -876,7 +875,7 @@ struct TLAScheduler : Scheduler {
     return {false, {}};
   }
 
-  int GetStartegyThreadsCount() const override { return threads.size(); }
+  int GetStrategyThreadsCount() const override { return threads.size(); }
 
   PrettyPrinter& pretty_printer;
   size_t max_tasks;

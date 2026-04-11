@@ -11,3 +11,10 @@ bool ltest_coro_ctx = 0;
 ltest::CoroCtxGuard::CoroCtxGuard() { ltest_coro_ctx = true; }
 
 ltest::CoroCtxGuard::~CoroCtxGuard() { ltest_coro_ctx = false; }
+
+ltest::SchedCtxGuard::SchedCtxGuard() {
+  tmp = ltest_coro_ctx;
+  ltest_coro_ctx = false;
+}
+
+ltest::SchedCtxGuard::~SchedCtxGuard() { ltest_coro_ctx = tmp; }

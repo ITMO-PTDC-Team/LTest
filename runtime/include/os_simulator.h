@@ -11,5 +11,4 @@ class OSSimulator {
   bool CanThreadContinue(std::size_t number);
   void UpdateState();
   void ResetState();
-  ~OSSimulator() { ResetState(); }
 };

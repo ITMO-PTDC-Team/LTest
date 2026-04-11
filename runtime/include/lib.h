@@ -22,6 +22,11 @@ struct CoroutineStatus;
 // Current executing coroutine.
 extern std::shared_ptr<CoroBase> this_coro;
 extern int this_thread_id;
+// Release sequences from the WMM feature might cause infeasible executions,
+// in case if strategy reached such execution, we need to abort it and start
+// executing the next round or a new interleaving of the current one.
+void SetExecutionInfeasible(bool is_infeasible);
+bool IsExecutionInfeasible();
 
 // Scheduler context
 extern boost::context::fiber_context sched_ctx;

@@ -32,8 +32,10 @@ inline void LtestFail(const char *expr, const char *file, int line) {
 // standard library will not be inserted.
 #define as_atomic attr(ltest_atomic)
 
-#define rassert(expr) \
-  ((expr) ? (void)0 : ltest::LtestFail(#expr, __FILE__, __LINE__))
+#define rassert(expr)      \
+  (IsExecutionInfeasible() \
+       ? (void)0           \
+       : ((expr) ? (void)0 : ltest::LtestFail(#expr, __FILE__, __LINE__)))
 
 namespace ltest {
 

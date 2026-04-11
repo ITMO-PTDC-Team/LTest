@@ -12,6 +12,15 @@
 // See comments in the lib.h.
 Task this_coro{};
 int this_thread_id = -1;
+namespace {
+bool is_execution_infeasible = false;
+}
+
+void SetExecutionInfeasible(bool is_infeasible) {
+  is_execution_infeasible = is_infeasible;
+}
+
+bool IsExecutionInfeasible() { return is_execution_infeasible; }
 
 boost::context::fiber_context sched_ctx;
 std::optional<CoroutineStatus> coroutine_status;

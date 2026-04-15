@@ -7,10 +7,12 @@
 #include <ranges>
 #include <unordered_set>
 
+#include "../../runtime/include/lib.h"
 #include "../logger.h"
 #include "common.h"
 #include "edge.h"
 #include "event.h"
+#include "relseq.h"
 
 namespace ltest::wmm {
 
@@ -18,6 +20,19 @@ class Graph {
  public:
   Graph() {}
   ~Graph() { Clean(); }
+
+  void OnExecutionComplete() {
+    if (IsExecutionInfeasible()) {
+      // already infeasible, so we don't need to try to complete it
+      return;
+    }
+    // TODO: implement the actual completion attempt + invoke it form strategy
+    if (fullReleaseSequenceSupportEnabled && HasBrokenRelSeq()) {
+      log() << "Execution is infeasible on completion\n";
+      Print(log());
+      SetExecutionInfeasible(true);
+    }
+  }
 
   void Reset(int nThreads) {
     Clean();
@@ -27,7 +42,7 @@ class Graph {
   // TODO: add `ExecutionPolicy` or other way of specifying how to create edges
   // (Random, BoundedModelChecker, etc.)
   template <class T>
-  T AddReadEvent(int location, int threadId, MemoryOrder order) {
+  std::optional<T> AddReadEvent(int location, int threadId, MemoryOrder order) {
     EventId eventId = events.size();
     auto event = new ReadEvent<T>(eventId, nThreads, location, threadId, order);
 
@@ -42,6 +57,16 @@ class Graph {
               << readFromEvent->AsString() << "\n";
         break;
       }
+    }
+
+    if (event->readFrom == nullptr) {
+      // we were unable to find a write/rmw to read from because we were breking
+      // some existing rel-seqs, so we reached the infeasible execution
+      log() << "Execution is infeasible on read event: " << event->AsString()
+            << "\n";
+      SetExecutionInfeasible(true);
+      Print(log());
+      return std::nullopt;
     }
 
     assert(event->readFrom != nullptr &&
@@ -76,16 +101,24 @@ class Graph {
 
     // Write-Write Coherence
     CreateWriteWriteCoherenceEdges(event);
+
+    if (HasBrokenRelSeq()) {
+      log() << "Execution is infeasible on write event: " << event->AsString()
+            << "\n";
+      Print(log());
+      SetExecutionInfeasible(true);
+    }
   }
 
   template <class T>
-  std::pair<bool, T> AddRMWEvent(int location, int threadId, T* expected,
-                                 T desired, MemoryOrder successOrder,
-                                 MemoryOrder failureOrder) {
+  std::optional<std::pair<bool, T>> AddRMWEvent(int location, int threadId,
+                                                T* expected, T desired,
+                                                MemoryOrder successOrder,
+                                                MemoryOrder failureOrder) {
     EventId eventId = events.size();
-    auto event = new CASRMWEvent<T>(eventId, nThreads, location, threadId,
-                                    expected, desired, successOrder,
-                                    failureOrder);
+    auto event =
+        new CASRMWEvent<T>(eventId, nThreads, location, threadId, expected,
+                           desired, successOrder, failureOrder);
 
     // establish po-edge
     CreatePoEdgeToEvent(event);  // prevInThread --po--> event
@@ -100,22 +133,33 @@ class Graph {
       }
     }
 
+    if (event->readFrom == nullptr) {
+      // we were unable to find a write/rmw to read from because we were breking
+      // some existing rel-seqs, so we reached the infeasible execution
+      log() << "Execution is infeasible on rmw event: " << event->AsString()
+            << "\n";
+      SetExecutionInfeasible(true);
+      Print(log());
+      return std::nullopt;
+    }
+
     assert(event->readFrom != nullptr &&
            "RMW event must have appropriate write event to read from");
     assert((event->readFrom->IsWrite() || event->readFrom->IsModifyRMW()) &&
            "RMW event must read from write or modifying rmw event");
-    return {
+    return std::make_optional(std::pair<bool, T>{
         event->IsModifyRMW(),  // true if RMW is resolved to MODIFY state, false
                                // if rmw failed and resolve to READ state
-        Event::GetReadValue<T>(event)};
+        Event::GetReadValue<T>(event)});
   }
 
   template <class T>
-  T AddUnconditionalRMWEvent(int location, int threadId, AtomicRmwOp op,
-                             T operand, MemoryOrder order) {
+  std::optional<T> AddUnconditionalRMWEvent(int location, int threadId,
+                                            AtomicRmwOp op, T operand,
+                                            MemoryOrder order) {
     EventId eventId = events.size();
     auto event = new UnconditionalRMWEvent<T>(eventId, nThreads, location,
-                                                threadId, op, operand, order);
+                                              threadId, op, operand, order);
 
     CreatePoEdgeToEvent(event);
 
@@ -126,6 +170,16 @@ class Graph {
               << " now reads from " << readFromEvent->AsString() << "\n";
         break;
       }
+    }
+
+    if (event->readFrom == nullptr) {
+      // we were unable to find a write/rmw to read from because we were breking
+      // some existing rel-seqs, so we reached the infeasible execution
+      log() << "Execution is infeasible on unconditional rmw event: "
+            << event->AsString() << "\n";
+      SetExecutionInfeasible(true);
+      Print(log());
+      return std::nullopt;
     }
 
     assert(event->readFrom != nullptr &&
@@ -146,6 +200,10 @@ class Graph {
            << WmmUtils::EdgeTypeToString(edge.type) << " "
            << events[edge.to]->AsString() << "\n";
       }
+    }
+    os << "Release sequences:\n";
+    for (const auto& rs : establishedRelSeqs) {
+      os << rs.AsString() << "\n";
     }
     os << "\n";
   }
@@ -189,21 +247,6 @@ class Graph {
     // update the last seq-cst write event in case of successful RMW event
     // and save the old value in case snapshot is discarded
     EventId oldLastSeqCstWriteEvent = lastSeqCstWriteEvents[read->location];
-
-    // Applying rel-acq semantics via establishing synchronized-with (SW)
-    // relation
-    if (read->IsAtLeastAcquire() && write->IsAtLeastRelease() &&
-        // TODO: maybe somehow get rid of the sc-edges instead?
-        !(read->IsSeqCst() &&
-          write->IsSeqCst())  // this case no need to consider, because we have
-                              // sc edges instead
-    ) {
-      isClockUpdated = true;
-      // save the old clock
-      oldClock = read->clock;
-      // instantitate a SW (synchronized-with) relation
-      read->clock.UniteWith(write->clock);
-    }
 
     if (read->IsRead() || read->IsReadRWM()) {
       // in case of 'read' event has actually type RMW but is resolved to READ
@@ -262,14 +305,35 @@ class Graph {
       CreateWriteWriteCoherenceEdges(read);
     }
 
+    // Applying rel-acq semantics via establishing synchronized-with relation,
+    // we consider here release-sequences as well
+    // TODO: check how release-sequences affect sc-edges
+    std::optional<RelSeq> seq = GetReleaseSequence(read, write);
+    if (seq.has_value()) {
+      isClockUpdated = true;
+      // save the old clock
+      oldClock = read->clock;
+      // instantitate a SW (synchronized-with) relation (between current read
+      // and all release heads from the release-sequence)
+      for (auto* head : seq->releaseHeads) {
+        read->clock.UniteWith(head->clock);
+      }
+      establishedRelSeqs.push_back(seq.value());
+    }
+
     bool isConsistent = IsConsistent();
-    if (isConsistent) {
-      log() << "Consistent graph:" << "\n";
+    bool hasBrokenRelSeq = HasBrokenRelSeq();
+    bool isValid = isConsistent && !hasBrokenRelSeq;
+
+    if (isValid) {
+      log() << "Valid graph: consistency=" << isConsistent
+            << ", hasBrokenRelSeq=" << hasBrokenRelSeq << "\n";
       Print(log());
       // preserve added edges and other modifications
       ApplySnapshot();
     } else {
-      log() << "Not consistent graph:" << "\n";
+      log() << "Not valid graph: consistency=" << isConsistent
+            << ", hasBrokenRelSeq=" << hasBrokenRelSeq << "\n";
       Print(log());
       // removes all added edges
       log() << "Discarding snapshot" << "\n";
@@ -279,13 +343,208 @@ class Graph {
       // restore old clock if necessary
       if (isClockUpdated) {
         read->clock = oldClock;
+        // removed added release-sequence
+        establishedRelSeqs.pop_back();
       }
       // restore last seq-cst write event
       lastSeqCstWriteEvents[read->location] = oldLastSeqCstWriteEvent;
       Print(log());
     }
 
-    return isConsistent;
+    return isValid;
+  }
+
+  // We calculate a release sequence for a `read` event that reads-from a
+  // `write` event. In case if `fullReleaseSequenceSupportEnabled` is set to
+  // false, we treat direct acquire-read from a release-write/rmw as a release
+  // sequence only.
+  std::optional<RelSeq> GetReleaseSequence(Event* read, Event* write) const {
+    assert(read->IsReadOrRMW() && "Read event must be of correct type");
+    assert(write->IsWriteOrRMW() && "Write event must be of correct type");
+    if (!fullReleaseSequenceSupportEnabled) {
+      // Old behavior when no release-sequences are enabled
+      if (read->IsAtLeastAcquire() && write->IsAtLeastRelease() &&
+          // TODO: check if this is correct:
+          // this case no need to consider, because we have sc edges instead
+          !(read->IsSeqCst() && write->IsSeqCst())) {
+        return RelSeq(read, write, write, {write});
+      }
+      return std::nullopt;
+    }
+
+    // Otherwise we traverse through the rf edges backwards:
+    Event* rf = read;
+    std::vector<Event*> releaseHeads;
+    while (rf != nullptr) {
+      rf = rf->GetReadFromEvent();
+      assert((rf->IsWrite() || rf->IsModifyRMW()) &&
+             "RF event must be a write or modifying rmw");
+      if (rf->IsAtLeastRelease()) {
+        // We need to sync hb-clocks with this event
+        releaseHeads.push_back(rf);
+      }
+      if (!rf->IsRMW()) {
+        // Found a 1st write event before which there should be only writes in
+        // the same thread. Basically, we found the `lastWrite` parameter of the
+        // `RelSeq`.
+        break;
+      }
+      if (rf->IsAcqRel()) {
+        // we found the event which might be a part of another release-sequence
+        // and it has done all the necessary synchronization (if required), so
+        // we can complete the current release sequence here and sync just with
+        // this rel-acq rmw event
+        return RelSeq(read, rf, rf, releaseHeads);
+      }
+    }
+
+    Event* lastWrite = rf;
+    assert(lastWrite != nullptr &&
+           "The end of the RMW chain must be a valid write event");
+    if (lastWrite->IsAtLeastRelease()) {
+      // already pushed to the release heads + this rel seq cannot be broken,
+      // because we have the following sequence:
+      // W_rel -> RMW -> ... -> RMW -> R_acq
+      //   A   ->  R1 -> ... ->  Rn -> B
+      // which means that there could not be any other write event between `A`
+      // and `R1`.
+      return RelSeq(read, lastWrite, lastWrite, releaseHeads);
+    }
+
+    // Now we traverse the events in the thread of lastWrite to find the most
+    // recent release write event
+    int threadId = lastWrite->threadId;
+    auto it = std::ranges::find_if(
+        eventsPerThread[threadId].rbegin(), eventsPerThread[threadId].rend(),
+        [this, lastWrite](EventId eventId) -> bool {
+          Event* event = events[eventId];
+          return (event->IsWrite() || event->IsModifyRMW()) &&
+                 event->IsAtLeastRelease() &&
+                 event->location == lastWrite->location;
+        });
+
+    if (it == eventsPerThread[threadId].rend()) {
+      // No release write found, so we cannot establish any release sequence,
+      // so we return nullopt
+      return std::nullopt;
+    }
+
+    // Now we need to ensure that detected release sequence is not broken
+    // already. So we search for any write event that is located between
+    // `releaseWrite` and `lastWrite` in mo-graph. If there is such event, then
+    // release sequence is broken and we return nullopt.
+    // We don't need to check the same thing in the RMW chain, because RMW
+    // events when reading from one-another will be directly mo-before the next
+    // one, so no other event will be mo-between them.
+    Event* releaseWrite = events[*it];
+    RelSeq currentRelSeq(read, releaseWrite, lastWrite, releaseHeads);
+    if (IsRelSeqValid(currentRelSeq)) {
+      // No write event found that is mo-between `releaseWrite` and `lastWrite`,
+      // so we can establish the release sequence.
+      // Note: it does not mean that later during execution such event will not
+      // appear, if it appears we will abort the execution and mark it as
+      // infeasible, but for now we just optimistically treat rel-seq as valid.
+      return currentRelSeq;
+    }
+    // TODO: check if we need to sync with releaseHeads of the current release
+    //       sequence even if it is broken
+
+    // Release sequence is broken, so we return nullopt
+    return std::nullopt;
+  }
+
+  // Checks that passed release sequence is valid, i.e. right now there is no
+  // such write event that breaks it.
+  // Note: at some later point in the execution of a program new mo-edges
+  // might be added to the graph that could break existing release-sequences, so
+  // we account for that throughout the code.
+  bool IsRelSeqValid(const RelSeq& rs) const {
+    Event* releaseWrite = rs.releaseWrite;
+    Event* lastWrite = rs.lastWrite;
+    int threadId = lastWrite->threadId;
+
+    for (int tid = 0; tid < nThreads; ++tid) {
+      if (tid == threadId) continue;  // skip thread of [release/last]Write
+      auto& tidEvents = eventsPerThread[tid];
+      for (auto rit = tidEvents.rbegin(); rit != tidEvents.rend(); ++rit) {
+        EventId eid = *rit;
+        Event* event = events[eid];
+        if (!(event->IsWrite() || event->IsModifyRMW())) continue;
+        if (event->location != lastWrite->location) continue;
+
+        // event -mo-> releaseWrite
+        if (IsMoReachable(event, releaseWrite)) {
+          // all more recent writes in this thread are mo-before the
+          // `releaseWrite` so we can check the next thread
+          break;
+        }
+
+        // releaseWrite -mo-> event -mo-> lastWrite
+        if (IsMoReachable(releaseWrite, event) &&
+            IsMoReachable(event, lastWrite)) {
+          // release sequence is broken, so we return nullopt
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  // Checks if any established release sequence got broken
+  bool HasBrokenRelSeq() const {
+    for (const auto& rs : establishedRelSeqs) {
+      if (!IsRelSeqValid(rs)) {
+        log() << "Broken release sequence:\n" << rs.AsString() << "\n";
+        Print(log());
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool IsMoReachable(Event* from, Event* to) const {
+    assert(from != nullptr && "From event must be non-null");
+    assert(to != nullptr && "To event must be non-null");
+    assert(from->location == to->location &&
+           "From and to events must be at the same location");
+    // Use an explicit stack for DFS to check if "to" is reachable from "from"
+    // via only mo edges
+    if (from == to) return true;
+
+    std::unordered_set<EventId> visited;
+    std::vector<Event*> stack;
+    stack.push_back(from);
+
+    while (!stack.empty()) {
+      Event* curr = stack.back();
+      stack.pop_back();
+      if (curr == to) {
+        return true;
+      }
+      if (visited.count(curr->id)) continue;
+      visited.insert(curr->id);
+
+      for (EdgeId eid : curr->edges) {
+        const auto& edge = edges[eid];
+        if (edge.type == EdgeType::MO) {
+          if (events[edge.to]->location != to->location) {
+            std::cerr << "MO edges must be established between events with the "
+                         "same location, but got: \n\t" +
+                             events[edge.from]->AsString() + " --mo-->\n\t" +
+                             events[edge.to]->AsString()
+                      << std::endl;
+            assert(false &&
+                   "MO edges must be established between events with the same "
+                   "location");
+          }
+          if (!visited.count(edge.to)) {
+            stack.push_back(events[edge.to]);
+          }
+        }
+      }
+    }
+    return false;
   }
 
   // ===== Methods to create general graph edges =====
@@ -310,8 +569,8 @@ class Graph {
     event->clock.Increment(threadId);
   }
 
-  // Adds an sc-edge between prev sc-write (to the same location as `event`) and
-  // `event`
+  // Adds an sc-edge between prev sc-write (to the same location as `event`)
+  // and `event`
   void CreateScEdgeToEvent(Event* event) {
     assert(event->IsSeqCst() && "Event must be an SC access");
 
@@ -433,7 +692,9 @@ class Graph {
   }
 
   // TODO: instead of sc-edges, add reads-from from "Repairing Sequential
-  // Consistency in C/C++11"? Applies Seq-Cst / MO Consistency rules:
+  // Consistency in C/C++11"?
+  //
+  // Applies Seq-Cst / MO Consistency rules:
   // establishes mo-edge between last sc-write and current sc-write-event if
   // their locations match W'_x --sc--> W_x  =>  W'_x --mo--> W_x
   void CreateSeqCstConsistencyEdges(Event* event) {
@@ -471,8 +732,8 @@ class Graph {
   }
 
   // Applies Read-Write Coherence rules: establishes mo-edges between
-  // stores that are read-from by reads which happened-before our write `event`
-  // W'_x --rf--> R'_x      W'_x --rf--> R'_x
+  // stores that are read-from by reads which happened-before our write
+  // `event` W'_x --rf--> R'_x      W'_x --rf--> R'_x
   //               |         \            |
   //               hb   =>    \           hb
   //               |           \          |
@@ -498,8 +759,8 @@ class Graph {
   }
 
   // Applies RMW Consitency rules: establishes mo-edge between
-  // store that is read-from by the current RMW event and the RMW event itself.
-  // W_x --rf--> RMW_x  =>   W_x --mo--> RMW_x
+  // store that is read-from by the current RMW event and the RMW event
+  // itself. W_x --rf--> RMW_x  =>   W_x --mo--> RMW_x
   void CreateRmwConsistencyEdges(Event* write, Event* rmw) {
     assert(write->IsWriteOrRMW() && rmw->IsModifyRMW() &&
            "Write and RMW events must be of correct type");
@@ -548,7 +809,7 @@ class Graph {
     }
   void IterateThroughMostRecentEventsByPredicate(Predicate&& predicate,
                                                  Callback&& callback) {
-    // iterate through each thread and find last write-event that hb `event`
+    // iterate through each thread
     for (int t = 0; t < nThreads; ++t) {
       // iterate from most recent to earliest events in thread `t`
       const auto& threadEvents = eventsPerThread[t];
@@ -627,9 +888,8 @@ class Graph {
           colors[eventId] = VISITED;
           continue;
         }
-        stack.push_back(
-            {event,
-             true});  // next time we take it out, we do not traverse its edges
+        stack.push_back({event, true});  // next time we take it out, we do
+                                         // not traverse its edges
 
         for (auto edgeId : event->edges) {
           Edge& edge = edges[edgeId];
@@ -683,6 +943,7 @@ class Graph {
   }
 
   void Clean() {
+    establishedRelSeqs.clear();
     edges.clear();
     for (auto event : events) {
       delete event;
@@ -699,8 +960,8 @@ class Graph {
     // insert dummy events (with all-zero hbClocks),
     // which will be the first event in each thread
     for (int t = 0; t < nThreads; ++t) {
-      // TODO: DummyEvents are all ?seq-cst? (now rlx) writes, do I need to add
-      // proper ?sc?-egdes between them? For now I don't
+      // TODO: DummyEvents are all ?seq-cst? (now rlx) writes, do I need to
+      // add proper ?sc?-egdes between them? For now I don't
       int eventId = events.size();
       auto dummyEvent = new DummyEvent(eventId, nThreads, t);
       events.push_back(dummyEvent);
@@ -712,6 +973,7 @@ class Graph {
   std::vector<Event*> events;
   std::vector<std::vector<EventId>> eventsPerThread;
   std::map<int /* location */, EventId> lastSeqCstWriteEvents;
+  std::vector<RelSeq> establishedRelSeqs;
   std::unordered_set<EdgeId>
       snapshotEdges;  // edges that are part of the snapshot (which case be
                       // discarded or applied, which is usefull when adding
@@ -720,6 +982,8 @@ class Graph {
                                              // randomized rf-edge selection
   bool inSnapshotMode = false;
   int nThreads = 0;
+  // TODO: add a global flag to enable/disable this feature
+  bool fullReleaseSequenceSupportEnabled = false;
 };
 
 }  // namespace ltest::wmm

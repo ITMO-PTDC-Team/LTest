@@ -51,6 +51,7 @@ struct Opts {
   size_t exploration_runs;
   size_t minimization_runs;
   bool wmm_enabled;
+  bool wmm_relseq;
   size_t depth;
   bool forbid_all_same;
   bool verbose;
@@ -72,6 +73,7 @@ struct DefaultOptions {
   size_t minimization_runs;
   size_t exploration_runs;
   bool wmm_enabled;
+  bool wmm_relseq;
 };
 
 void SetOpts(const DefaultOptions &def);
@@ -213,6 +215,7 @@ int Run(int argc, char *argv[], std::vector<CustomRound> custom_rounds = {}) {
     std::cout << "minimization runs = " << opts.minimization_runs << "\n";
   }
   std::cout << "wmm enabled = " << std::boolalpha << opts.wmm_enabled << "\n";
+  std::cout << "wmm relseq  = " << std::boolalpha << opts.wmm_relseq << "\n";
   std::cout << "targets  = " << task_builders.size() << "\n";
 
   PrettyPrinter pretty_printer;

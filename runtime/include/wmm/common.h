@@ -122,4 +122,8 @@ struct WmmUtils {
   inline static int INIT_THREAD_ID = 0;
 };
 
+// Full release-sequence semantics in the WMM graph; controlled by --wmm_relseq
+// (see runtime/verifying.cpp).
+extern bool wmm_relseq;
+
 }  // namespace ltest::wmm

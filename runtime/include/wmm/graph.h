@@ -27,7 +27,7 @@ class Graph {
       return;
     }
     // TODO: implement the actual completion attempt + invoke it form strategy
-    if (fullReleaseSequenceSupportEnabled && HasBrokenRelSeq()) {
+    if (wmm_relseq && HasBrokenRelSeq()) {
       log() << "Execution is infeasible on completion\n";
       Print(log());
       SetExecutionInfeasible(true);
@@ -355,13 +355,12 @@ class Graph {
   }
 
   // We calculate a release sequence for a `read` event that reads-from a
-  // `write` event. In case if `fullReleaseSequenceSupportEnabled` is set to
-  // false, we treat direct acquire-read from a release-write/rmw as a release
-  // sequence only.
+  // `write` event. When `wmm_relseq` is false, we treat direct acquire-read from
+  // a release-write/rmw as a release sequence only.
   std::optional<RelSeq> GetReleaseSequence(Event* read, Event* write) const {
     assert(read->IsReadOrRMW() && "Read event must be of correct type");
     assert(write->IsWriteOrRMW() && "Write event must be of correct type");
-    if (!fullReleaseSequenceSupportEnabled) {
+    if (!wmm_relseq) {
       // Old behavior when no release-sequences are enabled
       if (read->IsAtLeastAcquire() && write->IsAtLeastRelease() &&
           // TODO: check if this is correct:
@@ -990,8 +989,6 @@ class Graph {
                                              // randomized rf-edge selection
   bool inSnapshotMode = false;
   int nThreads = 0;
-  // TODO: add a global flag to enable/disable this feature
-  bool fullReleaseSequenceSupportEnabled = true;
 };
 
 }  // namespace ltest::wmm

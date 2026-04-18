@@ -11,6 +11,7 @@ namespace ltest {
 
 namespace wmm {
 bool wmm_enabled = false;
+bool wmm_relseq = false;
 }  // namespace wmm
 
 template <>
@@ -81,6 +82,9 @@ DEFINE_int32(minimization_runs, 15,
 DEFINE_bool(wmm_enabled, false,
             "Enable WMM graph usage (all atomic operations will be performed "
             "via this graph");
+DEFINE_bool(wmm_relseq, false,
+            "WMM: model full release sequences (RMW chains, broken RS). If "
+            "false, only direct acquire/release pairing is used.");
 DEFINE_int32(depth, 0,
              "How many tasks can be executed on one thread(Only for TLA)");
 DEFINE_bool(verbose, false, "Verbosity");
@@ -99,6 +103,7 @@ void SetOpts(const DefaultOptions &def) {
   FLAGS_exploration_runs = def.exploration_runs;
   FLAGS_minimization_runs = def.minimization_runs;
   FLAGS_wmm_enabled = def.wmm_enabled;
+  FLAGS_wmm_relseq = def.wmm_relseq;
 }
 
 // Extracts required opts, returns the rest of args.
@@ -113,6 +118,7 @@ Opts ParseOpts() {
   opts.exploration_runs = FLAGS_exploration_runs;
   opts.minimization_runs = FLAGS_minimization_runs;
   opts.wmm_enabled = wmm_enabled = FLAGS_wmm_enabled;
+  opts.wmm_relseq = wmm_relseq = FLAGS_wmm_relseq;
   opts.verbose = FLAGS_verbose;
   opts.typ = FromLiteral(std::move(FLAGS_strategy));
   opts.depth = FLAGS_depth;

@@ -6,7 +6,7 @@ function(add_wmm_litmus name expect_fail)
   list(APPEND WMM_TARGET_LIST ${name})
   set(WMM_TARGET_LIST ${WMM_TARGET_LIST} PARENT_SCOPE)
   add_integration_test(${name} "litmus" ${expect_fail}
-    ${name} --wmm_enabled --rounds 0 --exploration_runs 10000 --strategy random ${ARGN}
+    ${name} --wmm_enabled --wmm_relseq --rounds 0 --exploration_runs 10000 --strategy random ${ARGN}
   )
   set_tests_properties("litmus_${name}"
     PROPERTIES LABELS "litmus;wmm"

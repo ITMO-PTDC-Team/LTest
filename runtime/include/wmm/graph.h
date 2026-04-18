@@ -193,7 +193,7 @@ class Graph {
   void Print(Out& os) const {
     os << "Graph edges:" << "\n";
     if (edges.empty())
-      os << "<empty>";
+      os << "<empty>\n";
     else {
       for (const auto& edge : edges) {
         os << events[edge.from]->AsString() << " ->"

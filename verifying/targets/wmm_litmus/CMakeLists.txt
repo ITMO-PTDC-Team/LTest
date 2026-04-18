@@ -39,6 +39,7 @@ add_wmm_litmus(litmus23_postdec_sc FALSE)
 add_wmm_litmus(litmus24_oreq_weak TRUE)
 add_wmm_litmus(litmus25_xoreq_relacq FALSE)
 add_wmm_litmus(litmus26_xoreq_weak TRUE)
+add_wmm_litmus(litmus27_relseq_rmw_acq FALSE)
 
 add_custom_target(verify-litmus
   DEPENDS

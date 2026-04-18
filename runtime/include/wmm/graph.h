@@ -372,6 +372,11 @@ class Graph {
       return std::nullopt;
     }
 
+    // Note: for non-acquire reads we do not need to consider release-sequences
+    if (!read->IsAtLeastAcquire()) {
+      return std::nullopt;
+    }
+
     // Otherwise we traverse through the rf edges backwards:
     Event* rf = read;
     std::vector<Event*> releaseHeads;
@@ -437,6 +442,9 @@ class Graph {
     // events when reading from one-another will be directly mo-before the next
     // one, so no other event will be mo-between them.
     Event* releaseWrite = events[*it];
+    // append the found release write to the event with which read should sync
+    // with
+    releaseHeads.push_back(releaseWrite);
     RelSeq currentRelSeq(read, releaseWrite, lastWrite, releaseHeads);
     if (IsRelSeqValid(currentRelSeq)) {
       // No write event found that is mo-between `releaseWrite` and `lastWrite`,
@@ -983,7 +991,7 @@ class Graph {
   bool inSnapshotMode = false;
   int nThreads = 0;
   // TODO: add a global flag to enable/disable this feature
-  bool fullReleaseSequenceSupportEnabled = false;
+  bool fullReleaseSequenceSupportEnabled = true;
 };
 
 }  // namespace ltest::wmm

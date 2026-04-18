@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "../logger.h"
 #include "event.h"
 
 namespace ltest::wmm {
@@ -34,6 +35,10 @@ struct RelSeq {
         releaseWrite(releaseWrite),
         lastWrite(lastWrite),
         releaseHeads(releaseHeads) {
+#ifdef DEBUG
+    log() << "Creating RelSeq: " << AsString() << "\n";
+#endif
+
     assert(read != nullptr && "Read event must be non-null");
     assert(read->IsReadOrRMW() && "Read event must be of correct type");
     assert(read->IsAtLeastAcquire() && "Read event must be at least acquire");

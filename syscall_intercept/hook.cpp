@@ -1,7 +1,6 @@
 #include <dlfcn.h>
 #include <libsyscall_intercept_hook_point.h>
 #include <linux/futex.h>
-#include <sanitizer/asan_interface.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <syscall.h>

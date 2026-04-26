@@ -20,7 +20,7 @@ inline void FutexWake(int *value, int count) {
 
 class Mutex {
  private:
-  non_atomic static int32_t *Addr(std::atomic_int32_t &atomic) {
+  static int32_t *Addr(std::atomic_int32_t &atomic) {
     return reinterpret_cast<int32_t *>(&atomic);
   }
   int32_t CompareExchange(int32_t old, int32_t ne) {

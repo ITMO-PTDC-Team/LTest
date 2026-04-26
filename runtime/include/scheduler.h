@@ -433,7 +433,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
     // History of invoke and response events which is required for the checker
     SeqHistory sequential_history;
     // Full history of the current execution in the Run function
-    FullHistory full_history;
+    FullHistoryWithThreads full_history;
 
     bool deadlock_detected{false};
 
@@ -441,7 +441,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
       auto t = strategy.Next();
       if (auto f = std::get_if<StrategyNextScheduleFailure>(&t)) {
         if (*f == DEADLOCK) {
-        deadlock_detected = true;
+          deadlock_detected = true;
           break;
         }
         if (*f == NEED_REPLAY) {
@@ -462,8 +462,8 @@ struct StrategyScheduler : public SchedulerWithReplay {
       if (is_new) {
         sequential_history.emplace_back(Invoke(next_task, thread_id));
       }
-      full_history.emplace_back(next_task);
       next_task->Resume();
+      UpdateFullHistory(full_history, thread_id, next_task, is_new);
       if (next_task->IsReturned()) {
         finished_tasks++;
         strategy.OnVerifierTaskFinish(next_task, thread_id);
@@ -478,13 +478,14 @@ struct StrategyScheduler : public SchedulerWithReplay {
                                log());
 
     if (deadlock_detected) {
-      return NonLinearizableHistory(full_history, sequential_history,
-                                    NonLinearizableHistory::Reason::DEADLOCK);
+      return NonLinearizableHistory(
+          ConvFullHistWithThreadToFullHist(full_history), sequential_history,
+          NonLinearizableHistory::Reason::DEADLOCK);
     }
 
     if (!checker.Check(sequential_history)) {
       return NonLinearizableHistory(
-          full_history, sequential_history,
+          ConvFullHistWithThreadToFullHist(full_history), sequential_history,
           NonLinearizableHistory::Reason::NON_LINEARIZABLE_HISTORY);
     }
 
@@ -612,7 +613,8 @@ struct StrategyScheduler : public SchedulerWithReplay {
       }
     }
 
-    // pretty_printer.PrettyPrint(sequential_history, GetStrategyThreadsCount(), log());
+    // pretty_printer.PrettyPrint(sequential_history, GetStrategyThreadsCount(),
+    // log());
 
     if (!checker.Check(sequential_history)) {
       return NonLinearizableHistory(

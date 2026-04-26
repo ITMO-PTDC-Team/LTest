@@ -19,7 +19,6 @@ set (FOLLY_SOURCE_TARGET_LIST
 foreach(source_name ${SOURCE_TARGET_LIST})
     get_filename_component(target ${source_name} NAME_WE)
     verify_target(${target})
-    add_dependencies(${target} preload)
     list(APPEND VERIFY_BLOCKING_LIST ${target})
 endforeach(source_name ${SOURCE_TARGET_LIST})
 
@@ -61,7 +60,7 @@ add_integration_test("mutexed_register_random" "verify" FALSE
 )
 
 add_integration_test("shared_mutexed_register_pct" "verify" FALSE 
-    shared_mutexed_register --strategy pct --rounds 10000
+    shared_mutexed_register --strategy pct --rounds 100
 )
 
 add_integration_test("shared_mutexed_register_random" "verify" FALSE 

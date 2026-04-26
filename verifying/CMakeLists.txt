@@ -49,7 +49,7 @@ function(verify_target_without_plugin target)
     else()
         add_executable(${target} ${source_name})
     endif()
-    add_dependencies(${target} runtime plugin_pass resmock_pass)
+    add_dependencies(${target} runtime plugin_pass preload)
     target_include_directories(${target} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/third_party)
     target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
     target_compile_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
@@ -58,15 +58,15 @@ endfunction()
 
 function(verify_target target)
     verify_target_without_plugin(${target})
-    add_dependencies(${target} runtime plugin_pass resmock_pass)
+    add_dependencies(${target} runtime plugin_pass)
     target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
     target_compile_options(${target} PRIVATE -fpass-plugin=${PASS_PATH} ${CMAKE_ASAN_FLAGS})
 endfunction()
 
 function(verify_cotarget target)
     verify_target_without_plugin(${target})
-    add_dependencies(${target} runtime coplugin_pass resmock_pass)
-    target_compile_options(${target} PRIVATE -fplugin=${COPASS_PATH}
+    add_dependencies(${target} runtime coplugin_pass)
+    target_compile_options(${target} PRIVATE  -fplugin=${COPASS_PATH}
     -fpass-plugin=${COPASS_PATH} -mllvm -coroutine-file=${CMAKE_CURRENT_SOURCE_DIR}/${target}.yml
      ${CMAKE_ASAN_FLAGS})
     target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})

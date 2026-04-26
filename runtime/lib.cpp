@@ -70,4 +70,7 @@ extern "C" void CoroutineStatusChange(char* name, bool start) {
   CoroYield();
 }
 
-void CoroBase::Terminate() { is_returned = true; }
+void CoroBase::Terminate() {
+  is_returned = true;
+  fstate = {};
+}

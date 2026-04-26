@@ -15,6 +15,8 @@
 
 static int ltest_sched_yield(long *result) {
   debug(stderr, "caught sched_yield()\n");
+  //otherwise here will  be a infinity loop
+  ltest::CoroCtxGuard guard;
   CoroYield();
   *result = 0;
   return 0;
@@ -28,6 +30,8 @@ static int ltest_futex(long arg0, long arg1, long arg2, long *result) {
     auto fstate = BlockState{arg0, arg2};
     if (fstate.CanBeBlocked()) {
       this_coro->SetBlocked(fstate);
+      //otherwise here will  be a infinity loop
+      ltest::CoroCtxGuard guard;
       CoroYield();
       *result = 0;
     } else {
@@ -48,8 +52,8 @@ static int hook(long syscall_number, long arg0, long arg1, long arg2, long arg3,
   if (!ltest_coro_ctx) {
     return 1;
   }
-  // to avoid infinity catches
-  ltest_coro_ctx = false;
+  // to avoid allocation mismatches
+  ltest::SchedCtxGuard guard;
   int res;
   switch (syscall_number) {
     case SYS_sched_yield:
@@ -62,7 +66,6 @@ static int hook(long syscall_number, long arg0, long arg1, long arg2, long arg3,
       res = 1;
   }
 
-  ltest_coro_ctx = true;
   return res;
 }
 

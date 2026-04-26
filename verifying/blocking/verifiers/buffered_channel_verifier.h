@@ -4,7 +4,7 @@
 
 namespace spec {
 struct BufferedChannelVerifier {
-  bool Verify(const std::string& task_name, size_t thread_id) {
+  bool Verify(const std::string& task_name, size_t thread_id, bool) {
     if (task_name == "Send") {
       if (senders_ == 0) {
         ++senders_;

@@ -78,8 +78,6 @@ DEFINE_int32(exploration_runs, 15,
              "minimization step");
 DEFINE_int32(minimization_runs, 15,
              "Number of minimization runs for smart minimizor");
-DEFINE_int32(depth, 0,
-             "How many tasks can be executed on one thread(Only for TLA)");
 DEFINE_bool(verbose, false, "Verbosity");
 DEFINE_string(strategy, GetLiteral(StrategyType::RR), "Strategy");
 DEFINE_string(weights, "", "comma-separated list of weights for threads");
@@ -89,7 +87,6 @@ void SetOpts(const DefaultOptions &def) {
   FLAGS_tasks = def.tasks;
   FLAGS_switches = def.switches;
   FLAGS_rounds = def.rounds;
-  FLAGS_depth = def.depth;
   FLAGS_verbose = def.verbose;
   FLAGS_strategy = def.strategy;
   FLAGS_weights = def.weights;
@@ -110,7 +107,6 @@ Opts ParseOpts() {
   opts.minimization_runs = FLAGS_minimization_runs;
   opts.verbose = FLAGS_verbose;
   opts.typ = FromLiteral(std::move(FLAGS_strategy));
-  opts.depth = FLAGS_depth;
   std::vector<int> thread_weights;
   if (FLAGS_weights != "") {
     auto splited = split(FLAGS_weights, ',');

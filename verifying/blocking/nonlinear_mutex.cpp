@@ -8,7 +8,7 @@
 #include "verifiers/mutex_verifier.h"
 #include "verifying/specs/mutex.h"
 
-non_atomic inline void FutexWait(int *value, int expected_value) {
+inline void FutexWait(int *value, int expected_value) {
   syscall(SYS_futex, value, FUTEX_WAIT_PRIVATE, expected_value, nullptr,
           nullptr, 0);
 }

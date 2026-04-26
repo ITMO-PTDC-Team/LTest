@@ -45,8 +45,8 @@ auto toStringListHelper(const tuple_t &t,
 
 template <typename tuple_t>
 auto toStringList(const tuple_t &t) noexcept {
-  typedef typename std::remove_reference<decltype(t)>::type tuple_type;
-  constexpr auto s = std::tuple_size<tuple_type>::value;
+  typedef std::remove_reference_t<decltype(t)> tuple_type;
+  constexpr auto s = std::tuple_size_v<tuple_type>;
   if constexpr (s == 0) {
     return std::vector<std::string>{};
   }
@@ -55,7 +55,7 @@ auto toStringList(const tuple_t &t) noexcept {
 
 template <typename... Args>
 auto toStringArgs(std::shared_ptr<void> args) {
-  auto real_args = reinterpret_cast<std::tuple<Args...> *>(args.get());
+  auto real_args = static_cast<std::tuple<Args...> *>(args.get());
   return toStringList(*real_args);
 }
 
@@ -82,7 +82,7 @@ template <typename Ret, typename Target, typename... Args>
 struct MethodInvocation {
   using Method = std::function<ValueWrapper(Target *, Args...)>;
 
-  inline static TaskBuilder GetTaskBuilder(std::string_view method_name,
+  static TaskBuilder GetTaskBuilder(std::string_view method_name,
                                            std::tuple<Args...> params,
                                            Method method) {
     auto builder =
@@ -126,7 +126,7 @@ template <typename Target, typename... Args>
 struct MethodInvocation<void, Target, Args...> {
   using Method = std::function<void(Target *, Args...)>;
 
-  inline static TaskBuilder GetTaskBuilder(std::string_view method_name,
+  static TaskBuilder GetTaskBuilder(std::string_view method_name,
                                            std::tuple<Args...> params,
                                            Method method) {
     auto builder =

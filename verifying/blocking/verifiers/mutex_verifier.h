@@ -3,7 +3,7 @@
 #include "runtime/include/scheduler.h"
 
 struct MutexVerifier {
-  bool Verify(const std::string& task_name, size_t thread_id) {
+  bool Verify(const std::string& task_name, size_t thread_id, bool) {
     debug(stderr, "validating method %s, thread_id: %zu\n", task_name.data(),
           thread_id);
     if (status.count(thread_id) == 0) {

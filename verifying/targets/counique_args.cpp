@@ -65,4 +65,4 @@ using SpecT =
     ltest::Spec<CoUniqueArgsTest, spec::UniqueArgsRef, spec::UniqueArgsHash,
                 spec::UniqueArgsEquals, spec::UniqueArgsOptionsOverride>;
 
-LTEST_ENTRYPOINT(SpecT);
+LTEST_ENTRYPOINT_CONSTRAINT(SpecT, spec::UniqueArgsVerifier);

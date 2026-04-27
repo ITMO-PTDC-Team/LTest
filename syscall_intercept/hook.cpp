@@ -125,8 +125,8 @@ void *realloc(void *ptr, size_t size) {
   void *p = real_realloc(ptr, size);
   if (ltest_coro_ctx && p != ptr && p != nullptr) {
     ltest::SchedCtxGuard guard;
-    memory_handler->RememberPointer(p);
     memory_handler->ForgetAboutPointer(ptr);
+    memory_handler->RememberPointer(p);
   }
   return p;
 }

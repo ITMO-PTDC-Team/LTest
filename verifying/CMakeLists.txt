@@ -4,6 +4,9 @@ include_directories(specs)
 set (PASS YieldPass)
 set (PASS_PATH ${CMAKE_BINARY_DIR}/codegen/lib${PASS}.so)
 
+set (RESMOCK_PASS ResMockPass)
+set (RESMOCK_PASS_PATH ${CMAKE_BINARY_DIR}/codegen/lib${RESMOCK_PASS}.so)
+
 set (COPASS CoYieldPass)
 set (COPASS_PATH ${CMAKE_BINARY_DIR}/codegen/lib${COPASS}.so)
 
@@ -46,7 +49,7 @@ function(verify_target_without_plugin target)
     else()
         add_executable(${target} ${source_name})
     endif()
-    add_dependencies(${target} runtime plugin_pass)
+    add_dependencies(${target} runtime plugin_pass preload)
     target_include_directories(${target} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/third_party)
     target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
     target_compile_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
@@ -56,15 +59,17 @@ endfunction()
 function(verify_target target)
     verify_target_without_plugin(${target})
     add_dependencies(${target} runtime plugin_pass)
+    target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
     target_compile_options(${target} PRIVATE -fpass-plugin=${PASS_PATH} ${CMAKE_ASAN_FLAGS})
 endfunction()
 
 function(verify_cotarget target)
     verify_target_without_plugin(${target})
     add_dependencies(${target} runtime coplugin_pass)
-    target_compile_options(${target} PRIVATE  -fplugin=${COPASS_PATH} 
+    target_compile_options(${target} PRIVATE  -fplugin=${COPASS_PATH}
     -fpass-plugin=${COPASS_PATH} -mllvm -coroutine-file=${CMAKE_CURRENT_SOURCE_DIR}/${target}.yml
      ${CMAKE_ASAN_FLAGS})
+    target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
 endfunction()
 
 function(add_integration_test test_name label fail)
@@ -77,7 +82,9 @@ function(add_integration_test test_name label fail)
     set_tests_properties("${full_name}"
         PROPERTIES
         WILL_FAIL ${fail}
-        LABELS "${label}")
+        LABELS "${label}"
+        ENVIRONMENT_MODIFICATION "LD_PRELOAD=string_append:${CMAKE_BINARY_DIR}/syscall_intercept/libpreload.so"
+)
 endfunction()
 
 add_subdirectory(targets)

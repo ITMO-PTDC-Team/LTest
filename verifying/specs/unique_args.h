@@ -16,7 +16,7 @@ inline std::string Print(const ValueWrapper &v) {
 namespace spec {
 struct UniqueArgsRef {
   size_t called = 0;
-  UniqueArgsRef() {}
+  UniqueArgsRef() = default;
   UniqueArgsRef &operator=(const UniqueArgsRef &oth) { return *this; }
   ValueWrapper Get(size_t i) {
     called++;
@@ -27,7 +27,7 @@ struct UniqueArgsRef {
   using MethodT = std::function<ValueWrapper(UniqueArgsRef *l, void *args)>;
   static auto GetMethods() {
     MethodT get = [](UniqueArgsRef *l, void *args) {
-      auto real_args = reinterpret_cast<std::tuple<size_t> *>(args);
+      auto real_args = static_cast<std::tuple<size_t> *>(args);
       return l->Get(std::get<0>(*real_args));
     };
 
@@ -51,7 +51,6 @@ struct UniqueArgsOptionsOverride {
             .tasks = limit,
             .switches = 100000000,
             .rounds = 10000,
-            .depth = 1,
             .forbid_all_same = false,
             .verbose = false,
             .strategy = "tla",
@@ -59,4 +58,21 @@ struct UniqueArgsOptionsOverride {
   }
 };
 
+struct UniqueArgsVerifier {
+  bool Verify(const std::string &, size_t thread_id, bool is_new) {
+    if (is_new && status[thread_id]) {
+      return false;
+    }
+    status[thread_id] = true;
+    return true;
+  }
+
+  void OnFinished(Task &, size_t) {
+    // intentionally do nothing
+  }
+
+  void Reset() { status.fill(false); }
+
+  std::array<bool, limit> status;
+};
 }  // namespace spec

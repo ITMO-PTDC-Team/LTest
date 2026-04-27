@@ -1,0 +1,8 @@
+import lit
+
+config.name = 'Codegen'
+
+config.suffixes = ['.cpp', 'h']
+
+config.test_format = lit.formats.ShTest()
+config.test_exec_root = "${CMAKE_CURRENT_BINARY_DIR}"

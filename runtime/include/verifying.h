@@ -6,8 +6,8 @@
 #include <type_traits>
 
 #include "blocking_primitives.h"
-#include "latomic.h"
 #include "custom_round.h"
+#include "latomic.h"
 #include "lib.h"
 #include "lincheck_recursive.h"
 #include "logger.h"
@@ -17,6 +17,7 @@
 #include "round_robin_strategy.h"
 #include "scheduler.h"
 #include "strategy_verifier.h"
+#include "tla_strategy.h"
 #include "verifying_macro.h"
 
 namespace ltest {
@@ -32,14 +33,13 @@ struct DefaultCanceler {
 template <class TargetObj, class LinearSpec,
           class LinearSpecHash = std::hash<LinearSpec>,
           class LinearSpecEquals = std::equal_to<LinearSpec>,
-          class OptionsOverride = NoOverride, class Canceler = DefaultCanceler>
+          class OptionsOverride = NoOverride>
 struct Spec {
   using target_obj_t = TargetObj;
   using linear_spec_t = LinearSpec;
   using linear_spec_hash_t = LinearSpecHash;
   using linear_spec_equals_t = LinearSpecEquals;
   using options_override_t = OptionsOverride;
-  using cancel_t = Canceler;
 };
 
 struct Opts {
@@ -50,7 +50,6 @@ struct Opts {
   bool minimize;
   size_t exploration_runs;
   size_t minimization_runs;
-  size_t depth;
   bool forbid_all_same;
   bool verbose;
   bool syscall_trap;
@@ -104,6 +103,10 @@ std::unique_ptr<Strategy> MakeStrategy(Opts &opts, std::vector<TaskBuilder> l) {
       return std::make_unique<PctStrategy<TargetObj, Verifier>>(opts.threads,
                                                                 std::move(l));
     }
+    case TLA: {
+      std::cout << "tla\n";
+      return std::make_unique<TLAStrategy<TargetObj, Verifier>>(opts.threads, std::move(l));
+    }
     default:
       assert(false && "unexpected type");
   }
@@ -133,31 +136,14 @@ template <typename TargetObj, StrategyTaskVerifier Verifier>
 std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
                                          const std::vector<TaskBuilder> &l,
                                          std::vector<CustomRound> custom_rounds,
-                                         PrettyPrinter &pretty_printer,
-                                         const std::function<void()> &cancel) {
+                                         PrettyPrinter &pretty_printer) {
   std::cout << "strategy = ";
-  switch (opts.typ) {
-    case RR:
-    case PCT:
-    case RND: {
-      auto strategy = MakeStrategy<TargetObj, Verifier>(opts, std::move(l));
-      auto scheduler = std::make_unique<StrategySchedulerWrapper<Verifier>>(
-          std::move(strategy), checker, std::move(custom_rounds),
-          pretty_printer, opts.tasks, opts.rounds, opts.minimize,
-          opts.exploration_runs, opts.minimization_runs);
-      return scheduler;
-    }
-    case TLA: {
-      std::cout << "tla\n";
-      auto scheduler = std::make_unique<TLAScheduler<TargetObj, Verifier>>(
-          opts.tasks, opts.rounds, opts.threads, opts.switches, opts.depth,
-          std::move(l), checker, pretty_printer, cancel);
-      return scheduler;
-    }
-    default: {
-      assert(false && "Unknown strategy type specified");
-    }
-  }
+  auto strategy = MakeStrategy<TargetObj, Verifier>(opts, std::move(l));
+  auto scheduler = std::make_unique<StrategySchedulerWrapper<Verifier>>(
+      std::move(strategy), checker, std::move(custom_rounds), pretty_printer,
+      opts.tasks, opts.rounds, opts.minimize, opts.exploration_runs,
+      opts.minimization_runs);
+  return scheduler;
 }
 
 inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
@@ -167,13 +153,13 @@ inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
     if (result->reason == Scheduler::NonLinearizableHistory::Reason::DEADLOCK) {
       std::cout << "deadlock detected:\n";
       pretty_printer.PrettyPrint(
-          result->seq, scheduler->GetStartegyThreadsCount(), std::cout);
+          result->seq, scheduler->GetStrategyThreadsCount(), std::cout);
       return 4;  // see https://tldp.org/LDP/abs/html/exitcodes.html
     } else if (result->reason == Scheduler::NonLinearizableHistory::Reason::
                                      NON_LINEARIZABLE_HISTORY) {
       std::cout << "non linearized:\n";
       pretty_printer.PrettyPrint(
-          result->seq, scheduler->GetStartegyThreadsCount(), std::cout);
+          result->seq, scheduler->GetStrategyThreadsCount(), std::cout);
       return 3;
     } else {
       std::abort();
@@ -218,7 +204,7 @@ int Run(int argc, char *argv[], std::vector<CustomRound> custom_rounds = {}) {
 
   auto scheduler = MakeScheduler<typename Spec::target_obj_t, Verifier>(
       checker, opts, std::move(task_builders), std::move(custom_rounds),
-      pretty_printer, &Spec::cancel_t::Cancel);
+      pretty_printer);
   std::cout << "\n\n";
   std::cout.flush();
   return TrapRun(std::move(scheduler), pretty_printer);

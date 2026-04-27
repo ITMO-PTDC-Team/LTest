@@ -18,7 +18,9 @@ struct CoUniqueArgsTest {
       Reset();
       return limit;
     };
+    const auto mem = std::malloc(100);
     done[i] = true;
+    std::free(mem);
     return {std::count(done.begin(), done.end(), false) == 0
                 ? l()
                 : std::optional<int>(),
@@ -45,4 +47,4 @@ using SpecT =
     ltest::Spec<CoUniqueArgsTest, spec::UniqueArgsRef, spec::UniqueArgsHash,
                 spec::UniqueArgsEquals, spec::UniqueArgsOptionsOverride>;
 
-LTEST_ENTRYPOINT(SpecT);
+LTEST_ENTRYPOINT_CONSTRAINT(SpecT, spec::UniqueArgsVerifier);

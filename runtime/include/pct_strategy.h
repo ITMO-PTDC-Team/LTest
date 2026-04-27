@@ -96,9 +96,13 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     return index_of_max;
   }
 
+  bool IsExhausted() override {
+    return false;
+  }
+
   // NOTE: `Next` version use heuristics for livelock avoiding, but not there
   // refactor later to avoid copy-paste
-  std::optional<TaskWithMetaData> NextSchedule() override {
+  StrategyNextResult NextSchedule() override {
     auto& round_schedule = this->round_schedule;
     auto& threads = this->threads;
     size_t max = std::numeric_limits<size_t>::min();
@@ -153,7 +157,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     }
 
     if (max == std::numeric_limits<size_t>::min()) {
-      return std::nullopt;
+      return DEADLOCK;
     }
 
     // Check whether the priority change is required
@@ -187,8 +191,6 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     BaseStrategyWithThreads<TargetObj, Verifier>::SetCustomRound(custom_round);
     UpdateStatistics();
   }
-
-  ~PctStrategy() { this->TerminateTasks(); }
 
  private:
   void UpdateStatistics() {

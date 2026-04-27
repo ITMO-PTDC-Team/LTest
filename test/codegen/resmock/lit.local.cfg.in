@@ -1,0 +1,9 @@
+import lit
+config.name = 'ResMockPass'
+config.build_pass_root = os.path.join("${CMAKE_BINARY_DIR}", 'codegen')
+
+config.substitutions.append(('%check', f"""
+clang++ %s -emit-llvm -Xclang -disable-llvm-passes -S -O2 -std=c++20 -o -
+| opt -load-pass-plugin={config.build_pass_root}/lib{config.name}.so
+-passes=resmock -verify-each -stop-after=verify -S
+| FileCheck %s"""))

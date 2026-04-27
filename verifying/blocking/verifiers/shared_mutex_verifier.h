@@ -7,7 +7,7 @@ namespace spec {
 struct SharedMutexVerifier {
   enum : int32_t { READER = 4, WRITER = 1, FREE = 0 };
   /// Verify checks the state of a mutex on starting of `ctask`
-  bool Verify(const std::string& task_name, size_t thread_id) {
+  bool Verify(const std::string& task_name, size_t thread_id, bool) {
     debug(stderr, "validating method %s, thread_id: %zu\n", task_name.data(),
           thread_id);
     if (status.count(thread_id) == 0) {
@@ -43,15 +43,6 @@ struct SharedMutexVerifier {
     } else {
       assert(false);
     }
-  }
-
-  std::optional<std::string> ReleaseTask(size_t thread_id) {
-    if (status[thread_id] == WRITER) {
-      return {"unlock"};
-    } else if (status[thread_id] == READER) {
-      return {"unlock_shared"};
-    }
-    return std::nullopt;
   }
 
   void Reset() { status.clear(); }

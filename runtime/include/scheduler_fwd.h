@@ -23,7 +23,7 @@ struct Scheduler {
 
   virtual Result Run() = 0;
 
-  virtual int GetStartegyThreadsCount() const = 0;
+  virtual int GetStrategyThreadsCount() const = 0;
 
   virtual ~Scheduler() = default;
 };

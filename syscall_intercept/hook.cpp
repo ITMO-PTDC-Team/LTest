@@ -1,9 +1,12 @@
+#include <dlfcn.h>
 #include <libsyscall_intercept_hook_point.h>
 #include <linux/futex.h>
+#include <sys/mman.h>
 #include <sys/syscall.h>
 #include <syscall.h>
 
 #include <cerrno>
+#include <cstring>
 
 #include "runtime/include/block_manager.h"
 #include "runtime/include/coro_ctx_guard.h"
@@ -12,6 +15,8 @@
 
 static int ltest_sched_yield(long *result) {
   debug(stderr, "caught sched_yield()\n");
+  //otherwise here will  be a infinity loop
+  ltest::CoroCtxGuard guard;
   CoroYield();
   *result = 0;
   return 0;
@@ -25,6 +30,8 @@ static int ltest_futex(long arg0, long arg1, long arg2, long *result) {
     auto fstate = BlockState{arg0, arg2};
     if (fstate.CanBeBlocked()) {
       this_coro->SetBlocked(fstate);
+      //otherwise here will  be a infinity loop
+      ltest::CoroCtxGuard guard;
       CoroYield();
       *result = 0;
     } else {
@@ -45,17 +52,81 @@ static int hook(long syscall_number, long arg0, long arg1, long arg2, long arg3,
   if (!ltest_coro_ctx) {
     return 1;
   }
+  // to avoid allocation mismatches
+  ltest::SchedCtxGuard guard;
+  int res;
   switch (syscall_number) {
     case SYS_sched_yield:
-      return ltest_sched_yield(result);
+      res = ltest_sched_yield(result);
+      break;
     case SYS_futex:
-      return ltest_futex(arg0, arg1, arg2, result);
+      res = ltest_futex(arg0, arg1, arg2, result);
+      break;
     default:
-      return 1;
+      res = 1;
   }
+
+  return res;
 }
 
 static __attribute__((constructor)) void init(void) {
   // Set up the callback function
   intercept_hook_point = hook;
+}
+
+static void *(*real_calloc)(size_t nmemb, size_t size);
+static void *(*real_malloc)(size_t size);
+static void (*real_free)(void *ptr);
+static void *(*real_realloc)(void *ptr, size_t size);
+
+void *malloc(size_t size) {
+  // //write(2, "malloc\n", 7);
+  if (!real_malloc) {
+    reinterpret_cast<void *&>(real_malloc) = dlsym(RTLD_NEXT, "malloc");
+  }
+  void *p = real_malloc(size);
+  if (ltest_coro_ctx) {
+    ltest::SchedCtxGuard guard;
+    memory_handler->RememberPointer(p);
+  }
+  return p;
+}
+
+void free(void *ptr) {
+  // write(2, "free\n", 5);
+  if (!real_free) {
+    reinterpret_cast<void *&>(real_free) = dlsym(RTLD_NEXT, "free");
+  }
+  if (ltest_coro_ctx && ptr != nullptr) {
+    ltest::SchedCtxGuard guard;
+    memory_handler->ForgetAboutPointer(ptr);
+  }
+  real_free(ptr);
+}
+
+void *calloc(size_t nmemb, size_t size) {
+  // write(2, "calloc\n", 7);
+  if (!real_calloc) {
+    reinterpret_cast<void *&>(real_calloc) = dlsym(RTLD_NEXT, "calloc");
+  }
+  void *p = real_calloc(nmemb, size);
+  if (ltest_coro_ctx) {
+    ltest::SchedCtxGuard guard;
+    memory_handler->RememberPointer(p);
+  }
+  return p;
+}
+
+void *realloc(void *ptr, size_t size) {
+  // write(2, "realloc\n", 8);
+  if (!real_realloc) {
+    reinterpret_cast<void *&>(real_realloc) = dlsym(RTLD_NEXT, "realloc");
+  }
+  void *p = real_realloc(ptr, size);
+  if (ltest_coro_ctx && p != ptr && p != nullptr) {
+    ltest::SchedCtxGuard guard;
+    memory_handler->ForgetAboutPointer(ptr);
+    memory_handler->RememberPointer(p);
+  }
+  return p;
 }

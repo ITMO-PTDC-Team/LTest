@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "block_manager.h"
+#include "mock_res.h"
 #include "value_wrapper.h"
 
 #define panic() assert(false)
@@ -41,8 +42,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   CoroBase& operator=(CoroBase&&) = delete;
 
   // Restart the coroutine from the beginning passing this_ptr as this.
-  // Returns restarted coroutine.
-  virtual std::shared_ptr<CoroBase> Restart(void* this_ptr) = 0;
+  virtual void Restart(void* this_ptr) = 0;
 
   // Resume the coroutine to the next yield.
   void Resume();
@@ -68,9 +68,6 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   // Returns new pointer to the coroutine.
   // https://en.cppreference.com/w/cpp/memory/enable_shared_from_this
   std::shared_ptr<CoroBase> GetPtr();
-
-  // Try to terminate the coroutine.
-  void TryTerminate();
 
   // Terminate the coroutine.
   void Terminate();
@@ -122,16 +119,18 @@ struct Coro final : public CoroBase {
       std::function<std::vector<std::string>(std::shared_ptr<void>)>;
 
   // unsafe: caller must ensure that this_ptr points to Target.
-  std::shared_ptr<CoroBase> Restart(void* this_ptr) override {
-    /**
-     *  The task must be returned if we want to restart it.
-     *   We can't just Terminate() it because it is the runtime responsibility
-     * to decide, in which order the tasks should be terminated.
-     *
-     */
-    assert(IsReturned());
-    auto coro = New(func, this_ptr, args, args_to_strings, name, id);
-    return coro;
+  void Restart(void* this_ptr) override {
+    is_returned = false;
+    this->this_ptr = this_ptr;
+    ctx = boost::context::fiber_context(
+        [this, this_ptr](boost::context::fiber_context&& ctx) {
+          auto real_args = reinterpret_cast<std::tuple<Args...>*>(args.get());
+          auto this_arg =
+              std::tuple<Target*>{reinterpret_cast<Target*>(this_ptr)};
+          ret = std::apply(func, std::tuple_cat(this_arg, *real_args));
+          is_returned = true;
+          return std::move(ctx);
+        });
   }
 
   // unsafe: caller must ensure that this_ptr points to Target.

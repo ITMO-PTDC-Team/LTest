@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(APPLY_CLANG_TOOL ON)
+option(LTEST_BUILD_TESTS "Build tests and fetch test-only dependencies" ON)
 
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;RelWithAssert" CACHE STRING "" FORCE)
 
@@ -23,17 +24,21 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
     set(CMAKE_ASAN_FLAGS -fsanitize=address -fsanitize=undefined -DADDRESS_SANITIZER)
 endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
-add_subdirectory(third_party)
-include(CTest)
-include(GoogleTest)
-fuzztest_setup_fuzzing_flags()
-enable_testing()
+if(LTEST_BUILD_TESTS)
+    add_subdirectory(third_party)
+    include(CTest)
+    include(GoogleTest)
+    fuzztest_setup_fuzzing_flags()
+    enable_testing()
+endif()
 
 add_subdirectory(clangpass)
 add_subdirectory(codegen)
 add_subdirectory(runtime)
 
-add_subdirectory(test)
+if(LTEST_BUILD_TESTS)
+    add_subdirectory(test)
+endif()
 add_subdirectory(verifying)
 
 add_subdirectory(syscall_intercept)

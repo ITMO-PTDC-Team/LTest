@@ -27,10 +27,10 @@ function(verify_target_without_plugin target)
         add_custom_command(
             OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/${SOURCE_FILE_NAME}
             COMMAND ${CLANG_TOOL_EXECUTABLE}
-                    -p=${CMAKE_BINARY_DIR}/compile_commands.json # passing compilation database, make sure CMAKE_EXPORT_COMPILE_COMMANDS flag is set
+                -p=${CMAKE_BINARY_DIR} # passing compilation database, make sure CMAKE_EXPORT_COMPILE_COMMANDS flag is set
                     --temp-prefix ${CLANG_TOOL_TMP_PREFIX}
-                    --replace-names ::std::mutex,::std::shared_mutex,::std::condition_variable,::std::atomic
-                    --insert-names  ltest::mutex,ltest::shared_mutex,ltest::condition_variable,ltest::latomic
+                    --replace-names ::std::mutex,::std::shared_mutex,::std::condition_variable
+                    --insert-names  ltest::mutex,ltest::shared_mutex,ltest::condition_variable
                     ${CMAKE_CURRENT_SOURCE_DIR}/${source_name}
             DEPENDS ${CLANG_TOOL}
             COMMENT "Running Clang Pass Tool on ${source_name}"
@@ -81,4 +81,5 @@ function(add_integration_test test_name label fail)
 endfunction()
 
 add_subdirectory(targets)
+add_subdirectory(dual)
 add_subdirectory(blocking)

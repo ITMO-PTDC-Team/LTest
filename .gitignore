@@ -1,9 +1,23 @@
 __pycache__
 build
+build-*/
+build_*/
 venv
 .vscode
 .devcontainer/**
 .cache/**
+tmp/
 third_party/**
 !third_party/CMakeLists.txt
 dist
+.idea/
+asan.txt
+core
+
+# Local research artifacts and proprietary VK targets are not part of the public
+# PR stack.
+/tmp_dual_stack/
+/verifying/dual/eng/
+/verifying/dual/vk/
+/verifying/specs/vk/
+/scripts/run_dual_vk_matrix.sh

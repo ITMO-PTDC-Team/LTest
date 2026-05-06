@@ -13,8 +13,16 @@
 // equivalent to the halt problem), k should be good approximation
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
-  PctStrategy(size_t threads_count, std::vector<TaskBuilder> ctrs)
-      : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count, ctrs),
+  using TargetFactory =
+      typename BaseStrategyWithThreads<TargetObj, Verifier>::TargetFactory;
+
+  PctStrategy(size_t threads_count, std::vector<TaskBuilder> ctrs,
+              TargetFactory target_factory,
+              size_t seed = 0)
+      : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count,
+                                                     std::move(ctrs),
+                                                     std::move(target_factory),
+                                                     seed),
         current_depth(1),
         current_schedule_length(0) {
     PrepareForDepth(current_depth, 1);
@@ -25,7 +33,16 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     if (fair_stage > 0) [[unlikely]] {
       for (size_t attempt = 0; attempt < threads.size(); ++attempt) {
         auto i = (++last_chosen) % threads.size();
+
+        const bool is_free = threads[i].empty() || threads[i].back()->IsReturned();
+        if (!this->AllowNewTasks() && is_free) {
+          continue;
+        }
+
         if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
+          continue;
+        }
+        if (!is_free && !this->VerifyExistingTask(threads[i].back(), i)) {
           continue;
         }
         index = i;
@@ -57,16 +74,20 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     size_t index_of_max = 0;
     // Have to ignore waiting threads, so can't do it faster than O(n)
     for (size_t i = 0; i < threads.size(); ++i) {
+      // ignore if forbid generate new task
+      const bool is_free = threads[i].empty() || threads[i].back()->IsReturned();
+      if (!this->AllowNewTasks() && is_free) {
+        continue;
+      }
       // Ignore waiting tasks
-      // debug(stderr, "prior: %d, number %d\n", priorities[i], i);
       if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
-        debug(stderr, "blocked on %p val %d\n",
-              threads[i].back()->GetBlockState().addr,
-              threads[i].back()->GetBlockState().value);
-        // dual waiting if request finished, but follow up isn't
+			// dual waiting if request finished, but follow up isn't
         // skip dual tasks that already have finished the request
         // section(follow-up will be executed in another task, so we can't
         // resume)
+        continue;
+      }
+      if (!is_free && !this->VerifyExistingTask(threads[i].back(), i)) {
         continue;
       }
 
@@ -115,6 +136,9 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         // resume)
         continue;
       }
+      if (!this->VerifyExistingTask(threads[i][task_index], i)) {
+        continue;
+      }
 
       if (max <= priorities[i]) {
         max = priorities[i];
@@ -127,7 +151,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         auto i = (++last_chosen) % threads.size();
         int task_index = this->GetNextTaskInThread(i);
         if (task_index == threads[i].size() ||
-            threads[i][task_index]->IsBlocked()) {
+            threads[i][task_index]->IsBlocked() ||
+            !this->VerifyExistingTask(threads[i][task_index], i)) {
           continue;
         }
         index_of_max = i;
@@ -156,14 +181,6 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       return std::nullopt;
     }
 
-    // Check whether the priority change is required
-    current_schedule_length++;
-    for (size_t i = 0; i < priority_change_points.size(); ++i) {
-      if (current_schedule_length == priority_change_points[i]) {
-        priorities[index_of_max] = current_depth - i;
-      }
-    }
-
     last_chosen = index_of_max;
     // Picked thread is `index_of_max`
     int next_task_index = this->GetNextTaskInThread(index_of_max);
@@ -174,8 +191,29 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   }
 
   void StartNextRound() override {
-    BaseStrategyWithThreads<TargetObj, Verifier>::StartNextRound();
+    this->SetAllowNewTasks(true);
+    this->new_task_id = 0;
+    //    log() << "depth: " << current_depth << "\n";
+    // Reconstruct target as we start from the beginning.
+    this->AbortForRoundReset();
+    if (this->threads.size() != this->threads_count) {
+      this->threads.clear();
+      this->threads.resize(this->threads_count);
+    } else {
+      for (auto& thread : this->threads) {
+        while (thread.size() > 0) {
+          thread.pop_back();
+        }
+        thread = StableVector<Task>();
+      }
+    }
+    this->round_schedule.assign(this->threads_count, -1);
+    this->removed_tasks.clear();
+    // this->state.Reset();
+
     UpdateStatistics();
+
+    ltest::verifier_hooks::OnRoundStart(this->sched_checker, this->threads_count);
   }
 
   void ResetCurrentRound() override {
@@ -185,10 +223,15 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
   void SetCustomRound(CustomRound& custom_round) override {
     BaseStrategyWithThreads<TargetObj, Verifier>::SetCustomRound(custom_round);
-    UpdateStatistics();
+    current_schedule_length = 0;
+    count_chosen_same = 0;
+    fair_stage = 0;
+    PrepareForDepth(current_depth, 1);
   }
 
-  ~PctStrategy() { this->TerminateTasks(); }
+  ~PctStrategy() {
+    this->TerminateTasks();
+  }
 
  private:
   void UpdateStatistics() {
@@ -210,14 +253,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   }
 
   void PrepareForDepth(size_t depth, size_t k) {
-    // Because we have custom rounds, take the
-    // threads count from the vector size and not
-    // from the threads_count field, which shows the passed threads count
-    // argument from the command string
-    size_t threads_count = this->threads.size();
-
     // Generates priorities
-    priorities = std::vector<int>(threads_count);
+    priorities = std::vector<int>(this->threads.size());
     for (size_t i = 0; i < priorities.size(); ++i) {
       priorities[i] = current_depth + i;
     }

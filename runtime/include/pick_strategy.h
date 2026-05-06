@@ -12,10 +12,17 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
   virtual std::optional<size_t> PickSchedule() = 0;
 
+  using TargetFactory =
+      typename BaseStrategyWithThreads<TargetObj, Verifier>::TargetFactory;
+
   explicit PickStrategy(size_t threads_count,
-                        std::vector<TaskBuilder> constructors)
+                        std::vector<TaskBuilder> constructors,
+                        TargetFactory target_factory,
+                        size_t seed = 0)
       : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count,
-                                                     constructors) {}
+                                                     std::move(constructors),
+                                                     std::move(target_factory),
+                                                     seed) {}
 
   std::optional<size_t> NextThreadId() override { return Pick(); }
 
@@ -34,7 +41,31 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
                             is_new, current_thread};
   }
 
-  ~PickStrategy() { this->TerminateTasks(); }
+  void StartNextRound() override {
+    this->SetAllowNewTasks(true);
+    this->new_task_id = 0;
+
+    this->AbortForRoundReset();
+    if (this->threads.size() != this->threads_count) {
+      this->threads.clear();
+      this->threads.resize(this->threads_count);
+    } else {
+      for (auto& thread : this->threads) {
+        while (thread.size() > 0) {
+          thread.pop_back();
+        }
+      }
+    }
+    this->round_schedule.assign(this->threads_count, -1);
+    this->removed_tasks.clear();
+
+    ltest::verifier_hooks::OnRoundStart(this->sched_checker, this->threads_count);
+  }
+
+  ~PickStrategy() {
+    this->TerminateTasks();
+  }
+
 
  protected:
   size_t next_task = 0;

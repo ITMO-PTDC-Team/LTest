@@ -66,9 +66,33 @@ struct YieldInserter {
     return HasAttribute(index, fun_name, atomic_attr);
   }
 
+  bool IsAtomicWrapperCall(Instruction *insn) {
+    auto *call = dyn_cast<CallBase>(insn);
+    if (call == nullptr) {
+      return false;
+    }
+
+    auto *fun = call->getCalledFunction();
+    if (fun == nullptr) {
+      return false;
+    }
+
+    const auto name = fun->getName();
+    const bool is_atomic_name =
+        name.contains("atomic") || name.contains("__atomic_base");
+    if (!is_atomic_name) {
+      return false;
+    }
+
+    return name.contains("load") || name.contains("store") ||
+           name.contains("exchange") || name.contains("compare_exchange") ||
+           name.contains("fetch_");
+  }
+
   bool NeedInterrupt(Instruction *insn, const FunIndex &index) {
     if (isa<LoadInst>(insn) || isa<StoreInst>(insn) ||
-         isa<AtomicRMWInst>(insn) /*||
+        isa<AtomicRMWInst>(insn) || isa<AtomicCmpXchgInst>(insn) ||
+        IsAtomicWrapperCall(insn) /*||
         isa<InvokeInst>(insn)*/) {
       return true;
     }
@@ -111,6 +135,8 @@ struct YieldInserter {
     Builder Builder(&*F.begin());
     for (auto &B : F) {
       for (auto it = B.begin(); std::next(it) != B.end(); ++it) {
+        // !ItsYieldInst(&*std::next(it)) - after each load, store, atomicrmw
+        // instruction, but not in a row
         if (NeedInterrupt(&*it, index) && !ItsYieldInst(&*std::next(it))) {
           Builder.SetInsertPoint(&*std::next(it));
           Builder.CreateCall(CoroYieldF, {})->getIterator();
@@ -119,12 +145,7 @@ struct YieldInserter {
       }
     }
 
-// This change was added to instrument methods recusively for some VK data
-// structure, which had a lot of methods inside of it. This change allows to
-// insert thread interleavings in the methods without marking them with
-// `non_atomic` attribute. This flag is unset by default, because it might cause
-// wmm tests to instrument the LTest code, which is leads to errors.
-#if defined(LTEST_RECURSIVE_YIELDS)
+#ifndef DEBUG
     for (auto &B : F) {
       for (auto &I : B) {
         if (auto call = dyn_cast<CallInst>(&I)) {
@@ -143,8 +164,6 @@ struct YieldInserter {
     }
 #endif
 
-    errs() << "yields inserted to the " << F.getName() << "\n";
-    errs() << F << "\n";
   }
 
   bool ItsYieldInst(Instruction *inst) {

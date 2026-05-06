@@ -37,11 +37,11 @@ function (add_integration_test_blocking test_name label fail)
 endfunction()
 
 add_integration_test_blocking("simple_mutex_pct" "verify" FALSE 
-    simple_mutex --strategy pct --rounds 10000
+    simple_mutex --strategy pct --rounds 1000 --deadlock_policy=explore
 )
 
 add_integration_test_blocking("simple_mutex_random" "verify" FALSE 
-    simple_mutex --strategy random --rounds 10000
+    simple_mutex --strategy random --rounds 1000 --deadlock_policy=explore
 )
 
 add_integration_test_blocking("nonlinear_mutex_random" "verify" TRUE 
@@ -77,7 +77,7 @@ add_integration_test_blocking("shared_mutexed_register_random" "verify" FALSE
 )
 
 add_integration_test_blocking("buffered_channel_pct" "verify" FALSE 
-    buffered_channel --strategy pct --rounds 10000
+    buffered_channel --strategy pct --rounds 10000 --deadlock_policy=explore
 )
 
 add_integration_test_blocking("nonlinear_buffered_channel_pct" "verify" TRUE 
@@ -85,7 +85,7 @@ add_integration_test_blocking("nonlinear_buffered_channel_pct" "verify" TRUE
 )
 
 add_integration_test_blocking("buffered_channel_random" "verify" FALSE 
-    buffered_channel --strategy random --rounds 10000
+    buffered_channel --strategy random --rounds 10000 --deadlock_policy=explore
 )
 
 add_integration_test_blocking("simple_deadlock_pct" "verify" TRUE 

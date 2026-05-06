@@ -40,21 +40,33 @@ struct mutex {
 
 struct condition_variable {
   as_atomic void wait(std::unique_lock<ltest::mutex>& lock) {
-    addr = lock.mutex()->state.addr;
+    const std::intptr_t key = reinterpret_cast<std::intptr_t>(this);
     lock.unlock();
-    this_coro->SetBlocked({addr, 1});
+    this_coro->SetBlocked({key, 0});
     CoroYield();
     lock.lock();
   }
 
-  as_atomic void notify_one() { block_manager.UnblockOn(addr, 1); }
+  as_atomic void notify_one() {
+    const std::intptr_t key = reinterpret_cast<std::intptr_t>(this);
+    block_manager.UnblockOn(key, 1);
+  }
 
-  as_atomic void notify_all() { block_manager.UnblockAllOn(addr); }
-
- private:
-  std::intptr_t addr;
+  as_atomic void notify_all() {
+    const std::intptr_t key = reinterpret_cast<std::intptr_t>(this);
+    block_manager.UnblockAllOn(key);
+  }
 };
 
+/**
+ *
+ * shared_mutex_r is a simple implementation:
+ * locked = -1: exclusive lock
+ * locked >= 0: number of separating locks
+ *
+ * Problem: writer starvation (writers can wait forever)
+ *
+ */
 struct shared_mutex_r {
   as_atomic void lock() {
     while (locked != 0) {
@@ -84,6 +96,16 @@ struct shared_mutex_r {
   BlockState state{reinterpret_cast<std::intptr_t>(&locked), locked};
 };
 
+/**
+ *
+ * shared_mutex is an advanced implementation with queues:
+ *
+ * Uses two condition_variables:
+ * write_entered_ - to wait for the writer to log in
+ * no_readers_ - to wait for readers to finish
+ *
+ * Be honest with the writers (FIFO)
+ */
 struct shared_mutex {
   as_atomic void lock() {
     std::unique_lock lock{mutex_};

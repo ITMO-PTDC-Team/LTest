@@ -5,6 +5,7 @@
 
 #include "lib.h"
 #include "lincheck.h"
+#include "lincheck_dual.h"
 #include "lincheck_recursive.h"
 #include "stackfulltask_mock.h"
 
@@ -38,6 +39,7 @@ std::shared_ptr<CoroBase> CreateMockTask(std::string name, int ret_val,
   EXPECT_CALL(*mock, GetArgs())
       .Times(testing::AnyNumber())
       .WillRepeatedly(testing::Return(args));
+  mock->MarkFinishedNormally();
 
   return static_pointer_cast<CoroBase>(mock);
 }
@@ -46,6 +48,26 @@ namespace LinearizabilityCheckerTest {
 using ::testing::AnyNumber;
 using ::testing::Return;
 using ::testing::ReturnRefOfCopy;
+
+struct CustomCacheState {
+  int value = 0;
+};
+
+struct CustomCacheHash {
+  static inline int calls = 0;
+
+  size_t operator()(const CustomCacheState& state) const {
+    ++calls;
+    return std::hash<int>{}(state.value);
+  }
+};
+
+struct CustomCacheEqual {
+  bool operator()(const CustomCacheState& lhs,
+                  const CustomCacheState& rhs) const {
+    return lhs.value == rhs.value;
+  }
+};
 
 std::function<int(Counter*, void*)> fetch_and_add =
     [](Counter* c, [[maybe_unused]] void* args) {
@@ -89,6 +111,34 @@ TEST(LinearizabilityCheckerCounterTest, SmallLinearizableHistory) {
   history.emplace_back(Response(first_task, 3, 0));
 
   EXPECT_EQ(checker.Check(history), true);
+}
+
+TEST(LinearizabilityCheckerCounterTest, RecursiveCheckerUsesCustomHash) {
+  CustomCacheHash::calls = 0;
+
+  using Checker =
+      LinearizabilityCheckerRecursive<CustomCacheState,
+                                      CustomCacheHash,
+                                      CustomCacheEqual>;
+  Checker checker(
+      Checker::MethodMap{
+          {"get",
+           [](CustomCacheState* state, [[maybe_unused]] void* args) {
+             return ValueWrapper(state->value);
+           }},
+      },
+      CustomCacheState{});
+
+  auto empty_args_unique = std::make_unique<std::tuple<>>(std::tuple<>{});
+  void* empty_args = reinterpret_cast<void*>(empty_args_unique.get());
+  Task task = CreateMockTask("get", 1, empty_args);
+
+  std::vector<HistoryEvent> history;
+  history.emplace_back(Invoke(task, 0));
+  history.emplace_back(Response(task, ValueWrapper(1), 0));
+
+  EXPECT_FALSE(checker.Check(history));
+  EXPECT_GT(CustomCacheHash::calls, 0);
 }
 
 TEST(LinearizabilityCheckerCounterTest, SmallUnlinearizableHistory) {
@@ -268,3 +318,242 @@ void CheckersAreTheSame(const std::vector<bool>& b_history) {
 FUZZ_TEST(LinearizabilityCheckerCounterTest, CheckersAreTheSame);
 
 };  // namespace LinearizabilityCheckerTest
+
+namespace LinearizabilityDualCheckerTest {
+
+using LinearizabilityCheckerTest::CustomCacheEqual;
+using LinearizabilityCheckerTest::CustomCacheHash;
+using LinearizabilityCheckerTest::CustomCacheState;
+
+struct DualQueueState {
+  int available = 0;
+  std::unordered_set<int> requested;
+};
+
+struct DualRejectPendingRequestState {
+  std::unordered_set<int> pending;
+};
+
+class DualTestTask final : public CoroBase {
+ public:
+  DualTestTask(int task_id, std::string task_name, ValueWrapper ret_val,
+               void* raw_args)
+      : owned_name_(std::move(task_name)), args_(raw_args) {
+    id = task_id;
+    name = owned_name_;
+    ret = std::move(ret_val);
+    MarkFinishedNormally();
+  }
+
+  std::shared_ptr<CoroBase> Restart([[maybe_unused]] void* this_ptr) override {
+    return nullptr;
+  }
+
+  std::vector<std::string> GetStrArgs() const override { return {}; }
+
+  void* GetArgs() const override { return args_; }
+
+ private:
+  std::string owned_name_;
+  void* args_{};
+};
+
+Task CreateDualTask(std::string name, int task_id, ValueWrapper ret_val,
+                    void* args) {
+  return std::make_shared<DualTestTask>(task_id, std::move(name),
+                                        std::move(ret_val), args);
+}
+
+using DualChecker = LinearizabilityDualCheckerRecursive<DualQueueState>;
+using DualRejectPendingRequestChecker =
+    LinearizabilityDualCheckerRecursive<DualRejectPendingRequestState>;
+
+DualChecker MakeDualChecker(int initial_available = 0) {
+  DualQueueState init;
+  init.available = initial_available;
+
+  return DualChecker(
+      DualChecker::MethodMap{
+          {"push",
+           [](DualQueueState* state,
+              [[maybe_unused]] void* args) -> ValueWrapper {
+             ++state->available;
+             return void_v;
+           }},
+          {"pop",
+           DualBlockingMethod<DualQueueState>{
+               [](DualQueueState* state, [[maybe_unused]] void* args,
+                  int op_id) { state->requested.insert(op_id); },
+               [](DualQueueState* state, [[maybe_unused]] void* args,
+                  int op_id) -> std::optional<ValueWrapper> {
+                 if (!state->requested.contains(op_id) ||
+                     state->available == 0) {
+                   return std::nullopt;
+                 }
+                 --state->available;
+                 state->requested.erase(op_id);
+                 return ValueWrapper(1);
+               }}}},
+      init);
+}
+
+DualRejectPendingRequestChecker MakeDualRejectPendingRequestChecker() {
+  DualRejectPendingRequestState init;
+
+  return DualRejectPendingRequestChecker(
+      DualRejectPendingRequestChecker::MethodMap{
+          {"wait",
+           DualBlockingMethod<DualRejectPendingRequestState>{
+               [](DualRejectPendingRequestState* state,
+                  [[maybe_unused]] void* args, int op_id) {
+                 state->pending.insert(op_id);
+               },
+               [](DualRejectPendingRequestState* state,
+                  [[maybe_unused]] void* args,
+                  int op_id) -> std::optional<ValueWrapper> {
+                 if (!state->pending.contains(op_id)) {
+                   return std::nullopt;
+                 }
+                 state->pending.erase(op_id);
+                 return ValueWrapper(0);
+               }}}},
+      init);
+}
+
+TEST(LinearizabilityDualCheckerTest,
+     RequestWithoutFollowUpIsAllowedAsPartialHistory) {
+  auto empty_args_unique = std::make_unique<std::tuple<>>(std::tuple<>{});
+  void* empty_args = reinterpret_cast<void*>(empty_args_unique.get());
+
+  Task pop = CreateDualTask("pop", 1, void_v, empty_args);
+  std::vector<DualHistoryEvent> history;
+  history.emplace_back(RequestInvoke(pop, 0));
+  history.emplace_back(RequestResponse(pop, 0));
+
+  EXPECT_TRUE(MakeDualChecker().Check(history));
+}
+
+TEST(LinearizabilityDualCheckerTest, DualCheckerUsesCustomHash) {
+  CustomCacheHash::calls = 0;
+
+  using Checker =
+      LinearizabilityDualCheckerRecursive<CustomCacheState,
+                                          CustomCacheHash,
+                                          CustomCacheEqual>;
+  Checker checker(
+      Checker::MethodMap{
+          {"get",
+           DualNonBlockingMethod<CustomCacheState>{
+               [](CustomCacheState* state, [[maybe_unused]] void* args) {
+                 return ValueWrapper(state->value);
+               }}},
+      },
+      CustomCacheState{});
+
+  auto empty_args_unique = std::make_unique<std::tuple<>>(std::tuple<>{});
+  void* empty_args = reinterpret_cast<void*>(empty_args_unique.get());
+  Task task = CreateMockTask("get", 1, empty_args);
+
+  std::vector<DualHistoryEvent> history;
+  history.emplace_back(Invoke(task, 0));
+  history.emplace_back(Response(task, ValueWrapper(1), 0));
+
+  EXPECT_FALSE(checker.Check(history));
+  EXPECT_GT(CustomCacheHash::calls, 0);
+}
+
+TEST(LinearizabilityDualCheckerTest,
+     CompletedFollowUpWithoutAvailableValueIsRejected) {
+  auto empty_args_unique = std::make_unique<std::tuple<>>(std::tuple<>{});
+  void* empty_args = reinterpret_cast<void*>(empty_args_unique.get());
+
+  Task pop = CreateDualTask("pop", 1, ValueWrapper(1), empty_args);
+  std::vector<DualHistoryEvent> history;
+  history.emplace_back(RequestInvoke(pop, 0));
+  history.emplace_back(RequestResponse(pop, 0));
+  history.emplace_back(FollowUpInvoke(pop, 0));
+  history.emplace_back(FollowUpResponse(pop, ValueWrapper(1), 0));
+
+  EXPECT_FALSE(MakeDualChecker().Check(history));
+}
+
+TEST(LinearizabilityDualCheckerTest,
+     OrdinaryOperationEnablesFollowUpInMixedHistory) {
+  auto empty_args_unique = std::make_unique<std::tuple<>>(std::tuple<>{});
+  void* empty_args = reinterpret_cast<void*>(empty_args_unique.get());
+
+  Task push = CreateDualTask("push", 1, void_v, empty_args);
+  Task pop = CreateDualTask("pop", 2, ValueWrapper(1), empty_args);
+
+  std::vector<DualHistoryEvent> history;
+  history.emplace_back(Invoke(push, 0));
+  history.emplace_back(Response(push, void_v, 0));
+  history.emplace_back(RequestInvoke(pop, 1));
+  history.emplace_back(RequestResponse(pop, 1));
+  history.emplace_back(FollowUpInvoke(pop, 1));
+  history.emplace_back(FollowUpResponse(pop, ValueWrapper(1), 1));
+
+  EXPECT_TRUE(MakeDualChecker().Check(history));
+}
+
+TEST(LinearizabilityDualCheckerTest,
+     ReadyIncompleteFollowUpIsRejectedWithoutCustomValidator) {
+  auto empty_args_unique = std::make_unique<std::tuple<>>(std::tuple<>{});
+  void* empty_args = reinterpret_cast<void*>(empty_args_unique.get());
+
+  Task push = CreateDualTask("push", 1, void_v, empty_args);
+  Task pop = CreateDualTask("pop", 2, ValueWrapper(1), empty_args);
+
+  std::vector<DualHistoryEvent> history;
+  history.emplace_back(Invoke(push, 0));
+  history.emplace_back(Response(push, void_v, 0));
+  history.emplace_back(RequestInvoke(pop, 1));
+  history.emplace_back(RequestResponse(pop, 1));
+
+  EXPECT_FALSE(MakeDualChecker().Check(history));
+}
+
+TEST(LinearizabilityDualCheckerTest,
+     PendingFollowUpInvokeWithoutResponseCannotConsumeReadyState) {
+  auto empty_args_unique = std::make_unique<std::tuple<>>(std::tuple<>{});
+  void* empty_args = reinterpret_cast<void*>(empty_args_unique.get());
+
+  Task push = CreateDualTask("push", 1, void_v, empty_args);
+  Task pop = CreateDualTask("pop", 2, ValueWrapper(1), empty_args);
+
+  std::vector<DualHistoryEvent> history;
+  history.emplace_back(Invoke(push, 0));
+  history.emplace_back(Response(push, void_v, 0));
+  history.emplace_back(RequestInvoke(pop, 1));
+  history.emplace_back(RequestResponse(pop, 1));
+  history.emplace_back(FollowUpInvoke(pop, 1));
+
+  EXPECT_FALSE(MakeDualChecker().Check(history));
+}
+
+TEST(LinearizabilityDualCheckerTest,
+     PendingRequestInvokeCanBeDroppedBeforeRequestResponse) {
+  auto empty_args_unique = std::make_unique<std::tuple<>>(std::tuple<>{});
+  void* empty_args = reinterpret_cast<void*>(empty_args_unique.get());
+
+  Task wait = CreateDualTask("wait", 1, void_v, empty_args);
+  std::vector<DualHistoryEvent> history;
+  history.emplace_back(RequestInvoke(wait, 0));
+
+  EXPECT_TRUE(MakeDualRejectPendingRequestChecker().Check(history));
+}
+
+TEST(LinearizabilityDualCheckerTest,
+     CompletedRequestResponseIsStillValidatedAsPartialHistory) {
+  auto empty_args_unique = std::make_unique<std::tuple<>>(std::tuple<>{});
+  void* empty_args = reinterpret_cast<void*>(empty_args_unique.get());
+
+  Task wait = CreateDualTask("wait", 1, void_v, empty_args);
+  std::vector<DualHistoryEvent> history;
+  history.emplace_back(RequestInvoke(wait, 0));
+  history.emplace_back(RequestResponse(wait, 0));
+
+  EXPECT_FALSE(MakeDualRejectPendingRequestChecker().Check(history));
+}
+
+}  // namespace LinearizabilityDualCheckerTest

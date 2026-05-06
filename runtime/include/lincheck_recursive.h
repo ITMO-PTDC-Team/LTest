@@ -1,12 +1,71 @@
 #pragma once
 
 #include <functional>
-#include <numeric>
+#include <stdexcept>
+#include <string_view>
+#include <type_traits>
+#include <unordered_map>
+#include <vector>
 
 #include "lincheck.h"
+#include "linearization_search.h"
 
-// This is the simplest wg version, it doesn't contain any optimizations, it's
-// slow but useful for stress tests of other implementations
+namespace ltest::detail {
+
+struct RecursiveHistoryEventInfo {
+  bool is_invoke{};
+  bool is_response{};
+  std::string_view name{};
+  void* args{};
+  size_t response_index{kNoResponseIndex};
+  const ValueWrapper* result{};
+};
+
+inline std::vector<RecursiveHistoryEventInfo> BuildRecursiveHistoryEventInfo(
+    const std::vector<HistoryEvent>& history) {
+  std::vector<RecursiveHistoryEventInfo> info(history.size());
+  std::unordered_map<const CoroBase*, size_t> invoke_by_task;
+  std::unordered_map<int, size_t> invoke_by_op_id;
+  invoke_by_task.reserve(history.size());
+  invoke_by_op_id.reserve(history.size());
+
+  for (size_t i = 0; i < history.size(); ++i) {
+    auto& dst = info[i];
+    if (history[i].index() == 0) {
+      const auto& invoke = std::get<Invoke>(history[i]);
+      const auto& task = invoke.GetTask();
+      dst.is_invoke = true;
+      dst.name = task->GetName();
+      dst.args = task->GetArgs();
+      invoke_by_task[task.get()] = i;
+      invoke_by_op_id[task->GetId()] = i;
+      continue;
+    }
+
+    const auto& response = std::get<Response>(history[i]);
+    const auto& task = response.GetTask();
+    dst.is_response = true;
+    dst.name = task->GetName();
+    dst.args = task->GetArgs();
+    dst.result = &response.result;
+
+    auto invoke_it = invoke_by_task.find(task.get());
+    if (invoke_it != invoke_by_task.end()) {
+      info[invoke_it->second].response_index = i;
+    } else {
+      auto by_id = invoke_by_op_id.find(task->GetId());
+      if (by_id != invoke_by_op_id.end()) {
+        info[by_id->second].response_index = i;
+      }
+    }
+  }
+
+  return info;
+}
+
+}  // namespace ltest::detail
+
+// Recursive checker adapter over the shared backtracking search.
 template <class LinearSpecificationObject,
           class SpecificationObjectHash = std::hash<LinearSpecificationObject>,
           class SpecificationObjectEqual =
@@ -36,10 +95,10 @@ LinearizabilityCheckerRecursive<LinearSpecificationObject,
         LinearizabilityCheckerRecursive::MethodMap specification_methods,
         LinearSpecificationObject first_state)
     : specification_methods(specification_methods), first_state(first_state) {
-  if (!std::is_copy_assignable_v<LinearSpecificationObject>) {
+  if (!std::is_copy_constructible_v<LinearSpecificationObject>) {
     // TODO: should do it in the compile time
     throw std::invalid_argument(
-        "LinearSpecificationObject type have to be is_copy_assignable_v");
+        "LinearSpecificationObject type have to be copy constructible");
   }
 }
 
@@ -48,81 +107,48 @@ template <class LinearSpecificationObject, class SpecificationObjectHash,
 bool LinearizabilityCheckerRecursive<
     LinearSpecificationObject, SpecificationObjectHash,
     SpecificationObjectEqual>::Check(const std::vector<HistoryEvent>& history) {
-  // It's a crunch, but it's required because the semantics of this
-  // implementation must be the same as the semantics of the non-recursive
-  // implementation
-  if (history.empty()) {
-    return true;
+  const auto event_info = ltest::detail::BuildRecursiveHistoryEventInfo(history);
+  std::vector<const Method*> method_by_event(history.size(), nullptr);
+
+  for (size_t i = 0; i < event_info.size(); ++i) {
+    if (!event_info[i].is_invoke) continue;
+
+    auto method_it = specification_methods.find(std::string(event_info[i].name));
+    if (method_it == specification_methods.end()) {
+      throw std::runtime_error("No method in spec for: " +
+                               std::string(event_info[i].name));
+    }
+    method_by_event[i] = &method_it->second;
   }
-  std::map<size_t, size_t> inv_res = get_inv_res_mapping(history);
 
-  std::function<bool(const std::vector<HistoryEvent>&, std::vector<bool>&,
-                     LinearSpecificationObject)>
-      recursive_step;
+  struct Adapter {
+    const std::vector<ltest::detail::RecursiveHistoryEventInfo>& events;
+    const std::vector<const Method*>& methods;
 
-  recursive_step = [&](const std::vector<HistoryEvent>& history,
-                       std::vector<bool>& linearized,
-                       LinearSpecificationObject data_structure_state) -> bool {
-    // the fixed_history is empty
-    if (std::reduce(linearized.begin(), linearized.end(), true,
-                    std::bit_and<>())) {
-      return true;
+    [[nodiscard]] bool IsInvoke(size_t index) const {
+      return events[index].is_invoke;
     }
 
-    // walk all minimal operations
-    for (size_t i = 0; i < history.size(); ++i) {
-      // we could think that fixed_history doesn't contain events that already
-      // have been linearized
-      if (linearized[i]) {
-        continue;
-      }
-
-      // all next operations are not minimal
-      if (history[i].index() == 1) {
-        break;
-      }
-
-      Invoke minimal_op = std::get<Invoke>(history[i]);
-      assert(specification_methods.find(
-                 std::string{minimal_op.GetTask()->GetName()}) !=
-             specification_methods.end());
-      auto method = specification_methods
-                        .find(std::string{minimal_op.GetTask()->GetName()})
-                        ->second;
-
-      LinearSpecificationObject data_structure_state_copy =
-          data_structure_state;
-      // state is already have been copied, because it's the argument of the
-      // lambda
-      ValueWrapper res =
-          method(&data_structure_state_copy, minimal_op.GetTask()->GetArgs());
-      // If invoke doesn't have a response we can't check the response
-      if (inv_res.find(i) == inv_res.end()) {
-        linearized[i] = true;
-        if (recursive_step(history, linearized, data_structure_state_copy)) {
-          return true;
-        }
-        linearized[i] = false;
-        continue;
-      }
-
-      if (res == minimal_op.GetTask()->GetRetVal()) {
-        linearized[i] = true;
-        assert(inv_res.find(i) != inv_res.end());
-        linearized[inv_res[i]] = true;
-
-        if (recursive_step(history, linearized, data_structure_state_copy)) {
-          return true;
-        } else {
-          linearized[i] = false;
-          linearized[inv_res[i]] = false;
-        }
-      }
+    [[nodiscard]] bool IsResponse(size_t index) const {
+      return events[index].is_response;
     }
 
-    return false;
+    [[nodiscard]] size_t ResponseIndex(size_t index) const {
+      return events[index].response_index;
+    }
+
+    bool TryApply(size_t index, LinearSpecificationObject& state) const {
+      const auto& event = events[index];
+      ValueWrapper expected = (*methods[index])(&state, event.args);
+      if (event.response_index == ltest::detail::kNoResponseIndex) {
+        return true;
+      }
+
+      return expected == *events[event.response_index].result;
+    }
   };
 
-  std::vector<bool> linearized(history.size(), false);
-  return recursive_step(history, linearized, first_state);
+  return ltest::detail::RunRecursiveLinearizationSearchWithCache<
+      SpecificationObjectHash, SpecificationObjectEqual>(
+      history.size(), first_state, Adapter{event_info, method_by_event});
 }

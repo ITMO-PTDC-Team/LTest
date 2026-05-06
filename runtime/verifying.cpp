@@ -37,19 +37,6 @@ std::vector<std::string> split(const std::string &s, char delim) {
   return res;
 }
 
-constexpr const char *GetLiteral(StrategyType t) {
-  switch (t) {
-    case RR:
-      return "rr";
-    case RND:
-      return "random";
-    case TLA:
-      return "tla";
-    case PCT:
-      return "pct";
-  }
-}
-
 StrategyType FromLiteral(std::string &&a) {
   if (a == GetLiteral(StrategyType::PCT)) {
     return StrategyType::PCT;
@@ -64,14 +51,25 @@ StrategyType FromLiteral(std::string &&a) {
   }
 }
 
+DeadlockPolicy DeadlockPolicyFromLiteral(std::string a) {
+  a = toLower(std::move(a));
+  if (a == GetLiteral(DeadlockPolicy::Fail)) {
+    return DeadlockPolicy::Fail;
+  } else if (a == GetLiteral(DeadlockPolicy::Check)) {
+    return DeadlockPolicy::Check;
+  } else if (a == GetLiteral(DeadlockPolicy::Explore)) {
+    return DeadlockPolicy::Explore;
+  } else if (a == GetLiteral(DeadlockPolicy::Rollback)) {
+    return DeadlockPolicy::Rollback;
+  } else {
+    throw std::invalid_argument(a);
+  }
+}
+
 DEFINE_int32(threads, 2, "Number of threads");
 DEFINE_int32(tasks, 15, "Number of tasks");
 DEFINE_int32(switches, 100000000, "Number of switches");
-DEFINE_int32(
-    rounds, 5,
-    "Number of rounds. When custom rounds are added, this value will show the "
-    "number of generated rounds to run after all custom ones. This can be "
-    "set to zero in case if you want to run only custom rounds");
+DEFINE_int32(rounds, 5, "Number of rounds");
 DEFINE_bool(minimize, false, "Minimize nonlinear scenario");
 DEFINE_int32(exploration_runs, 15,
              "Number of attempts to find nonlinearized round during each "
@@ -83,6 +81,9 @@ DEFINE_int32(depth, 0,
 DEFINE_bool(verbose, false, "Verbosity");
 DEFINE_string(strategy, GetLiteral(StrategyType::RR), "Strategy");
 DEFINE_string(weights, "", "comma-separated list of weights for threads");
+DEFINE_string(deadlock_policy, GetLiteral(DeadlockPolicy::Fail),
+              "Deadlock handling policy: fail, checker, explore, rollback.");
+DEFINE_uint64(seed, 0, "Random seed; 0 uses std::random_device");
 
 void SetOpts(const DefaultOptions &def) {
   FLAGS_threads = def.threads;
@@ -95,6 +96,11 @@ void SetOpts(const DefaultOptions &def) {
   FLAGS_weights = def.weights;
   FLAGS_exploration_runs = def.exploration_runs;
   FLAGS_minimization_runs = def.minimization_runs;
+  FLAGS_seed = def.seed;
+  FLAGS_deadlock_policy =
+      (def.deadlock_policy != nullptr && def.deadlock_policy[0] != '\0')
+          ? def.deadlock_policy
+          : GetLiteral(DeadlockPolicy::Fail);
 }
 
 // Extracts required opts, returns the rest of args.
@@ -104,6 +110,8 @@ Opts ParseOpts() {
   opts.tasks = FLAGS_tasks;
   opts.switches = FLAGS_switches;
   opts.rounds = FLAGS_rounds;
+  opts.deadlock_policy = DeadlockPolicyFromLiteral(FLAGS_deadlock_policy);
+  opts.seed = static_cast<size_t>(FLAGS_seed);
   opts.minimize = FLAGS_minimize;  // NOTE(dartiukhov) minimization for
                                    // scenarios with locks is not supported
   opts.exploration_runs = FLAGS_exploration_runs;

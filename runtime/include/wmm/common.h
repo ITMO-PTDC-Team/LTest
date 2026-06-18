@@ -28,11 +28,7 @@ enum class EdgeType {
   PO,  // program order / sequenced before
   SC,  // seq-cst edge
   RF,  // reads-from
-  // TODO: do we need it? since we have hb-clocks already
-  // HB, // happens-before
   MO,  // modification order
-  // TODO: do we need it explicitly? hb-clocks can give the same basically
-  // SW, // synchronized-with
 };
 
 struct WmmUtils {

@@ -149,7 +149,12 @@ struct ReadEvent : Event {
   Event* readFrom;
 };
 
-enum RMWState { READ, MODIFY, UNSET };
+enum RMWState {
+  READ,    // RMW is unsuccessful and will read the value without modification
+  MODIFY,  // RMW is successful and will modify the value (this is the only
+           // state for all non-CAS RMWs)
+  UNSET    // initial state, before we know whether RMW is successful or not
+};
 
 template <class T>
 T ApplyAtomicRmwOp(AtomicRmwOp op, T readValue, T operand) {

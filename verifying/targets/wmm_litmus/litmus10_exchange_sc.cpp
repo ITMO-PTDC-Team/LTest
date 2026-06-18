@@ -28,19 +28,8 @@ struct Exp10Test {
   }
 };
 
-struct Exp10Spec {
-  using method_t = std::function<ValueWrapper(Exp10Spec *, void *)>;
-  static auto GetMethods() {
-    method_t func = [](Exp10Spec *, void *) -> ValueWrapper { return void_v; };
-    return std::map<std::string, method_t>{
-        {"A", func},
-        {"B", func},
-    };
-  }
-};
-
-using spec_t =
-    ltest::Spec<Exp10Test, Exp10Spec, LinearWmmHash, LinearWmmEquals>;
+using spec_t = ltest::Spec<Exp10Test, LitmusTwoThreadsSpec, LinearWmmHash,
+                           LinearWmmEquals>;
 
 LTEST_ENTRYPOINT(spec_t,
                  {{

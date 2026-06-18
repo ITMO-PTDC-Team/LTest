@@ -110,8 +110,6 @@ struct WmmUtils {
         return "sc";
       case EdgeType::RF:
         return "rf";
-      // case EdgeType::HB: return "hb";
-      // case EdgeType::SW: return "sw";
       case EdgeType::MO:
         return "mo";
     }

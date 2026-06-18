@@ -216,9 +216,13 @@ struct CASRMWEvent : RMWEventBase<T> {
   CASRMWEvent(EventId id, int nThreads, int location, int threadId, T* expected,
               T desired, MemoryOrder successOrder, MemoryOrder failureOrder)
       : RMWEventBase<T>(id, nThreads, location, threadId, successOrder),
-        // TODO: `expected` might be uninitialized, so we should not dereference
-        // it blindly, fix it
-        initialExpectedValue(*expected),
+        // `expected` must not be nullptr according to
+        // https://en.cppreference.com/cpp/atomic/atomic_ref/compare_exchange,
+        // so we can dereference it
+        initialExpectedValue(
+            (assert(expected != nullptr && "Expected value pointer cannot be "
+                                           "null on CASRMWEvent creation"),
+             *expected)),
         cachedExpectedValue(*expected),
         expected(expected),
         desired(desired),

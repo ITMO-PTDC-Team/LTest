@@ -20,8 +20,6 @@
 #include "stable_vector.h"
 #include "wmm/wmm.h"
 
-using namespace ltest::wmm;
-
 struct TaskWithMetaData {
   Task& task;
   bool is_new;
@@ -110,7 +108,7 @@ struct Strategy {
   virtual int GetNextTaskInThread(int thread_index) const = 0;
 
   void ResetWmmGraph(int threads_count) {
-    if (wmm_enabled) {
+    if (ltest::wmm::wmm_enabled) {
       wmm_graph.Reset(threads_count);
     }
   }
@@ -122,7 +120,8 @@ struct Strategy {
   // when generated round is explored this vector stores indexes of tasks
   // that will be invoked next in each thread
   std::vector<int> round_schedule;
-  ExecutionGraph& wmm_graph = ExecutionGraph::GetInstance();
+  ltest::wmm::ExecutionGraph& wmm_graph =
+      ltest::wmm::ExecutionGraph::GetInstance();
 };
 
 template <typename TargetObj, StrategyTaskVerifier Verifier>

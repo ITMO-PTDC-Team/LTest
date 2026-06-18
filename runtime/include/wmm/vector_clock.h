@@ -7,9 +7,9 @@
 #include <vector>
 
 namespace ltest::wmm {
-struct HBClock {
-  HBClock() = default;
-  HBClock(int nThreads) : times(nThreads, 0) {}
+struct VectorClock {
+  VectorClock() = default;
+  VectorClock(int nThreads) : times(nThreads, 0) {}
 
   std::string AsString() const {
     std::stringstream ss;
@@ -26,7 +26,7 @@ struct HBClock {
     return ss.str();
   }
 
-  bool IsSubsetOf(const HBClock& other) const {
+  bool IsSubsetOf(const VectorClock& other) const {
     assert(IsSameLength(other));
 
     for (int i = 0; i < times.size(); ++i) {
@@ -38,7 +38,7 @@ struct HBClock {
     return true;
   }
 
-  void UniteWith(const HBClock& other) {
+  void UniteWith(const VectorClock& other) {
     assert(IsSameLength(other));
 
     for (int i = 0; i < times.size(); ++i) {
@@ -52,7 +52,7 @@ struct HBClock {
   }
 
  private:
-  bool IsSameLength(const HBClock& other) const {
+  bool IsSameLength(const VectorClock& other) const {
     return times.size() == other.times.size();
   }
 

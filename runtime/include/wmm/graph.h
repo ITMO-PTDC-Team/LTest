@@ -83,9 +83,9 @@ class Graph {
                                  T desired, MemoryOrder successOrder,
                                  MemoryOrder failureOrder) {
     EventId eventId = events.size();
-    auto event = new CASRMWEvent<T>(eventId, nThreads, location, threadId,
-                                    expected, desired, successOrder,
-                                    failureOrder);
+    auto event =
+        new CASRMWEvent<T>(eventId, nThreads, location, threadId, expected,
+                           desired, successOrder, failureOrder);
 
     // establish po-edge
     CreatePoEdgeToEvent(event);  // prevInThread --po--> event
@@ -115,7 +115,7 @@ class Graph {
                              T operand, MemoryOrder order) {
     EventId eventId = events.size();
     auto event = new UnconditionalRMWEvent<T>(eventId, nThreads, location,
-                                                threadId, op, operand, order);
+                                              threadId, op, operand, order);
 
     CreatePoEdgeToEvent(event);
 
@@ -183,7 +183,7 @@ class Graph {
 
     // update the clock if synchronized-with relation has appeared
     // and save the old clock in case snapshot is discarded
-    HBClock oldClock;
+    VectorClock oldClock;
     bool isClockUpdated = false;
 
     // update the last seq-cst write event in case of successful RMW event
@@ -696,7 +696,7 @@ class Graph {
     this->nThreads = nThreads;
     eventsPerThread.resize(nThreads);
 
-    // insert dummy events (with all-zero hbClocks),
+    // insert dummy events (with all-zero vectorClocks),
     // which will be the first event in each thread
     for (int t = 0; t < nThreads; ++t) {
       // TODO: DummyEvents are all ?seq-cst? (now rlx) writes, do I need to add

@@ -4,7 +4,7 @@
 #include <sstream>
 
 #include "common.h"
-#include "hbclock.h"
+#include "vector_clock.h"
 
 namespace ltest::wmm {
 
@@ -25,7 +25,7 @@ struct Event {
   int location;
   int threadId;
   MemoryOrder order;
-  HBClock clock;
+  VectorClock clock;
   std::vector<EdgeId> edges;  // outgoing edges (e.g. `edge.to == this`)
 
   virtual ~Event() = default;

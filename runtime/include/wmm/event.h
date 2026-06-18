@@ -26,7 +26,7 @@ struct Event {
   int threadId;
   MemoryOrder order;
   VectorClock clock;
-  std::vector<EdgeId> edges;  // outgoing edges (e.g. `edge.to == this`)
+  std::vector<EdgeId> edges;  // outgoing edges (e.g. `edge.from == this`)
 
   virtual ~Event() = default;
 

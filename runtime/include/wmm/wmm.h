@@ -17,7 +17,7 @@ class ExecutionGraph {
   ExecutionGraph(ExecutionGraph&&) = delete;
   ExecutionGraph& operator=(ExecutionGraph&&) = delete;
 
-  static ExecutionGraph& getInstance() {
+  static ExecutionGraph& GetInstance() {
     static ExecutionGraph instance;  // Thread-safe in C++11 and later
     return instance;
   }

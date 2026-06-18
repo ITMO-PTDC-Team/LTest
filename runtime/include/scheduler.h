@@ -122,7 +122,7 @@ struct Strategy {
   // when generated round is explored this vector stores indexes of tasks
   // that will be invoked next in each thread
   std::vector<int> round_schedule;
-  ExecutionGraph& wmm_graph = ExecutionGraph::getInstance();
+  ExecutionGraph& wmm_graph = ExecutionGraph::GetInstance();
 };
 
 template <typename TargetObj, StrategyTaskVerifier Verifier>

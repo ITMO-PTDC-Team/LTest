@@ -15,7 +15,7 @@ template <class T>
 class latomic {
   std::atomic<T> atomicValue;
   int locationId = -1;
-  ExecutionGraph& wmmGraph = ExecutionGraph::getInstance();
+  ExecutionGraph& wmmGraph = ExecutionGraph::GetInstance();
 
  private:
   bool IsWmmEnabled() const noexcept {

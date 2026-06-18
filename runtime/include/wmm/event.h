@@ -340,13 +340,23 @@ struct CASRMWEvent : RMWEventBase<T> {
     return *expected;
   }
 
+  // Initial value of `expected` pointer, which is used for comparison in CAS
+  // operation.
   T initialExpectedValue;
   // TODO: I assume, that boost stack manipulation causes a failure when
-  // dereferencing of '*expected' from different thread, and it causes sanitizer
-  // to fails. Requires inverstigation to debug it.
+  // dereferencing of '*expected' from different thread (for example when
+  // printing graph), and it causes sanitizer to fail. Requires inverstigation
+  // to debug it.
+  //
+  // Due to the problem described in todo above, this variable is used for
+  // reading the value which is currently stored in `expected` when the event is
+  // printed (it could be the value that this RMW reads in case if it is a
+  // failed CAS)
   T cachedExpectedValue;
+  // Address of `expected` which will be modified on failed CAS semantics.
   T* expected;
   T desired;
+  // Memory order in case if this RMW is CAS and it fails.
   MemoryOrder failureOrder;
 };
 

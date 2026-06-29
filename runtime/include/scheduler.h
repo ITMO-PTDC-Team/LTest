@@ -18,6 +18,7 @@
 #include "pretty_print.h"
 #include "scheduler_fwd.h"
 #include "stable_vector.h"
+#include "wmm/wmm.h"
 
 struct TaskWithMetaData {
   Task& task;
@@ -106,6 +107,12 @@ struct Strategy {
   // than `round_schedule[thread]` or the same index if the task is not finished
   virtual int GetNextTaskInThread(int thread_index) const = 0;
 
+  void ResetWmmGraph(int threads_count) {
+    if (ltest::wmm::wmm_enabled) {
+      wmm_graph.Reset(threads_count);
+    }
+  }
+
   // id of next generated task
   int new_task_id = 0;
   // stores task ids that are removed during the round minimization
@@ -113,16 +120,19 @@ struct Strategy {
   // when generated round is explored this vector stores indexes of tasks
   // that will be invoked next in each thread
   std::vector<int> round_schedule;
+  ltest::wmm::ExecutionGraph& wmm_graph =
+      ltest::wmm::ExecutionGraph::GetInstance();
 };
 
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 struct BaseStrategyWithThreads : public Strategy {
   BaseStrategyWithThreads(size_t threads_count,
                           std::vector<TaskBuilder> constructors)
-      : state(std::make_unique<TargetObj>()),
-        threads_count(threads_count),
-        constructors(std::move(constructors)) {
+      : threads_count(threads_count), constructors(std::move(constructors)) {
+    // must be called before instantiating `TargetObj`
+    ResetWmmGraph(this->threads_count);
     round_schedule.resize(threads_count, -1);
+    state = std::make_unique<TargetObj>();
 
     constructors_distribution =
         std::uniform_int_distribution<std::mt19937::result_type>(
@@ -163,7 +173,8 @@ struct BaseStrategyWithThreads : public Strategy {
   void StartNextRound() override {
     this->new_task_id = 0;
     // also resets the state
-    this->TerminateTasks();
+    this->TerminateTasks();  // TODO: what about different threads count for
+                             // wmm_graph?
 
     // this could happen if we run custom scenarios
     // (which could have arbitrary number of threads)
@@ -204,6 +215,7 @@ struct BaseStrategyWithThreads : public Strategy {
     this->threads.resize(custom_threads_count);
     this->round_schedule.resize(custom_threads_count, -1);
     this->sched_checker.Reset();
+    ResetWmmGraph(custom_threads_count);
     this->state = std::make_unique<TargetObj>();
 
     for (size_t current_thread = 0; current_thread < custom_threads_count;
@@ -328,7 +340,7 @@ struct BaseStrategyWithThreads : public Strategy {
           auto& task = thread[task_index];
           has_nonterminated_threads = true;
           // do a single step in this task
-          task->Resume();
+          task->Resume(thread_index);
           if (task->IsReturned()) {
             OnVerifierTaskFinish(task, thread_index);
             debug(stderr, "Terminated: %ld\n", thread_index);
@@ -336,6 +348,11 @@ struct BaseStrategyWithThreads : public Strategy {
         }
       }
     }
+    // must appear before state reset, so that constructors of atomics in
+    // data structure under test register themselves in the new execution graph
+    // TODO: for custom scenarios threads number might differ, check for places
+    // where `threads.size()` cannot be used
+    ResetWmmGraph(threads.size());
     state.reset(new TargetObj{});
   }
 
@@ -401,7 +418,6 @@ struct StrategyScheduler : public SchedulerWithReplay {
 
       if (is_running_custom_scenarios) {
         log() << "explore custom round: " << j << "\n";
-        debug(stderr, "explore custom round: %zu\n", j);
         strategy.SetCustomRound(custom_rounds[j]);
         histories = ExploreRound(exploration_runs, true);
       } else {
@@ -477,7 +493,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
       }
       full_history.emplace_back(next_task);
 
-      next_task->Resume();
+      next_task->Resume(thread_id);
       if (next_task->IsReturned()) {
         finished_tasks++;
         strategy.OnVerifierTaskFinish(next_task, thread_id);
@@ -529,7 +545,7 @@ struct StrategyScheduler : public SchedulerWithReplay {
         }
         full_history.emplace_back(next_task);
 
-        next_task->Resume();
+        next_task->Resume(thread_id);
         if (next_task->IsReturned()) {
           tasks_to_run--;
           strategy.OnVerifierTaskFinish(next_task, thread_id);
@@ -603,10 +619,10 @@ struct StrategyScheduler : public SchedulerWithReplay {
       // if this is the last time this task appears in `tasks_ordering`, then
       // complete it fully.
       if (resumes_count[next_task_id] == 0) {
-        next_task->Terminate();
+        next_task->Terminate(thread_id);
       } else {
         resumes_count[next_task_id]--;
-        next_task->Resume();
+        next_task->Resume(thread_id);
       }
 
       if (next_task->IsReturned()) {
@@ -699,6 +715,8 @@ struct TLAScheduler : Scheduler {
   struct Frame {
     // Pointer to the in task thread.
     Task* task{};
+    // Id of the thread in which the task is running.
+    int thread_id{};
     // Is true if the task was created at this step.
     bool is_new{};
   };
@@ -709,11 +727,11 @@ struct TLAScheduler : Scheduler {
   // cancel() func takes care for graceful shutdown
   void TerminateTasks() {
     cancel();
-    for (size_t i = 0; i < threads.size(); ++i) {
-      for (size_t j = 0; j < threads[i].tasks.size(); ++j) {
-        auto& task = threads[i].tasks[j];
+    for (size_t thread_id = 0; thread_id < threads.size(); ++thread_id) {
+      for (size_t j = 0; j < threads[thread_id].tasks.size(); ++j) {
+        auto& task = threads[thread_id].tasks[j];
         if (!task->IsReturned()) {
-          task->Terminate();
+          task->Terminate(thread_id);
         }
       }
     }
@@ -736,7 +754,7 @@ struct TLAScheduler : Scheduler {
       } else {
         // It was a not new task, hence, we recreated in early.
       }
-      (*task)->Resume();
+      (*task)->Resume(frame.thread_id);
     }
     coroutine_status.reset();
   }
@@ -783,6 +801,7 @@ struct TLAScheduler : Scheduler {
     }
     auto& task = thread.tasks.back();
     frame.task = &task;
+    frame.thread_id = thread_id;
 
     thread_id_history.push_back(thread_id);
     if (is_new) {
@@ -790,7 +809,7 @@ struct TLAScheduler : Scheduler {
     }
 
     assert(!task->IsBlocked());
-    task->Resume();
+    task->Resume(thread_id);
     UpdateFullHistory(thread_id, task, is_new);
     bool is_finished = task->IsReturned();
     if (is_finished) {

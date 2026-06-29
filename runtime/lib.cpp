@@ -1,6 +1,7 @@
 #include "include/lib.h"
 
 #include <cassert>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -10,6 +11,7 @@
 
 // See comments in the lib.h.
 Task this_coro{};
+int this_thread_id = -1;
 
 boost::context::fiber_context sched_ctx;
 std::optional<CoroutineStatus> coroutine_status;
@@ -18,10 +20,33 @@ namespace ltest {
 std::vector<TaskBuilder> task_builders{};
 }
 
+// Test failure tracking for litmus tests, which could expectedly fail.
+namespace ltest {
+namespace {
+bool test_failed{false};
+std::string test_failure_message{};
+}  // namespace
+
+void SetTestFailure(std::string message) {
+  test_failure_message = std::move(message);
+  test_failed = true;
+}
+
+bool HasTestFailure() { return test_failed; }
+
+const std::string& GetTestFailureMessage() { return test_failure_message; }
+
+void ClearTestFailure() {
+  test_failed = false;
+  test_failure_message.clear();
+}
+}  // namespace ltest
+
 Task CoroBase::GetPtr() { return shared_from_this(); }
 
-void CoroBase::Resume() {
+void CoroBase::Resume(int resumed_thread_id) {
   this_coro = this->GetPtr();
+  this_thread_id = resumed_thread_id;
   assert(!this_coro->IsReturned() && this_coro->ctx);
   // debug(stderr, "name: %s\n",
   // std::string(this_coro->GetPtr()->GetName()).c_str());
@@ -38,6 +63,7 @@ void CoroBase::Resume() {
     }).resume();
   }
   this_coro.reset();
+  this_thread_id = -1;
 }
 
 int CoroBase::GetId() const { return id; }
@@ -75,18 +101,18 @@ extern "C" void CoroutineStatusChange(char* name, bool start) {
   CoroYield();
 }
 
-void CoroBase::Terminate() {
+void CoroBase::Terminate(int running_thread_id) {
   int tries = 0;
   while (!IsReturned()) {
     ++tries;
-    Resume();
+    Resume(running_thread_id);
     assert(tries < 1000000 &&
            "coroutine is spinning too long, possible wrong terminating order");
   }
 }
 
-void CoroBase::TryTerminate() {
+void CoroBase::TryTerminate(int running_thread_id) {
   for (size_t i = 0; i < 1000 && !is_returned; ++i) {
-    Resume();
+    Resume(running_thread_id);
   }
 }

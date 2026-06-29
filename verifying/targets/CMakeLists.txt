@@ -111,3 +111,5 @@ add_integration_test("unique_args" "verify" FALSE
 add_integration_test("counique_args" "verify" FALSE 
     counique_args
 )
+
+add_subdirectory(wmm_litmus)

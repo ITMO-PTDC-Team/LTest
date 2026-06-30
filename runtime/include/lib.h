@@ -1,13 +1,15 @@
 #pragma once
-#include <boost/context/detail/fcontext.hpp>
 #include <boost/context/fiber.hpp>
-#include <boost/context/fiber_fcontext.hpp>
 #include <cassert>
+#include <coroutine>
+#include <cstdint>
+#include <deque>
 #include <exception>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -25,6 +27,10 @@ extern int this_thread_id;
 
 // Scheduler context
 extern boost::context::fiber_context sched_ctx;
+
+// True while runtime is terminating current round / cleaning up tasks.
+// Used to let blocked dual operations exit without waiting for a match.
+extern bool ltest_round_terminating;
 
 extern std::optional<CoroutineStatus> coroutine_status;
 
@@ -49,16 +55,18 @@ void ClearTestFailure();
 }  // namespace ltest
 
 extern "C" void CoroYield();
-
 extern "C" void CoroutineStatusChange(char* coroutine, bool start);
+
+namespace ltest {
+void EnqueueExternalResume(std::coroutine_handle<> h);
+void DrainExternalResumes();
+}  // namespace ltest
 
 struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   CoroBase(const CoroBase&) = delete;
   CoroBase(CoroBase&&) = delete;
   CoroBase& operator=(CoroBase&&) = delete;
 
-  // Restart the coroutine from the beginning passing this_ptr as this.
-  // Returns restarted coroutine.
   virtual std::shared_ptr<CoroBase> Restart(void* this_ptr) = 0;
 
   // Resume the coroutine to the next yield.
@@ -67,23 +75,35 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   // Check if the coroutine is returned.
   bool IsReturned() const;
 
+  enum class FinishKind : std::uint8_t {
+    Running = 0,
+    ReturnedNormally = 1,
+    ReturnedDuringTermination = 2,
+  };
+
+  FinishKind GetFinishKind() const;
+  bool FinishedNormally() const;
+  bool FinishedDuringTermination() const;
+
+  void MarkFinishedNormally();
+  void MarkFinishedDuringTermination();
+  void MarkFinishedNormallyIfRunning();
+
+  void setWakeupCondition(std::function<bool()> cond);
+  void clearWakeupCondition();
+  bool hasWakeupCondition() const;
+  bool checkWakeupCondition() const;
+  bool isReadyToRun() const;
+
   // Returns task id.
   int GetId() const;
 
-  // Returns return value of the coroutine.
   virtual ValueWrapper GetRetVal() const;
-
-  // Returns the name of the coroutine.
   virtual std::string_view GetName() const;
 
-  // Returns the args as strings.
   virtual std::vector<std::string> GetStrArgs() const = 0;
-
-  // Returns raw pointer to the tuple arguments.
   virtual void* GetArgs() const = 0;
 
-  // Returns new pointer to the coroutine.
-  // https://en.cppreference.com/w/cpp/memory/enable_shared_from_this
   std::shared_ptr<CoroBase> GetPtr();
 
   // Try to terminate the coroutine.
@@ -99,10 +119,65 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
 
   BlockState GetBlockState() { return fstate; }
 
-  bool IsBlocked() { return block_manager.IsBlocked(fstate, this); }
+  bool IsBlocked() {
+    if (!block_manager.IsBlocked(fstate, this)) {
+      return false;
+    }
+    if (hasWakeupCondition()) {
+      return !checkWakeupCondition();
+    }
+    return true;
+  }
 
-  // Checks if the coroutine is parked.
   bool IsParked() const;
+
+  // dual metadata + pending dual events
+  void SetDual(bool v) { is_dual_task_ = v; }
+  bool IsDual() const { return is_dual_task_; }
+
+  void SetCleanupBeforeTargetDestroy(bool v) {
+    cleanup_before_target_destroy_ = v;
+  }
+  bool CleanupBeforeTargetDestroy() const {
+    return cleanup_before_target_destroy_;
+  }
+
+  enum class DualEventKind : std::uint8_t {
+    RequestResponse = 0,
+    FollowUpInvoke = 1,
+    FollowUpResponse = 2,
+  };
+
+  struct DualEvent {
+    DualEventKind kind;
+    std::uint64_t seqno;
+    ValueWrapper result;  // meaningful only for FollowUpResponse
+  };
+
+  // Called from inside dual wrapper (verifying_macro.h)
+  void EmitDualEvent(DualEventKind kind, ValueWrapper result = void_v);
+
+  // Called from scheduler (next step) to append to history
+  std::vector<DualEvent> DrainDualEvents();
+  bool HasDualEvents() const { return !pending_dual_events_.empty(); }
+
+  // ---- lifetime management for dual termination safety ----
+  //
+  // KeepAlive: hold arbitrary heap state until end of round (e.g. awaitable object).
+  // DeferDestroy: postpone coroutine_handle<>::destroy() until end of round.
+  //
+  void KeepAlive(std::shared_ptr<void> p);
+
+  template <class T>
+  void KeepAlive(std::shared_ptr<T> p) {
+    KeepAlive(std::static_pointer_cast<void>(std::move(p)));
+  }
+
+  void DeferDestroy(std::coroutine_handle<> h);
+
+  // Must be called when no further target code can resume deferred handles.
+  // Safe to call multiple times.
+  void RunDeferredCleanup();
 
   virtual ~CoroBase();
 
@@ -111,47 +186,51 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
  protected:
   CoroBase() = default;
 
-  friend void CoroBody(int);
   friend void ::CoroYield();
 
   template <typename Target, typename... Args>
   friend class Coro;
 
-  // Task id.
-  int id;
-  // Return value.
+  int id{};
   ValueWrapper ret{};
-  // Is coroutine returned.
-  bool is_returned{};
-  // Futex state on which coroutine is blocked.
+  FinishKind finish_kind_{FinishKind::Running};
+
+  // condition of wake up
+  std::function<bool()> wakeup_condition_{nullptr};
+
   BlockState fstate{};
-  // Name.
   std::string_view name;
   boost::context::fiber_context ctx;
+
+ private:
+  bool is_dual_task_{false};
+  bool cleanup_before_target_destroy_{false};
+  std::vector<DualEvent> pending_dual_events_{};
+
+  // Keep heap objects alive until round end (awaitables, shared state, etc.)
+  std::vector<std::shared_ptr<void>> keepalive_{};
+
+  // Destroy coroutine handles at round end (waker handles passed to await_suspend()).
+  std::vector<std::coroutine_handle<>> deferred_destroy_{};
 };
 
 template <typename Target, typename... Args>
 struct Coro final : public CoroBase {
-  // CoroF is a target class method.
   using CoroF = std::function<ValueWrapper(Target*, Args...)>;
-  // ArgsToStringF converts arguments to the strings for pretty printing.
   using ArgsToStringsF =
       std::function<std::vector<std::string>(std::shared_ptr<void>)>;
 
-  // unsafe: caller must ensure that this_ptr points to Target.
   std::shared_ptr<CoroBase> Restart(void* this_ptr) override {
-    /**
-     *  The task must be returned if we want to restart it.
-     *   We can't just Terminate() it because it is the runtime responsibility
-     * to decide, in which order the tasks should be terminated.
-     *
-     */
     assert(IsReturned());
     auto coro = New(func, this_ptr, args, args_to_strings, name, id);
+
+    // Preserve dual marker across round reset / replay.
+    // Otherwise dual tasks turn into non-dual after Restart(), breaking dual history.
+    coro->SetDual(this->IsDual());
+
     return coro;
   }
 
-  // unsafe: caller must ensure that this_ptr points to Target.
   static std::shared_ptr<CoroBase> New(CoroF func, void* this_ptr,
                                        std::shared_ptr<void> args,
                                        ArgsToStringsF args_to_strings,
@@ -163,23 +242,34 @@ struct Coro final : public CoroBase {
     c->id = task_id;
     c->args_to_strings = std::move(args_to_strings);
     c->this_ptr = this_ptr;
+
+    // Do not capture shared_ptr<Coro> in the fiber lambda.
+    // Otherwise we create a reference cycle:
+    //   Coro -> ctx -> lambda -> shared_ptr<Coro> -> Coro
+    //
+    // The task lifetime is already managed externally by shared_ptr<Task>.
+    // The fiber only needs non-owning access to the object while it is alive.
+    Coro* self = c.get();
+
     c->ctx =
-        boost::context::fiber_context([c](boost::context::fiber_context&& ctx) {
+        boost::context::fiber_context([self](boost::context::fiber_context&& ctx) {
           auto real_args =
-              reinterpret_cast<std::tuple<Args...>*>(c->args.get());
+              reinterpret_cast<std::tuple<Args...>*>(self->args.get());
           auto this_arg =
-              std::tuple<Target*>{reinterpret_cast<Target*>(c->this_ptr)};
+              std::tuple<Target*>{reinterpret_cast<Target*>(self->this_ptr)};
           try {
-            c->ret = std::apply(c->func, std::tuple_cat(this_arg, *real_args));
+            self->ret =
+                std::apply(self->func, std::tuple_cat(this_arg, *real_args));
           } catch (const ltest::TestFailure& ex) {
             ltest::SetTestFailure(ex.what());
-            c->ret = void_v;
+            self->ret = void_v;
           } catch (...) {
             throw;
           }
-          c->is_returned = true;
+          self->MarkFinishedNormallyIfRunning();
           return std::move(ctx);
         });
+
     return c;
   }
 
@@ -191,29 +281,22 @@ struct Coro final : public CoroBase {
   void* GetArgs() const override { return args.get(); }
 
  private:
-  // Function to execute.
   CoroF func;
-  // Pointer to the arguments, points to the std::tuple<Args...>.
   std::shared_ptr<void> args;
-  // Function that can make strings from args for pretty printing.
-  std::function<std::vector<std::string>(std::shared_ptr<void>)>
-      args_to_strings;
-  // Raw pointer to the target class object.
-  void* this_ptr;
+  std::function<std::vector<std::string>(std::shared_ptr<void>)> args_to_strings;
+  void* this_ptr{};
 };
 
 using Task = std::shared_ptr<CoroBase>;
 
-// (this_ptr, thread_num, task_id) -> Task
-
 struct TaskBuilder {
   using BuilderFunc = std::function<Task(void*, size_t, int)>;
   TaskBuilder(std::string name, BuilderFunc func)
-      : name(name), builder_func(func) {}
+      : name(std::move(name)), builder_func(std::move(func)) {}
 
   const std::string& GetName() const { return name; }
 
-  Task Build(void* this_ptr, size_t thread_id, int task_id) {
+  Task Build(void* this_ptr, size_t thread_id, int task_id) const {
     return builder_func(this_ptr, thread_id, task_id);
   }
 

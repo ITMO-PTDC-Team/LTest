@@ -18,5 +18,5 @@ class MockTask : public CoroBase {
   MOCK_METHOD(bool, IsSuspended, (), (const));
   MOCK_METHOD(void, Terminate, (int), ());
   MOCK_METHOD(void, TryTerminate, (int), ());
-  virtual ~MockTask() { is_returned = true; }
+  ~MockTask() override { MarkFinishedNormallyIfRunning(); }
 };

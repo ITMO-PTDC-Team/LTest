@@ -13,8 +13,16 @@
 // equivalent to the halt problem), k should be good approximation
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
-  PctStrategy(size_t threads_count, std::vector<TaskBuilder> ctrs)
-      : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count, ctrs),
+  using TargetFactory =
+      typename BaseStrategyWithThreads<TargetObj, Verifier>::TargetFactory;
+
+  PctStrategy(size_t threads_count, std::vector<TaskBuilder> ctrs,
+              TargetFactory target_factory,
+              size_t seed = 0)
+      : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count,
+                                                     std::move(ctrs),
+                                                     std::move(target_factory),
+                                                     seed),
         current_depth(1),
         current_schedule_length(0) {
     PrepareForDepth(current_depth, 1);
@@ -25,7 +33,16 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     if (fair_stage > 0) [[unlikely]] {
       for (size_t attempt = 0; attempt < threads.size(); ++attempt) {
         auto i = (++last_chosen) % threads.size();
+
+        const bool is_free = threads[i].empty() || threads[i].back()->IsReturned();
+        if (!this->AllowNewTasks() && is_free) {
+          continue;
+        }
+
         if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
+          continue;
+        }
+        if (!is_free && !this->VerifyExistingTask(threads[i].back(), i)) {
           continue;
         }
         index = i;
@@ -57,16 +74,23 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     size_t index_of_max = 0;
     // Have to ignore waiting threads, so can't do it faster than O(n)
     for (size_t i = 0; i < threads.size(); ++i) {
+      // ignore if forbid generate new task
+      const bool is_free = threads[i].empty() || threads[i].back()->IsReturned();
+      if (!this->AllowNewTasks() && is_free) {
+        continue;
+      }
       // Ignore waiting tasks
-      // debug(stderr, "prior: %d, number %d\n", priorities[i], i);
       if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
-        debug(stderr, "blocked on %p val %d\n",
-              threads[i].back()->GetBlockState().addr,
+        debug(stderr, "blocked on %p val %ld\n",
+              reinterpret_cast<void*>(threads[i].back()->GetBlockState().addr),
               threads[i].back()->GetBlockState().value);
         // dual waiting if request finished, but follow up isn't
         // skip dual tasks that already have finished the request
         // section(follow-up will be executed in another task, so we can't
         // resume)
+        continue;
+      }
+      if (!is_free && !this->VerifyExistingTask(threads[i].back(), i)) {
         continue;
       }
 
@@ -115,6 +139,9 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         // resume)
         continue;
       }
+      if (!this->VerifyExistingTask(threads[i][task_index], i)) {
+        continue;
+      }
 
       if (max <= priorities[i]) {
         max = priorities[i];
@@ -127,7 +154,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         auto i = (++last_chosen) % threads.size();
         int task_index = this->GetNextTaskInThread(i);
         if (task_index == threads[i].size() ||
-            threads[i][task_index]->IsBlocked()) {
+            threads[i][task_index]->IsBlocked() ||
+            !this->VerifyExistingTask(threads[i][task_index], i)) {
           continue;
         }
         index_of_max = i;
@@ -176,6 +204,9 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   void StartNextRound() override {
     BaseStrategyWithThreads<TargetObj, Verifier>::StartNextRound();
     UpdateStatistics();
+
+    ltest::verifier_hooks::OnRoundStart(this->sched_checker,
+                                        this->threads_count);
   }
 
   void ResetCurrentRound() override {

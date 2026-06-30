@@ -12,10 +12,17 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
   virtual std::optional<size_t> PickSchedule() = 0;
 
+  using TargetFactory =
+      typename BaseStrategyWithThreads<TargetObj, Verifier>::TargetFactory;
+
   explicit PickStrategy(size_t threads_count,
-                        std::vector<TaskBuilder> constructors)
+                        std::vector<TaskBuilder> constructors,
+                        TargetFactory target_factory,
+                        size_t seed = 0)
       : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count,
-                                                     constructors) {}
+                                                     std::move(constructors),
+                                                     std::move(target_factory),
+                                                     seed) {}
 
   std::optional<size_t> NextThreadId() override { return Pick(); }
 

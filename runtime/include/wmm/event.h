@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <concepts>
 #include <sstream>
 
 #include "common.h"
@@ -162,23 +163,61 @@ T ApplyAtomicRmwOp(AtomicRmwOp op, T readValue, T operand) {
     case AtomicRmwOp::Exchange:
       return operand;
     case AtomicRmwOp::FetchAdd:
-      return readValue + operand;
+      if constexpr (requires {
+                      { readValue + operand } -> std::convertible_to<T>;
+                    }) {
+        return readValue + operand;
+      }
+      break;
     case AtomicRmwOp::FetchSub:
-      return readValue - operand;
+      if constexpr (requires {
+                      { readValue - operand } -> std::convertible_to<T>;
+                    }) {
+        return readValue - operand;
+      }
+      break;
     case AtomicRmwOp::FetchAnd:
-      return readValue & operand;
+      if constexpr (requires {
+                      { (readValue & operand) } -> std::convertible_to<T>;
+                    }) {
+        return readValue & operand;
+      }
+      break;
     case AtomicRmwOp::FetchOr:
-      return readValue | operand;
+      if constexpr (requires {
+                      { readValue | operand } -> std::convertible_to<T>;
+                    }) {
+        return readValue | operand;
+      }
+      break;
     case AtomicRmwOp::FetchXor:
-      return readValue ^ operand;
+      if constexpr (requires {
+                      { readValue ^ operand } -> std::convertible_to<T>;
+                    }) {
+        return readValue ^ operand;
+      }
+      break;
     case AtomicRmwOp::FetchMin:
-      return std::min(readValue, operand);
+      if constexpr (requires {
+                      {
+                        std::min(readValue, operand)
+                      } -> std::convertible_to<T>;
+                    }) {
+        return std::min(readValue, operand);
+      }
+      break;
     case AtomicRmwOp::FetchMax:
-      return std::max(readValue, operand);
-    default:
-      assert(false && "unknown AtomicRmwOp");
-      return readValue;
+      if constexpr (requires {
+                      {
+                        std::max(readValue, operand)
+                      } -> std::convertible_to<T>;
+                    }) {
+        return std::max(readValue, operand);
+      }
+      break;
   }
+  assert(false && "unsupported AtomicRmwOp for this value type");
+  return readValue;
 }
 
 /// Common base for compare-exchange (CAS) and unconditional RMW events.

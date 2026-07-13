@@ -305,14 +305,14 @@ inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
 // ---- dual runner ----
 
 // A checker stub for: always "passes".
-struct NoopDualChecker final : DualModelChecker {
+struct NoopDualChecker final : DualLinearizabilityChecker {
   bool Check(const std::vector<DualHistoryEvent> &) override { return true; }
 };
 
 template <StrategyTaskVerifier Verifier>
 struct DualStrategySchedulerWrapper : DualStrategyScheduler<Verifier> {
   DualStrategySchedulerWrapper(std::unique_ptr<Strategy> strategy_ptr,
-                               DualModelChecker& checker,
+                               DualLinearizabilityChecker& checker,
                                PrettyPrinter& pretty_printer,
                                size_t max_tasks, size_t max_rounds,
                                bool minimize,
@@ -336,8 +336,8 @@ struct DualStrategySchedulerWrapper : DualStrategyScheduler<Verifier> {
 
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 std::unique_ptr<DualScheduler> MakeDualScheduler(
-    DualModelChecker &checker, Opts &opts, const std::vector<TaskBuilder> &l,
-    PrettyPrinter &pretty_printer,
+    DualLinearizabilityChecker &checker, Opts &opts,
+    const std::vector<TaskBuilder> &l, PrettyPrinter &pretty_printer,
     std::function<std::unique_ptr<TargetObj>()> target_factory) {
   std::cout << "strategy = " << GetLiteral(opts.typ) << "\n";
   // We support RR/RND/PCT the same way as normal.

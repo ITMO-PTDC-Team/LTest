@@ -111,10 +111,10 @@ jobs:
             verifying/blocking/folly_flatcombining_queue
       - name: Run folly rwspinlock with pct strategy
         run: |
-          ./scripts/check.sh 0 ./build/verifying/blocking/folly_rwspinlock --strategy pct --rounds 1 --tasks 2 --deadlock_policy=checker
+          ./scripts/check.sh 0 ./build/verifying/blocking/folly_rwspinlock --strategy pct --rounds 10000
       - name: Run folly shared_mutex with pct strategy
         run: |
-          ./scripts/check.sh 0 ./build/verifying/blocking/folly_sharedmutex --strategy pct --rounds 1 --tasks 2 --deadlock_policy=checker
+          ./scripts/check.sh 0 ./build/verifying/blocking/folly_sharedmutex --strategy pct --rounds 10000
       - name: Run folly flatcombining queue with pct strategy
         run: |
-          ./scripts/check.sh 0 ./build/verifying/blocking/folly_flatcombining_queue --strategy pct --rounds 1 --tasks 2 --deadlock_policy=checker
+          ./scripts/check.sh 0 ./build/verifying/blocking/folly_flatcombining_queue --strategy pct --rounds 10000

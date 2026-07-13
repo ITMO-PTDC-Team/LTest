@@ -146,10 +146,6 @@ bool CoroBase::checkWakeupCondition() const {
   return wakeup_condition_ ? wakeup_condition_() : false;
 }
 
-bool CoroBase::isReadyToRun() const {
-  return !hasWakeupCondition() || checkWakeupCondition();
-}
-
 int CoroBase::GetId() const { return id; }
 
 ValueWrapper CoroBase::GetRetVal() const {

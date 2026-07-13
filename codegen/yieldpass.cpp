@@ -78,8 +78,7 @@ struct YieldInserter {
     }
 
     const auto name = fun->getName();
-    const bool is_atomic_name =
-        name.contains("atomic") || name.contains("__atomic_base");
+    const bool is_atomic_name = name.contains("atomic");
     if (!is_atomic_name) {
       return false;
     }

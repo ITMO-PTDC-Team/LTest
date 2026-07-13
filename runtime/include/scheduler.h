@@ -2118,8 +2118,10 @@ struct DualTLAScheduler : DualScheduler {
   DualTLAScheduler(size_t max_tasks, size_t max_rounds, size_t threads_count,
                    size_t max_switches, size_t max_depth,
                    std::vector<TaskBuilder> constructors,
-                   DualModelChecker& checker, PrettyPrinter& pretty_printer,
-                   DeadlockPolicy deadlock_policy, TargetFactory target_factory)
+                   DualLinearizabilityChecker& checker,
+                   PrettyPrinter& pretty_printer,
+                   DeadlockPolicy deadlock_policy,
+                   TargetFactory target_factory)
       : max_tasks{max_tasks},
         max_rounds{max_rounds},
         max_switches{max_switches},
@@ -2429,7 +2431,7 @@ struct DualTLAScheduler : DualScheduler {
   size_t max_switches;
   size_t max_depth;
   std::vector<TaskBuilder> constructors;
-  DualModelChecker& checker;
+  DualLinearizabilityChecker& checker;
   PrettyPrinter& pretty_printer;
   DeadlockPolicy deadlock_policy;
 
@@ -2450,7 +2452,8 @@ struct DualTLAScheduler : DualScheduler {
 // DualStrategyScheduler builds dual histories and supports replay/minimization.
 template <StrategyTaskVerifier Verifier>
 struct DualStrategyScheduler : public DualSchedulerWithReplay {
-  DualStrategyScheduler(Strategy& sched_class, DualModelChecker& checker,
+  DualStrategyScheduler(Strategy& sched_class,
+                        DualLinearizabilityChecker& checker,
                         PrettyPrinter& pretty_printer, size_t max_tasks,
                         size_t max_rounds, bool minimize,
                         size_t exploration_runs, size_t minimization_runs,
@@ -2972,7 +2975,7 @@ struct DualStrategyScheduler : public DualSchedulerWithReplay {
 
  private:
   Strategy& strategy;
-  DualModelChecker& checker;
+  DualLinearizabilityChecker& checker;
   PrettyPrinter& pretty_printer;
   size_t max_tasks;
   size_t max_rounds;

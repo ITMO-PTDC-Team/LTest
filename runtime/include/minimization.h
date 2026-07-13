@@ -6,9 +6,10 @@
 
 #include "scheduler_fwd.h"
 
-// ----------------------------
-// Traits: what is an "operation start" event?
-// ----------------------------
+// Traits used by minimizers to detect which history events start visible
+// operations. Ordinary histories start operations with Invoke. Dual histories
+// start blocking operations with RequestInvoke and ordinary operations with
+// Invoke.
 template <class Event>
 struct MinTraits;
 
@@ -35,10 +36,9 @@ struct MinTraits<DualHistoryEvent> {
   }
 };
 
-// ----------------------------
-// Traits: does bad result contain a visible pending operation?
-// Needed to reject degenerate/empty deadlock scenarios during minimization.
-// ----------------------------
+// Traits used to decide whether a minimized bad history still contains a
+// visible pending operation. This rejects degenerate deadlock scenarios where
+// minimization removed all meaningful work and left only a scheduler artifact.
 template <class Event>
 struct MinBadTraits;
 
@@ -102,9 +102,13 @@ struct MinBadTraits<DualHistoryEvent> {
   }
 };
 
-// ----------------------------
-// Round minimizor interface (templated)
-// ----------------------------
+/**
+ * This is an interface for minimizors that decrease the number of tasks in a
+ * non-linearizable history.
+ *
+ * Event is HistoryEvent for ordinary histories and DualHistoryEvent for dual
+ * histories.
+ */
 template <class Event>
 struct RoundMinimizorT {
   using SchedulerT = BasicSchedulerWithReplay<Event>;
@@ -115,9 +119,15 @@ struct RoundMinimizorT {
 
   virtual ~RoundMinimizorT() = default;
 
+  // Minimizes the number of tasks in the non-linearizable history; modifies
+  // argument `nonlinear_history`.
   virtual void Minimize(SchedulerT& sched,
                         NonLinearizableHistoryT& nonlinear_history) const = 0;
 
+  /**
+   * Returns ids of tasks taken from `full_history`, excluding ids specified in
+   * `exclude_task_ids`.
+   */
   static std::vector<int> GetTasksOrdering(
       const FullHistoryT& full_history,
       const std::unordered_set<int>& exclude_task_ids) {
@@ -160,9 +170,11 @@ struct RoundMinimizorT {
   }
 };
 
-// ----------------------------
-// Greedy base minimizor (templated)
-// ----------------------------
+/**
+ * This is a base class for minimizors that try to remove tasks from the
+ * non-linearizable history greedily, using the callback `OnTasksRemoved` with
+ * passed tasks.
+ */
 template <class Event>
 struct GreedyRoundMinimizorT : public RoundMinimizorT<Event> {
   using Base = RoundMinimizorT<Event>;
@@ -170,6 +182,15 @@ struct GreedyRoundMinimizorT : public RoundMinimizorT<Event> {
   using NonLinearizableHistoryT = typename Base::NonLinearizableHistoryT;
   using ResultT = typename Base::ResultT;
 
+  /**
+   * Greedy round minimizor iterates over all non-removed tasks in the
+   * non-linearizable history and tries to remove them one by one.
+   *
+   * It also has an additional cycle where the minimizor tries to remove all
+   * pairs of tasks together. This accounts for data structures with add/remove
+   * style semantics where the bug may need both sides to stay or disappear
+   * together.
+   */
   void Minimize(SchedulerT& sched,
                 NonLinearizableHistoryT& nonlinear_history) const override {
     // Collect operation ids (starts) from seq history.
@@ -242,15 +263,33 @@ struct GreedyRoundMinimizorT : public RoundMinimizorT<Event> {
   }
 
  protected:
+  /**
+   * This method is called when the minimizor tries to remove tasks from the
+   * non-linearizable history. Greedy minimizors call it for all task ids `i` and
+   * for all pairs of task ids `(i, j)`, where `i < j`.
+   *
+   * @param sched the scheduler that will replay the round with some tasks
+   * marked as removed.
+   * @param nonlinear_history the non-linearizable history being minimized.
+   * @param task_ids the task ids that the minimizor tries to remove.
+   * @return the new non-linearizable history if the tasks were successfully
+   * removed, `std::nullopt` otherwise.
+   */
   virtual ResultT OnTasksRemoved(
       SchedulerT& sched,
       const NonLinearizableHistoryT& nonlinear_history,
       const std::unordered_set<int>& task_ids) const = 0;
 };
 
-// ----------------------------
-// Same interleaving minimizor (templated)
-// ----------------------------
+/**
+ * `SameInterleavingMinimizorT` uses the provided non-linearizable history and
+ * removes selected tasks from the full and sequential histories without
+ * changing the rest of the interleaving.
+ *
+ * If the initial full history looked like this `[1, 1, 2, 3, 2, 2, 1, 3]`
+ * (task ids), and we remove task with id 2, the new full history will be
+ * `[1, 1, 3, 1, 3]`.
+ */
 template <class Event>
 struct SameInterleavingMinimizorT : public GreedyRoundMinimizorT<Event> {
   using Base = GreedyRoundMinimizorT<Event>;
@@ -276,9 +315,16 @@ struct SameInterleavingMinimizorT : public GreedyRoundMinimizorT<Event> {
   }
 };
 
-// ----------------------------
-// Strategy exploration minimizor (templated)
-// ----------------------------
+/**
+ * `StrategyExplorationMinimizorT` tries to remove tasks from the
+ * non-linearizable history and then explores different interleavings of the
+ * current round.
+ *
+ * It uses the `runs` parameter to determine how many times it should try to
+ * find a new non-linearizable history with the provided tasks marked as
+ * removed. If such history is not found in a given number of runs, the tasks
+ * are returned to their initial non-removed state.
+ */
 template <class Event>
 struct StrategyExplorationMinimizorT : public GreedyRoundMinimizorT<Event> {
   using Base = GreedyRoundMinimizorT<Event>;

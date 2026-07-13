@@ -51,12 +51,6 @@ std::map<size_t, size_t> get_inv_res_mapping(
 std::map<size_t, size_t> get_inv_res_full_mapping(
     const std::vector<HistoryEvent>& history);
 
-
-// fix_history deletes invokes that don't have corresponding responses,
-// this is allowed by the definition of the linearizability
-//std::vector<std::variant<Invoke, Response>> fix_history(
-//    const std::vector<std::variant<Invoke, Response>>& history);
-
 template <class LinearSpecificationObject,
           class SpecificationObjectHash = std::hash<LinearSpecificationObject>,
           class SpecificationObjectEqual =

@@ -28,8 +28,9 @@ extern int this_thread_id;
 // Scheduler context
 extern boost::context::fiber_context sched_ctx;
 
-// True while runtime is terminating current round / cleaning up tasks.
-// Used to let blocked dual operations exit without waiting for a match.
+// Set while a round is being stopped and the target state is being cleaned up.
+// Blocked dual awaiters use this as a cancellation signal: they leave the wait
+// loop, unregister from the target if needed, and do not emit follow-up events.
 extern bool ltest_round_terminating;
 
 extern std::optional<CoroutineStatus> coroutine_status;
@@ -93,7 +94,6 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   void clearWakeupCondition();
   bool hasWakeupCondition() const;
   bool checkWakeupCondition() const;
-  bool isReadyToRun() const;
 
   // Returns task id.
   int GetId() const;
@@ -131,7 +131,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
 
   bool IsParked() const;
 
-  // dual metadata + pending dual events
+  // Dual metadata and task-local history buffer.
   void SetDual(bool v) { is_dual_task_ = v; }
   bool IsDual() const { return is_dual_task_; }
 
@@ -154,16 +154,18 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
     ValueWrapper result;  // meaningful only for FollowUpResponse
   };
 
-  // Called from inside dual wrapper (verifying_macro.h)
+  // Dual wrappers observe request/follow-up boundaries while the task is
+  // running. The scheduler drains these events after Resume() and appends them
+  // to the global dual history.
   void EmitDualEvent(DualEventKind kind, ValueWrapper result = void_v);
 
-  // Called from scheduler (next step) to append to history
   std::vector<DualEvent> DrainDualEvents();
   bool HasDualEvents() const { return !pending_dual_events_.empty(); }
 
   // ---- lifetime management for dual termination safety ----
   //
-  // KeepAlive: hold arbitrary heap state until end of round (e.g. awaitable object).
+  // KeepAlive: hold arbitrary heap state until end of round (e.g. awaitable
+  // object).
   // DeferDestroy: postpone coroutine_handle<>::destroy() until end of round.
   //
   void KeepAlive(std::shared_ptr<void> p);

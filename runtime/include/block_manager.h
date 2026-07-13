@@ -9,10 +9,10 @@
 struct CoroBase;
 
 struct BlockManager {
+  // Maps a memory address to coroutines waiting on it.
   // TODO(kmitkin): due to usage in as_atomic functions rewrite to custom hash
   // table & linked list
   std::unordered_map<std::uintptr_t, std::deque<CoroBase *>> queues;
-  // ^ table: memory address -> queue of pending coroutines
 
   inline void BlockOn(BlockState state, CoroBase *coro) {
     if (!queues.contains(state.addr)) {
@@ -40,18 +40,11 @@ struct BlockManager {
   }
 
   inline void UnblockAllOn(std::intptr_t addr) {
-    // TOTO(bitree2004):
-    // proposal(faster):
-    // auto it = queues.find(addr);
-    // if (it == queues.end()) {
-    //  return;
-    // }
-    // it->clear();
-    //
-    if (!queues.contains(addr)) {
+    auto queue_it = queues.find(addr);
+    if (queue_it == queues.end()) {
       return;
     }
-    queues[addr].clear();
+    queue_it->second.clear();
   }
 };
 

@@ -14,7 +14,7 @@
 #include <variant>
 #include <vector>
 
-#include "lincheck.h"       // Invoke/Response (ValueWrapper), ModelChecker
+#include "lincheck.h"       // Invoke/Response (ValueWrapper)
 #include "linearization_search.h"
 #include "value_wrapper.h"  // ValueWrapper
 
@@ -83,9 +83,9 @@ static_assert(std::is_same_v<std::variant_alternative_t<4, DualHistoryEvent>,
 static_assert(std::is_same_v<std::variant_alternative_t<5, DualHistoryEvent>,
                              FollowUpResponse>);
 
-struct DualModelChecker {
+struct DualLinearizabilityChecker {
   virtual bool Check(const std::vector<DualHistoryEvent>& history) = 0;
-  virtual ~DualModelChecker() = default;
+  virtual ~DualLinearizabilityChecker() = default;
 };
 
 // -----------------------------
@@ -324,7 +324,7 @@ inline std::map<size_t, size_t> get_dual_inv_res_mapping(
 // -----------------------------
 template <class SpecState, class SpecStateHash = std::hash<SpecState>,
           class SpecStateEqual = std::equal_to<SpecState>>
-struct LinearizabilityDualCheckerRecursive final : DualModelChecker {
+struct LinearizabilityDualCheckerRecursive final : DualLinearizabilityChecker {
   using MethodMap = DualMethodMap<SpecState>;
 
   struct PendingFollowUp {

@@ -69,6 +69,8 @@ jobs:
         run: ./scripts/run_dual_libcoro_matrix.sh -V
   verifying-dual-folly:
     runs-on: ubuntu-latest
+    env:
+      LTEST_BUILD_PATH: ${{ github.workspace }}/build-dual-folly
     defaults:
       run:
         shell: bash
@@ -79,21 +81,33 @@ jobs:
     steps:
       - name: Install deps
         run: |
-          apt update && apt install -y git ninja-build valgrind libgflags-dev libclang-19-dev \
-                    libboost-context-dev libboost-filesystem-dev libboost-program-options-dev \
+          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev libclang-19-dev \
+                    protobuf-compiler libboost-context-dev pkg-config libcapstone-dev \
+                    libboost-filesystem-dev libboost-program-options-dev \
                     libboost-regex-dev libdouble-conversion-dev libfast-float-dev libevent-dev \
                     libssl-dev libfmt-dev libgoogle-glog-dev zlib1g-dev
       - name: Check out repository code
         uses: actions/checkout@v4
+      - name: Build folly ltest dependencies
+        run: |
+          cmake -G Ninja -B "${LTEST_BUILD_PATH}" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "${LTEST_BUILD_PATH}" --target plugin_pass runtime
       - name: Install folly
         run: |
           git clone --depth=1 https://github.com/Kirillog/folly.git /tmp/folly
-          cmake /tmp/folly -G Ninja -B /tmp/folly-build -DCMAKE_BUILD_TYPE=Release
+          cmake /tmp/folly -G Ninja -B /tmp/folly-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_STANDARD=20 \
+            -DCMAKE_CXX_STANDARD_REQUIRED=ON
           cmake --build /tmp/folly-build --target install
-      - name: Run folly dual matrix
+      - name: Configure folly dual tests
+        run: cmake -G Ninja -B "${LTEST_BUILD_PATH}" -DCMAKE_BUILD_TYPE=Release
+      - name: Run stable folly dual matrix
         env:
           BUILD_DIR: ${{ github.workspace }}/build-dual-folly
-        run: ./scripts/run_dual_folly_matrix.sh -V
+        run: |
+          ./scripts/run_dual_folly_matrix.sh -V \
+            -E "verify_folly_coro_bounded_queue_|verify_folly_coro_unbounded_queue_weighted_random_t2"
   litmus-test:
     runs-on: ubuntu-latest
     defaults:

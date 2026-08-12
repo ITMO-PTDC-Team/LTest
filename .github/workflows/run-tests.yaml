@@ -63,10 +63,12 @@ jobs:
         uses: actions/checkout@v4
       - name: Install libcoro
         run: git clone --depth=1 https://github.com/jbaldwin/libcoro.git /tmp/libcoro
-      - name: Run libcoro dual matrix
-        env:
-          BUILD_DIR: ${{ github.workspace }}/build-dual-libcoro
-        run: ./scripts/run_dual_libcoro_matrix.sh -V
+      - name: Build libcoro dual tests
+        run: |
+          cmake -G Ninja -B build-dual-libcoro -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-dual-libcoro --target verify-dual-libcoro
+      - name: Run libcoro dual tests
+        run: ctest --parallel 4 --test-dir build-dual-libcoro -L "dual-libcoro" -V --output-on-failure
   verifying-dual-folly:
     runs-on: ubuntu-latest
     env:
@@ -102,11 +104,11 @@ jobs:
           cmake --build /tmp/folly-build --target install
       - name: Configure folly dual tests
         run: cmake -G Ninja -B "${LTEST_BUILD_PATH}" -DCMAKE_BUILD_TYPE=Release
-      - name: Run stable folly dual matrix
-        env:
-          BUILD_DIR: ${{ github.workspace }}/build-dual-folly
+      - name: Build folly dual tests
+        run: cmake --build "${LTEST_BUILD_PATH}" --target verify-dual-folly
+      - name: Run stable folly dual tests
         run: |
-          ./scripts/run_dual_folly_matrix.sh -V \
+          ctest --parallel 4 --test-dir "${LTEST_BUILD_PATH}" -L "dual-folly" -V --output-on-failure \
             -E "verify_folly_coro_bounded_queue_|verify_folly_coro_unbounded_queue_weighted_random_t2"
   litmus-test:
     runs-on: ubuntu-latest

@@ -344,44 +344,38 @@ export LD_LIBRARY_PATH="$PWD/build/runtime:$PWD/build/codegen:$PWD/build/third_p
 
 Для другого build-dir заменить `build` на нужный каталог.
 
-## Matrix-скрипты
+## Matrix через CTest
 
 Кейсы для `libcoro` и `folly` зарегистрированы как CMake/CTest integration
-tests. Скрипты только настраивают build-dir при необходимости, собирают нужный
-custom target и запускают `ctest` по CTest label.
+tests. Для запуска достаточно сконфигурировать build-dir, собрать нужный custom
+target и запустить `ctest` по CTest label.
 
 libcoro:
 
 ```bash
-BUILD_DIR="$PWD/build-libcoro" ./scripts/run_dual_libcoro_matrix.sh
+cmake -S . -B build-libcoro -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-libcoro --target verify-dual-libcoro
+ctest --test-dir build-libcoro -L dual-libcoro --parallel 4 -V --output-on-failure
 ```
 
 Folly:
 
 ```bash
-BUILD_DIR="$PWD/build-folly" ./scripts/run_dual_folly_matrix.sh
+cmake -S . -B build-folly -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-folly --target verify-dual-folly
+ctest --test-dir build-folly -L dual-folly --parallel 4 -V --output-on-failure
 ```
 
-То же самое напрямую через CTest:
+Дополнительные аргументы CTest передаются напрямую:
 
 ```bash
-ctest --test-dir build-libcoro -L dual-libcoro -V
-ctest --test-dir build-folly -L dual-folly -V
+ctest --test-dir build-folly -L dual-folly -V --timeout 180
 ```
 
-Общие полезные переменные:
+Полезные параметры:
 
-- `BUILD_DIR` - build-dir для CMake;
-- `CMAKE_BUILD_TYPE` - тип сборки при первичной конфигурации;
-- `CMAKE_GENERATOR` - генератор при первичной конфигурации;
 - `CTEST_PARALLEL_LEVEL` - параллелизм `ctest`;
 - `LTEST_DUAL_TEST_TIMEOUT` - CMake cache value для timeout одного теста.
-
-Аргументы скрипта передаются в `ctest`, например:
-
-```bash
-./scripts/run_dual_folly_matrix.sh -V --timeout 180
-```
 
 ## Основные флаги verifier-а
 

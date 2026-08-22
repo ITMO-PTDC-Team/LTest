@@ -20,12 +20,12 @@ struct Queue {
     return res;
   }
 
-  using method_t = std::function<ValueWrapper(Queue *l, void *args)>;
+  using method_t = std::function<ltest::ValueWrapper(Queue *l, void *args)>;
   static auto GetMethods() {
-    method_t push_func = [](Queue *l, void *args) -> ValueWrapper {
+    method_t push_func = [](Queue *l, void *args) -> ltest::ValueWrapper {
       auto real_args = reinterpret_cast<PushArgTuple *>(args);
       l->Push(std::get<ValueIndex>(*real_args));
-      return void_v;
+      return ltest::void_v;
     };
 
     method_t pop_func = [](Queue *l, void *args) -> int { return l->Pop(); };

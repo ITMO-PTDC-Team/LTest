@@ -28,11 +28,13 @@ std::string EnumToStr(E e) {
 } // namespace detail
 
 // ---- ValueWrapper support for libcoro result types ----
+namespace ltest {
+
 template <>
 inline ToStringFunc GetDefaultToString<coro::queue_produce_result>() {
   return [](const ValueWrapper& a) -> std::string {
     return "queue_produce_result(" +
-           detail::EnumToStr(a.GetValue<coro::queue_produce_result>()) + ")";
+           ::detail::EnumToStr(a.GetValue<coro::queue_produce_result>()) + ")";
   };
 }
 
@@ -48,7 +50,7 @@ template <>
 inline ToStringFunc GetDefaultToString<coro::queue_consume_result>() {
   return [](const ValueWrapper& a) -> std::string {
     return "queue_consume_result(" +
-           detail::EnumToStr(a.GetValue<coro::queue_consume_result>()) + ")";
+           ::detail::EnumToStr(a.GetValue<coro::queue_consume_result>()) + ")";
   };
 }
 
@@ -68,7 +70,7 @@ GetDefaultToString<tl::expected<int, coro::queue_consume_result>>() {
     if (e.has_value()) {
       return "ok(" + std::to_string(e.value()) + ")";
     }
-    return "err(queue_consume_result(" + detail::EnumToStr(e.error()) + "))";
+    return "err(queue_consume_result(" + ::detail::EnumToStr(e.error()) + "))";
   };
 }
 
@@ -84,6 +86,8 @@ GetDefaultCompator<tl::expected<int, coro::queue_consume_result>>() {
     return ea.error() == eb.error();
   };
 }
+
+}  // namespace ltest
 
 namespace spec {
 
@@ -135,44 +139,44 @@ struct LibcoroQueue {
   }
 
   // ----- follow-up phase -----
-  std::optional<ValueWrapper> FollowUpPush(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpPush(int op_id) {
     if (!push_done.contains(op_id)) return std::nullopt;
     push_done.erase(op_id);
-    return ValueWrapper(coro::queue_produce_result::produced);
+    return ltest::ValueWrapper(coro::queue_produce_result::produced);
   }
 
-  std::optional<ValueWrapper> FollowUpPop(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpPop(int op_id) {
     auto it = ready_pop.find(op_id);
     if (it == ready_pop.end()) return std::nullopt;
     int v = it->second;
     ready_pop.erase(it);
 
     tl::expected<int, coro::queue_consume_result> e{v};
-    return ValueWrapper(e);
+    return ltest::ValueWrapper(e);
   }
 
   static auto GetDualMethods() {
     using S = LibcoroQueue;
-    DualMethodMap<S> m;
+    ltest::DualMethodMap<S> m;
 
-    DualRequestMethod<S> push_req = [](S* s, void* args, int op_id) {
+    ltest::DualRequestMethod<S> push_req = [](S* s, void* args, int op_id) {
       auto* tup = reinterpret_cast<std::tuple<int>*>(args);
       int v = std::get<0>(*tup);
       s->RequestPush(op_id, v);
     };
-    DualFollowUpMethod<S> push_fol = [](S* s, void*, int op_id) {
+    ltest::DualFollowUpMethod<S> push_fol = [](S* s, void*, int op_id) {
       return s->FollowUpPush(op_id);
     };
 
-    DualRequestMethod<S> pop_req = [](S* s, void*, int op_id) {
+    ltest::DualRequestMethod<S> pop_req = [](S* s, void*, int op_id) {
       s->RequestPop(op_id);
     };
-    DualFollowUpMethod<S> pop_fol = [](S* s, void*, int op_id) {
+    ltest::DualFollowUpMethod<S> pop_fol = [](S* s, void*, int op_id) {
       return s->FollowUpPop(op_id);
     };
 
-    m.emplace("push", DualBlockingMethod<S>{push_req, push_fol});
-    m.emplace("pop",  DualBlockingMethod<S>{pop_req, pop_fol});
+    m.emplace("push", ltest::DualBlockingMethod<S>{push_req, push_fol});
+    m.emplace("pop", ltest::DualBlockingMethod<S>{pop_req, pop_fol});
     return m;
   }
 };

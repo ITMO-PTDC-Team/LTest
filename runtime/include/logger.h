@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdio>
 #include <iostream>
 
 #ifdef DEBUG
@@ -7,6 +8,7 @@
 #define debug(...)
 #endif
 
+namespace ltest {
 struct Logger {
   bool verbose{};
 
@@ -24,3 +26,5 @@ struct Logger {
 void logger_init(bool verbose);
 
 Logger& log();
+
+}  // namespace ltest

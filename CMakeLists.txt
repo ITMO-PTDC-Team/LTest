@@ -19,10 +19,7 @@ set(CMAKE_CXX_FLAGS_RELWITHASSERT "${CMAKE_CXX_FLAGS_RELEASE} -UNDEBUG" CACHE ST
 set(CMAKE_CXX_FLAGS_DEBUG "-DDEBUG -g -ggdb3 -O0 -fno-omit-frame-pointer")
 set(CMAKE_WARN_FLAGS -Wall -Wextra -Werror -pedantic-errors)
 
-if(CMAKE_BUILD_TYPE MATCHES Debug)
-    message(STATUS "Debug mode ON")
-    set(CMAKE_ASAN_FLAGS -fsanitize=address -fsanitize=undefined -DADDRESS_SANITIZER)
-endif(CMAKE_BUILD_TYPE MATCHES Debug)
+#sanitizers give false positive when using preload
 
 if(LTEST_BUILD_TESTS)
     add_subdirectory(third_party)

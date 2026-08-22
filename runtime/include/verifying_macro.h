@@ -25,10 +25,18 @@
 namespace ltest {
 extern std::vector<TaskBuilder> task_builders;
 
-inline void LtestFail(const char* expr, const char* file, int line) {
+inline std::string FormatTestFailure(const char *expr, const char *file,
+                                     unsigned int line, const char *func) {
   std::ostringstream oss;
-  oss << "test failed: " << expr << " at " << file << ":" << line;
-  throw ltest::TestFailure(oss.str());
+  oss << "test failed: " << expr << " at " << file << ":" << line << " in "
+      << func;
+  return oss.str();
+}
+
+[[noreturn]] inline void LtestFail(const char *expr, const char *file,
+                                   unsigned int line, const char *func) {
+  SchedCtxGuard guard;
+  throw TestFailure(FormatTestFailure(expr, file, line, func));
 }
 }  // namespace ltest
 
@@ -38,7 +46,7 @@ inline void LtestFail(const char* expr, const char* file, int line) {
 #define as_atomic attr(ltest_atomic)
 
 #define rassert(expr) \
-  ((expr) ? (void)0 : ltest::LtestFail(#expr, __FILE__, __LINE__))
+  ((expr) ? (void)0 : ltest::LtestFail(#expr, __FILE__, __LINE__, __FUNCTION__))
 
 namespace ltest {
 
@@ -52,6 +60,12 @@ std::string toString(const T& a)
   return std::to_string(a);
 }
 
+template <typename T>
+std::string toString(const T &a)
+  requires(std::is_pointer_v<T>)
+{
+  return "ptr";
+}
 template <typename tuple_t, size_t... index>
 auto toStringListHelper(const tuple_t& t,
                         std::index_sequence<index...>) noexcept {
@@ -195,23 +209,11 @@ constexpr bool EmitDualRequestBeforeSuspend() {
   }
 }
 
-template <class Awaiter>
-constexpr bool CleanupBeforeTargetDestroy() {
-  if constexpr (requires {
-                  { Awaiter::ltest_cleanup_before_target_destroy }
-                      -> std::convertible_to<bool>;
-                }) {
-    return Awaiter::ltest_cleanup_before_target_destroy;
-  } else {
-    return false;
-  }
-}
-
 // ------------------------------------
 // Atomic helpers for dual wrapper.
 //
-// These functions access this_coro (shared_ptr), ltest_round_terminating,
-// block_manager — all of which contain load/store instructions.
+// These functions access this_coro (shared_ptr) and block_manager — both of
+// which contain load/store instructions.
 // They MUST be as_atomic so that the yield pass does NOT insert
 // CoroYield() inside them. Otherwise we get infinite recursion:
 //   wrapper load → CoroYield → this_coro load → CoroYield → ...
@@ -231,22 +233,6 @@ as_atomic inline void dual_emit_followup_done(ValueWrapper res) {
                            std::move(res));
 }
 
-as_atomic inline bool dual_is_terminating() {
-  return ltest_round_terminating;
-}
-
-as_atomic inline void dual_mark_terminated() {
-  this_coro->MarkFinishedDuringTermination();
-}
-
-as_atomic inline void dual_keep_alive(std::shared_ptr<void> p) {
-  this_coro->KeepAlive(std::move(p));
-}
-
-as_atomic inline void dual_defer_destroy(std::coroutine_handle<> h) {
-  this_coro->DeferDestroy(h);
-}
-
 as_atomic inline void dual_set_blocked(const BlockState& state) {
   this_coro->SetBlocked(state);
 }
@@ -260,10 +246,6 @@ as_atomic inline void dual_set_ready_wakeup_condition(
 
 as_atomic inline void dual_clear_wakeup_condition() {
   this_coro->clearWakeupCondition();
-}
-
-as_atomic inline void dual_set_cleanup_before_target_destroy(bool v) {
-  this_coro->SetCleanupBeforeTargetDestroy(v);
 }
 
 as_atomic inline void dual_unblock_all(std::intptr_t addr) {
@@ -281,12 +263,18 @@ template <typename Ret, typename Awaiter>
 inline ValueWrapper dual_finish_followup(Awaiter& aw) non_atomic {
   if constexpr (std::is_same_v<Ret, void>) {
     (void)aw.await_resume();
-    dual_emit_followup_done(void_v);
+    {
+      SchedCtxGuard guard;
+      dual_emit_followup_done(void_v);
+    }
     return void_v;
   } else {
     auto r = aw.await_resume();
     ValueWrapper vw{static_cast<Ret>(r)};
-    dual_emit_followup_done(vw);
+    {
+      SchedCtxGuard guard;
+      dual_emit_followup_done(vw);
+    }
     return vw;
   }
 }
@@ -304,19 +292,6 @@ struct TargetAwaitableMethod {
                         MethodPtr method_ptr) {
     auto wrapper = [method_ptr](Target* obj, Args... args) as_atomic
         -> ValueWrapper {
-      auto terminated_value = []() as_atomic -> ValueWrapper {
-        if constexpr (std::is_same_v<Ret, void>) {
-          return void_v;
-        } else {
-          return ValueWrapper(Ret{});
-        }
-      };
-
-      if (detail::dual_is_terminating()) {
-        detail::dual_mark_terminated();
-        return terminated_value();
-      }
-
       auto run_with = [&](auto& aw) as_atomic -> ValueWrapper {
         bool ready = aw.await_ready();
 
@@ -333,9 +308,13 @@ struct TargetAwaitableMethod {
           std::intptr_t addr;
           bool ready{false};
         };
-        auto st = std::make_shared<WaitState>();
-        st->addr = reinterpret_cast<std::intptr_t>(st.get());
-        detail::dual_set_ready_wakeup_condition(st);
+        std::shared_ptr<WaitState> st;
+        {
+          SchedCtxGuard guard;
+          st = std::make_shared<WaitState>();
+          st->addr = reinterpret_cast<std::intptr_t>(st.get());
+          detail::dual_set_ready_wakeup_condition(st);
+        }
 
         struct Waker {
           struct promise_type {
@@ -358,10 +337,12 @@ struct TargetAwaitableMethod {
           co_return;
         };
 
-        Waker w = make_waker(st);
-        std::coroutine_handle<> h = w.h;
-        detail::dual_defer_destroy(h);
-
+        std::coroutine_handle<> h;
+        {
+          SchedCtxGuard guard;
+          Waker w = make_waker(st);
+          h = w.h;
+        }
         bool suspended = true;
         using ASRet = decltype(aw.await_suspend(h));
         if constexpr (std::is_same_v<ASRet, bool>) {
@@ -390,7 +371,7 @@ struct TargetAwaitableMethod {
           }
         }
 
-        while (!detail::dual_is_terminating()) {
+        while (true) {
           if constexpr (requires { aw.ltest_drive_executor(); }) {
             aw.ltest_drive_executor();
           }
@@ -407,13 +388,6 @@ struct TargetAwaitableMethod {
           CoroYield();
         }
 
-        if (detail::dual_is_terminating() && !st->ready) {
-          detail::dual_try_unregister(aw);
-          detail::dual_clear_wakeup_condition();
-          detail::dual_mark_terminated();
-          return terminated_value();
-        }
-
         assert(st->ready);
         detail::dual_clear_wakeup_condition();
         if constexpr (std::is_same_v<Ret, void>) {
@@ -428,44 +402,22 @@ struct TargetAwaitableMethod {
           std::remove_cvref_t<std::invoke_result_t<MethodPtr, Target*, Args...>>;
 
       if constexpr (HasAwaitMethods<ReturnedT>) {
-        struct DirectAwaiterBox {
-          alignas(ReturnedT) std::byte storage[sizeof(ReturnedT)];
-          bool engaged{false};
-
-          ReturnedT* get() {
-            return std::launder(reinterpret_cast<ReturnedT*>(storage));
-          }
-
-          ~DirectAwaiterBox() {
-            if (engaged) {
-              get()->~ReturnedT();
-            }
-          }
-        };
-
-        auto box = std::make_shared<DirectAwaiterBox>();
-        ::new (box->storage)
-            ReturnedT(std::invoke(method_ptr, obj, std::forward<Args>(args)...));
-        box->engaged = true;
-        detail::dual_keep_alive(std::static_pointer_cast<void>(box));
-        return run_with(*box->get());
+        ReturnedT awaiter_obj(
+            std::invoke(method_ptr, obj, std::forward<Args>(args)...));
+        return run_with(awaiter_obj);
       } else {
         auto tmp = std::invoke(method_ptr, obj, std::forward<Args>(args)...);
         using AwaitableT = std::decay_t<decltype(tmp)>;
-
-        auto awaitable = std::make_shared<AwaitableT>(std::move(tmp));
-        detail::dual_keep_alive(std::static_pointer_cast<void>(awaitable));
-
-        decltype(auto) aw = ToAwaiter(std::move(*awaitable));
+        AwaitableT awaitable(std::move(tmp));
+        decltype(auto) aw = ToAwaiter(std::move(awaitable));
         using AwT = decltype(aw);
 
         if constexpr (std::is_lvalue_reference_v<AwT>) {
           return run_with(aw);
         } else {
           using AwaiterT = std::decay_t<AwT>;
-          auto awaiter = std::make_shared<AwaiterT>(std::move(aw));
-          detail::dual_keep_alive(std::static_pointer_cast<void>(awaiter));
-          return run_with(*awaiter);
+          AwaiterT awaiter(std::move(aw));
+          return run_with(awaiter);
         }
       }
     };
@@ -499,20 +451,6 @@ struct TargetDualMethod {
                    MethodPtr method_ptr) {
     auto wrapper = [method_ptr](Target* obj, Args... args) non_atomic
         -> ValueWrapper {
-      auto terminated_value = []() as_atomic -> ValueWrapper {
-        if constexpr (std::is_same_v<Ret, void>) {
-          return void_v;
-        } else {
-          return ValueWrapper(Ret{});
-        }
-      };
-
-      // Cleanup path: do not start a new dual wait during round termination.
-      if (detail::dual_is_terminating()) {
-        detail::dual_mark_terminated();
-        return terminated_value();
-      }
-
       // Core runner over a concrete awaiter object (has await_*).
       auto run_with = [&](auto& aw, bool emit_request_before_suspend) non_atomic
           -> ValueWrapper {
@@ -520,8 +458,11 @@ struct TargetDualMethod {
 
         // ---- Immediate path ----
         if (ready) {
-          detail::dual_emit_request_done();
-          detail::dual_emit_followup_invoke();
+          {
+            SchedCtxGuard guard;
+            detail::dual_emit_request_done();
+            detail::dual_emit_followup_invoke();
+          }
           return detail::dual_finish_followup<Ret>(aw);
         }
 
@@ -529,9 +470,13 @@ struct TargetDualMethod {
           std::intptr_t addr;
           bool ready{false};
         };
-        auto st = std::make_shared<DualWaitState>();
-        st->addr = reinterpret_cast<std::intptr_t>(st.get());
-        detail::dual_set_ready_wakeup_condition(st);
+        std::shared_ptr<DualWaitState> st;
+        {
+          SchedCtxGuard guard;
+          st = std::make_shared<DualWaitState>();
+          st->addr = reinterpret_cast<std::intptr_t>(st.get());
+          detail::dual_set_ready_wakeup_condition(st);
+        }
 
         struct Waker {
           struct promise_type {
@@ -554,11 +499,12 @@ struct TargetDualMethod {
           co_return;
         };
 
-        Waker w = make_waker(st);
-        std::coroutine_handle<> h = w.h;
-
-        // Defer handle destruction to end-of-round cleanup.
-        detail::dual_defer_destroy(h);
+        std::coroutine_handle<> h;
+        {
+          SchedCtxGuard guard;
+          Waker w = make_waker(st);
+          h = w.h;
+        }
 
         using ASRet = decltype(aw.await_suspend(h));
         const bool request_before_suspend = emit_request_before_suspend;
@@ -570,6 +516,7 @@ struct TargetDualMethod {
         // await_suspend(). Awaiters that know this is required opt in with
         // ltest_emit_request_before_suspend.
         if (request_before_suspend) {
+          SchedCtxGuard guard;
           detail::dual_emit_request_done();
         }
 
@@ -592,51 +539,50 @@ struct TargetDualMethod {
 
         if (!suspended) {
           // No waiting => complete now.
-          if (!request_before_suspend) {
-            detail::dual_emit_request_done();
+          {
+            SchedCtxGuard guard;
+            if (!request_before_suspend) {
+              detail::dual_emit_request_done();
+            }
+            detail::dual_emit_followup_invoke();
           }
-          detail::dual_emit_followup_invoke();
           return detail::dual_finish_followup<Ret>(aw);
         }
 
         // Waiting => request phase finished now.
         if (!request_before_suspend) {
+          SchedCtxGuard guard;
           detail::dual_emit_request_done();
         }
 
         // Block current LTest task until waker runs.
-        while (!detail::dual_is_terminating()) {
+        while (true) {
           if constexpr (requires { aw.ltest_drive_executor(); }) {
             aw.ltest_drive_executor();
           }
           if (st->ready) break;
 
-          detail::dual_set_blocked(BlockState{st->addr, 0});
+          {
+            SchedCtxGuard guard;
+            detail::dual_set_blocked(BlockState{st->addr, 0});
 
-          // If waker raced with SetBlocked() (woke before we enqueued),
-          // remove ourselves from the queue.
-          if (st->ready) {
-            detail::dual_unblock_all(st->addr);
-            break;
+            // If waker raced with SetBlocked() (woke before we enqueued),
+            // remove ourselves from the queue.
+            if (st->ready) {
+              detail::dual_unblock_all(st->addr);
+              break;
+            }
           }
 
           CoroYield();
         }
 
-        // Termination: exit without follow-up events only if the target
-        // awaiter was not already completed. Some VK awaiters reset their
-        // registration state when awakened, so unregistering an already-ready
-        // awaiter is not valid.
-        if (detail::dual_is_terminating() && !st->ready) {
-          detail::dual_try_unregister(aw);
-          detail::dual_clear_wakeup_condition();
-          detail::dual_mark_terminated();
-          return terminated_value();
-        }
-
         assert(st->ready);
-        detail::dual_clear_wakeup_condition();
-        detail::dual_emit_followup_invoke();
+        {
+          SchedCtxGuard guard;
+          detail::dual_clear_wakeup_condition();
+          detail::dual_emit_followup_invoke();
+        }
         return detail::dual_finish_followup<Ret>(aw);
       };
 
@@ -644,52 +590,24 @@ struct TargetDualMethod {
           std::remove_cvref_t<std::invoke_result_t<MethodPtr, Target*, Args...>>;
 
       if constexpr (HasAwaitMethods<ReturnedT>) {
-        struct DirectAwaiterBox {
-          alignas(ReturnedT) std::byte storage[sizeof(ReturnedT)];
-          bool engaged{false};
-
-          ReturnedT* get() {
-            return std::launder(reinterpret_cast<ReturnedT*>(storage));
-          }
-
-          ~DirectAwaiterBox() {
-            if (engaged) {
-              get()->~ReturnedT();
-            }
-          }
-        };
-
-        auto box = std::make_shared<DirectAwaiterBox>();
-        ::new (box->storage)
-            ReturnedT(std::invoke(method_ptr, obj, std::forward<Args>(args)...));
-        box->engaged = true;
-        detail::dual_keep_alive(std::static_pointer_cast<void>(box));
-        detail::dual_set_cleanup_before_target_destroy(
-            CleanupBeforeTargetDestroy<ReturnedT>());
-        return run_with(*box->get(),
+        ReturnedT awaiter_obj(
+            std::invoke(method_ptr, obj, std::forward<Args>(args)...));
+        return run_with(awaiter_obj,
                         EmitDualRequestBeforeSuspend<ReturnedT>());
       } else {
         auto tmp = std::invoke(method_ptr, obj, std::forward<Args>(args)...);
         using AwaitableT = std::decay_t<decltype(tmp)>;
-
-        auto awaitable = std::make_shared<AwaitableT>(std::move(tmp));
-        detail::dual_keep_alive(std::static_pointer_cast<void>(awaitable));
-
-        decltype(auto) aw = ToAwaiter(std::move(*awaitable));
+        AwaitableT awaitable(std::move(tmp));
+        decltype(auto) aw = ToAwaiter(std::move(awaitable));
         using AwT = decltype(aw);
 
         if constexpr (std::is_lvalue_reference_v<AwT>) {
           using AwaiterT = std::remove_reference_t<AwT>;
-          detail::dual_set_cleanup_before_target_destroy(
-              CleanupBeforeTargetDestroy<AwaiterT>());
           return run_with(aw, EmitDualRequestBeforeSuspend<AwaiterT>());
         } else {
           using AwaiterT = std::decay_t<AwT>;
-          auto awaiter = std::make_shared<AwaiterT>(std::move(aw));
-          detail::dual_keep_alive(std::static_pointer_cast<void>(awaiter));
-          detail::dual_set_cleanup_before_target_destroy(
-              CleanupBeforeTargetDestroy<AwaiterT>());
-          return run_with(*awaiter, EmitDualRequestBeforeSuspend<AwaiterT>());
+          AwaiterT awaiter(std::move(aw));
+          return run_with(awaiter, EmitDualRequestBeforeSuspend<AwaiterT>());
         }
       }
     };
@@ -705,20 +623,24 @@ struct TargetDualMethod {
       return coro;
     };
 
-    ltest::task_builders.push_back(
+    task_builders.push_back(
         TaskBuilder(std::string(method_name), builder));
   }
 };
 
 }  // namespace ltest
 
-#define declare_task_name(symbol) \
-  static const char* symbol##_task_name = #symbol
+#define LTEST_REGISTRATION_GLOBAL \
+  __attribute__((section("ltest_registration_globals")))
+
+#define declare_task_name(symbol)                                      \
+  static const char* symbol##_task_name LTEST_REGISTRATION_GLOBAL = #symbol
 
 #define target_method(gen, ret, cls, symbol, ...)          \
   declare_task_name(symbol);                               \
-  ltest::TargetMethod<ret, cls __VA_OPT__(, ) __VA_ARGS__> \
-      symbol##_ltest_method_cls{symbol##_task_name, gen, &cls::symbol};
+  ltest::TargetMethod<ret, cls __VA_OPT__(, ) __VA_ARGS__>              \
+      symbol##_ltest_method_cls LTEST_REGISTRATION_GLOBAL{             \
+          symbol##_task_name, gen, &cls::symbol};
 
 #define stringify_detail(x) #x
 #define stringify(x) stringify_detail(x)
@@ -730,10 +652,12 @@ struct TargetDualMethod {
 
 #define target_method_async(gen, ret, cls, symbol, ...)              \
   declare_task_name(symbol);                                          \
-  ltest::TargetAwaitableMethod<ret, cls __VA_OPT__(, ) __VA_ARGS__>   \
-      symbol##_ltest_async_method_cls{symbol##_task_name, gen, &cls::symbol};
+  ltest::TargetAwaitableMethod<ret, cls __VA_OPT__(, ) __VA_ARGS__>     \
+      symbol##_ltest_async_method_cls LTEST_REGISTRATION_GLOBAL{       \
+          symbol##_task_name, gen, &cls::symbol};
 
 #define target_method_dual(gen, ret, cls, symbol, ...)         \
   declare_task_name(symbol);                                   \
-  ltest::TargetDualMethod<ret, cls __VA_OPT__(, ) __VA_ARGS__> \
-      symbol##_ltest_dual_method_cls{symbol##_task_name, gen, &cls::symbol};
+  ltest::TargetDualMethod<ret, cls __VA_OPT__(, ) __VA_ARGS__>          \
+      symbol##_ltest_dual_method_cls LTEST_REGISTRATION_GLOBAL{        \
+          symbol##_task_name, gen, &cls::symbol};

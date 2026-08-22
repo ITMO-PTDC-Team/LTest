@@ -4,6 +4,15 @@ include_directories(specs)
 set (PASS YieldPass)
 set (PASS_PATH ${CMAKE_BINARY_DIR}/codegen/lib${PASS}.so)
 
+set(EXTERNAL_PASS YieldPassExternal)
+set(EXTERNAL_PASS_PATH ${CMAKE_BINARY_DIR}/codegen/lib${EXTERNAL_PASS}.so)
+
+set(GLOBALS_PASS GlobalVarsPass)
+set(GLOBALS_PASS_PATH ${CMAKE_BINARY_DIR}/codegen/lib${GLOBALS_PASS}.so)
+
+set(RESMOCK_PASS ResMockPass)
+set(RESMOCK_PASS_PATH ${CMAKE_BINARY_DIR}/codegen/lib${RESMOCK_PASS}.so)
+
 set (COPASS CoYieldPass)
 set (COPASS_PATH ${CMAKE_BINARY_DIR}/codegen/lib${COPASS}.so)
 
@@ -14,10 +23,10 @@ find_package(Boost REQUIRED COMPONENTS context)
 
 # prefix the actual source file name with '__tmp_' which will be generate by clang pass tool
 if (APPLY_CLANG_TOOL)
-set(CLANG_TOOL_TMP_PREFIX "__tmp_")
-else()
-set(CLANG_TOOL_TMP_PREFIX "")
-endif()
+    set(CLANG_TOOL_TMP_PREFIX "__tmp_")
+else ()
+    set(CLANG_TOOL_TMP_PREFIX "")
+endif ()
 
 function(verify_target_without_plugin target)
     if (APPLY_CLANG_TOOL)
@@ -29,8 +38,9 @@ function(verify_target_without_plugin target)
             COMMAND ${CLANG_TOOL_EXECUTABLE}
                 -p=${CMAKE_BINARY_DIR} # passing compilation database, make sure CMAKE_EXPORT_COMPILE_COMMANDS flag is set
                     --temp-prefix ${CLANG_TOOL_TMP_PREFIX}
-                    --replace-names ::std::mutex,::std::shared_mutex,::std::condition_variable,::std::atomic
-                    --insert-names  ltest::mutex,ltest::shared_mutex,ltest::condition_variable,ltest::latomic
+                    --replace-names ::std::atomic
+                    --insert-names  ltest::latomic
+                    ${CLANG_TOOL_EXTRA_ARGS}
                     ${CMAKE_CURRENT_SOURCE_DIR}/${source_name}
             DEPENDS ${CLANG_TOOL}
             COMMENT "Running Clang Pass Tool on ${source_name}"
@@ -45,8 +55,8 @@ function(verify_target_without_plugin target)
         )
     else()
         add_executable(${target} ${source_name})
-    endif()
-    add_dependencies(${target} runtime plugin_pass)
+    endif ()
+    add_dependencies(${target} runtime preload)
     target_include_directories(${target} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/third_party)
     target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
     target_compile_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
@@ -56,15 +66,36 @@ endfunction()
 function(verify_target target)
     verify_target_without_plugin(${target})
     add_dependencies(${target} runtime plugin_pass)
+    target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
     target_compile_options(${target} PRIVATE -fpass-plugin=${PASS_PATH} ${CMAKE_ASAN_FLAGS})
+endfunction()
+
+function(verify_target_with_global_reset target)
+    verify_target_without_plugin(${target})
+    add_dependencies(${target} globalvars_plugin_pass)
+    target_compile_options(${target} PRIVATE
+            -fpass-plugin=${GLOBALS_PASS_PATH} ${CMAKE_ASAN_FLAGS})
+endfunction()
+
+function(verify_external_target target)
+    verify_target_without_plugin(${target})
+    add_dependencies(${target} runtime external_plugin_pass preload_with_main)
+    target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
+    target_compile_options(${target} PRIVATE -fpass-plugin=${EXTERNAL_PASS_PATH} ${CMAKE_ASAN_FLAGS})
+    #almost always we rely here only on assertions
+    target_compile_options(${target} PRIVATE -UNDEBUG)
+    target_link_options(${target} PRIVATE
+            "-Wl,--export-dynamic"
+    )
 endfunction()
 
 function(verify_cotarget target)
     verify_target_without_plugin(${target})
     add_dependencies(${target} runtime coplugin_pass)
-    target_compile_options(${target} PRIVATE  -fplugin=${COPASS_PATH} 
-    -fpass-plugin=${COPASS_PATH} -mllvm -coroutine-file=${CMAKE_CURRENT_SOURCE_DIR}/${target}.yml
+    target_compile_options(${target} PRIVATE
+#    -fpass-plugin=${COPASS_PATH} -mllvm -coroutine-file=${CMAKE_CURRENT_SOURCE_DIR}/${target}.yml
      ${CMAKE_ASAN_FLAGS})
+    target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
 endfunction()
 
 function(add_integration_test test_name label fail)
@@ -77,9 +108,28 @@ function(add_integration_test test_name label fail)
     set_tests_properties("${full_name}"
         PROPERTIES
         WILL_FAIL ${fail}
-        LABELS "${label}")
+        LABELS "${label}"
+        ENVIRONMENT_MODIFICATION "LD_PRELOAD=string_append:${CMAKE_BINARY_DIR}/syscall_intercept/libpreload.so"
+)
+endfunction()
+
+function(add_external_integration_test test_name label fail)
+    set(full_name "${label}_${test_name}")
+    set(test_command ${ARGN})
+    add_test(
+            NAME "${full_name}"
+            COMMAND ${test_command}
+    )
+    set_tests_properties("${full_name}"
+            PROPERTIES
+            WILL_FAIL ${fail}
+            LABELS "${label}"
+            ENVIRONMENT_MODIFICATION "LD_PRELOAD=string_append:${CMAKE_BINARY_DIR}/syscall_intercept/libpreload_with_main.so"
+    )
 endfunction()
 
 add_subdirectory(targets)
+#add_subdirectory(cpp-concurrent)
 add_subdirectory(dual)
+#add_subdirectory(sctbench/concurrent-software-benchmarks)
 add_subdirectory(blocking)

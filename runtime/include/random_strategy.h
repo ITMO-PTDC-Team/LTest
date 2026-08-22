@@ -6,6 +6,8 @@
 #include "lib.h"
 #include "pick_strategy.h"
 
+namespace ltest {
+
 // Allows a random thread to work.
 // Randoms new task.
 template <typename TargetObj, StrategyTaskVerifier Verifier>
@@ -33,6 +35,9 @@ struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
       if (!this->AllowNewTasks() && is_free) return false;
       if (!threads[i].empty() && threads[i].back()->IsBlocked()) return false;
       if (!is_free && !this->VerifyExistingTask(threads[i].back(), i)) {
+        return false;
+      }
+      if (!this->CanThreadContinue(i) || !this->NewTaskAreEnabled(i)) {
         return false;
       }
       return true;
@@ -103,7 +108,16 @@ struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
     pick_weights.clear();
   }
 
+  void UpdateSimulatorState(size_t thread_id, Scheduler::SeqHistory& seq,
+                            FullHistoryWithThreads& full) override {
+    BaseStrategyWithThreads<TargetObj, Verifier>::UpdateSimulatorState(
+        thread_id, seq, full);
+    weights.resize(this->threads.size(), 1);
+  }
+
  private:
   std::vector<int> weights;
   std::vector<int> pick_weights;
 };
+
+}  // namespace ltest

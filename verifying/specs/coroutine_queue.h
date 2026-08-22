@@ -73,47 +73,47 @@ struct CoroutineQueue {
   }
 
   // ----- follow-up handlers -----
-  std::optional<ValueWrapper> FollowUpSend(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpSend(int op_id) {
     if (!ready_send.contains(op_id)) return std::nullopt;
     ready_send.erase(op_id);
-    return void_v;
+    return ltest::void_v;
   }
 
-  std::optional<ValueWrapper> FollowUpReceive(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpReceive(int op_id) {
     auto it = ready_receive_value.find(op_id);
     if (it == ready_receive_value.end()) return std::nullopt;
     int v = it->second;
     ready_receive_value.erase(it);
-    return ValueWrapper(v);
+    return ltest::ValueWrapper(v);
   }
 
   // Dual methods table
   static auto GetDualMethods() {
     using SpecT = CoroutineQueue;
-    using MapT = DualMethodMap<SpecT>;
+    using MapT = ltest::DualMethodMap<SpecT>;
 
     // send(int)
-    DualRequestMethod<SpecT> send_req = [](SpecT* s, void* args, int op_id) {
+    ltest::DualRequestMethod<SpecT> send_req = [](SpecT* s, void* args, int op_id) {
       auto real_args = reinterpret_cast<std::tuple<int>*>(args);
       int v = std::get<0>(*real_args);
       s->RequestSend(op_id, v);
     };
-    DualFollowUpMethod<SpecT> send_fol = [](SpecT* s, void* /*args*/,
+    ltest::DualFollowUpMethod<SpecT> send_fol = [](SpecT* s, void* /*args*/,
                                             int op_id) {
       return s->FollowUpSend(op_id);
     };
 
     // receive()
-    DualRequestMethod<SpecT> recv_req =
+    ltest::DualRequestMethod<SpecT> recv_req =
         [](SpecT* s, void* /*args*/, int op_id) { s->RequestReceive(op_id); };
-    DualFollowUpMethod<SpecT> recv_fol = [](SpecT* s, void* /*args*/,
+    ltest::DualFollowUpMethod<SpecT> recv_fol = [](SpecT* s, void* /*args*/,
                                             int op_id) {
       return s->FollowUpReceive(op_id);
     };
 
     MapT m;
-    m.emplace("send", DualBlockingMethod<SpecT>{send_req, send_fol});
-    m.emplace("receive", DualBlockingMethod<SpecT>{recv_req, recv_fol});
+    m.emplace("send", ltest::DualBlockingMethod<SpecT>{send_req, send_fol});
+    m.emplace("receive", ltest::DualBlockingMethod<SpecT>{recv_req, recv_fol});
     return m;
   }
 };

@@ -18,10 +18,10 @@ struct LinearWmmEquals {
 };
 
 struct LitmusTwoThreadsSpec {
-  using method_t = std::function<ValueWrapper(LitmusTwoThreadsSpec *, void *)>;
+  using method_t = std::function<ltest::ValueWrapper(LitmusTwoThreadsSpec *, void *)>;
   static auto GetMethods() {
-    method_t func = [](LitmusTwoThreadsSpec *, void *) -> ValueWrapper {
-      return void_v;
+    method_t func = [](LitmusTwoThreadsSpec *, void *) -> ltest::ValueWrapper {
+      return ltest::void_v;
     };
     return std::map<std::string, method_t>{
         {"A", func},
@@ -32,10 +32,10 @@ struct LitmusTwoThreadsSpec {
 
 struct LitmusThreeThreadsSpec {
   using method_t =
-      std::function<ValueWrapper(LitmusThreeThreadsSpec *, void *)>;
+      std::function<ltest::ValueWrapper(LitmusThreeThreadsSpec *, void *)>;
   static auto GetMethods() {
-    method_t func = [](LitmusThreeThreadsSpec *, void *) -> ValueWrapper {
-      return void_v;
+    method_t func = [](LitmusThreeThreadsSpec *, void *) -> ltest::ValueWrapper {
+      return ltest::void_v;
     };
     return std::map<std::string, method_t>{
         {"A", func},

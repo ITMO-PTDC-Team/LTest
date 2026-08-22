@@ -47,6 +47,80 @@ jobs:
           cmake --build build --target verify-targets verify-blocking verify-dual
       - name: "Verifying tests"
         run: ctest --parallel 4 --test-dir build -L "verify" -V
+  verifying-dual-libcoro:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: silkeh/clang:19
+      options: --user root
+    timeout-minutes: 30
+    steps:
+      - name: Install deps
+        run: |
+          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev libclang-19-dev \
+            protobuf-compiler libboost-context-dev pkg-config libcapstone-dev \
+            libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev \
+            libdouble-conversion-dev libfast-float-dev libevent-dev libssl-dev libfmt-dev \
+            libgoogle-glog-dev zlib1g-dev && \
+          git clone --depth=1 https://github.com/Kirillog/syscall_intercept.git &&  \
+          cmake syscall_intercept -G Ninja -B syscall_intercept/build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang && \
+          cmake --build syscall_intercept/build --target install
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Install libcoro
+        run: git clone --depth=1 https://github.com/jbaldwin/libcoro.git /tmp/libcoro
+      - name: Build libcoro dual tests
+        run: |
+          cmake -G Ninja -B build-dual-libcoro -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-dual-libcoro --target verify-dual-libcoro
+      - name: Run libcoro dual tests
+        run: ctest --parallel 4 --test-dir build-dual-libcoro -L "dual-libcoro" -V --output-on-failure
+  verifying-dual-folly:
+    runs-on: ubuntu-latest
+    env:
+      LTEST_BUILD_PATH: ${{ github.workspace }}/build-dual-folly
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: silkeh/clang:19
+      options: --user root
+    timeout-minutes: 40
+    steps:
+      - name: Install deps
+        run: |
+          apt update && apt install -y git ninja-build valgrind libgoogle-glog-dev libsnappy-dev libclang-19-dev \
+                    protobuf-compiler libboost-context-dev pkg-config libcapstone-dev \
+                    libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev \
+                    libdouble-conversion-dev libfast-float-dev libevent-dev libssl-dev libfmt-dev \
+                    libgoogle-glog-dev zlib1g-dev && \
+          git clone --depth=1 https://github.com/Kirillog/syscall_intercept.git &&  \
+          cmake syscall_intercept -G Ninja -B syscall_intercept/build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang && \
+          cmake --build syscall_intercept/build --target install
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Build folly ltest dependencies
+        run: |
+          cmake -G Ninja -B "${LTEST_BUILD_PATH}" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "${LTEST_BUILD_PATH}" --target plugin_pass runtime
+      - name: Install folly
+        run: |
+          git clone --depth=1 https://github.com/Kirillog/folly.git /tmp/folly
+          cmake /tmp/folly -G Ninja -B /tmp/folly-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_STANDARD=20 \
+            -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          cmake --build /tmp/folly-build --target install
+      - name: Configure folly dual tests
+        run: cmake -G Ninja -B "${LTEST_BUILD_PATH}" -DCMAKE_BUILD_TYPE=Release
+      - name: Build folly dual tests
+        run: cmake --build "${LTEST_BUILD_PATH}" --target verify-dual-folly
+      - name: Run stable folly dual tests
+        run: |
+          ctest --parallel 4 --test-dir "${LTEST_BUILD_PATH}" -L "dual-folly" -V --output-on-failure \
+            -E "verify_folly_coro_bounded_queue_|verify_folly_coro_unbounded_queue_weighted_random_t2"
   litmus-test:
     runs-on: ubuntu-latest
     defaults:
@@ -109,12 +183,6 @@ jobs:
           cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --target verifying/blocking/folly_rwspinlock verifying/blocking/folly_sharedmutex \
             verifying/blocking/folly_flatcombining_queue
-      - name: Run folly rwspinlock with pct strategy
+      - name: Run folly tests
         run: |
-          ./scripts/check.sh 0 ./build/verifying/blocking/folly_rwspinlock --strategy pct --rounds 10000
-      - name: Run folly shared_mutex with pct strategy
-        run: |
-          ./scripts/check.sh 0 ./build/verifying/blocking/folly_sharedmutex --strategy pct --rounds 10000
-      - name: Run folly flatcombining queue with pct strategy
-        run: |
-          ./scripts/check.sh 0 ./build/verifying/blocking/folly_flatcombining_queue --strategy pct --rounds 10000
+          ctest --parallel 4 --test-dir build -L "^folly$" -V

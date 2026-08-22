@@ -129,6 +129,204 @@ function(add_integration_test_dual test_name label fail)
     add_integration_test(${test_name} ${label} ${fail} ${ARGN})
 endfunction()
 
+set(LTEST_DUAL_TEST_TIMEOUT "240" CACHE STRING
+        "Timeout in seconds for each dual integration test")
+
+function(add_dual_matrix_test group target variant)
+    if(NOT TARGET ${target})
+        return()
+    endif()
+
+    set(test_name "${target}_${variant}")
+    add_integration_test_dual("${test_name}" "verify" FALSE
+            ${target} ${ARGN} --deadlock_policy=explore
+    )
+    set_tests_properties("verify_${test_name}" PROPERTIES
+            LABELS "verify;dual;${group}"
+            TIMEOUT ${LTEST_DUAL_TEST_TIMEOUT}
+    )
+endfunction()
+
+function(add_folly_default_matrix target)
+    add_dual_matrix_test(dual-folly ${target} random_t2
+            --strategy random --threads 2 --tasks 4 --rounds 40 --seed 291)
+    add_dual_matrix_test(dual-folly ${target} pct_t2
+            --strategy pct --threads 2 --tasks 4 --rounds 30 --seed 292)
+    add_dual_matrix_test(dual-folly ${target} weighted_t2
+            --strategy random --threads 2 --weights 3,1 --tasks 4
+            --rounds 30 --seed 293)
+    add_dual_matrix_test(dual-folly ${target} rr_t2
+            --strategy rr --threads 2 --tasks 4 --rounds 30 --seed 294)
+    add_dual_matrix_test(dual-folly ${target} tla_t2
+            --strategy tla --threads 2 --tasks 3 --switches 3 --rounds 10
+            --seed 295)
+    add_dual_matrix_test(dual-folly ${target} pct_min_t2
+            --strategy pct --threads 2 --tasks 4 --rounds 20
+            --minimize=true --exploration_runs=2 --minimization_runs=1
+            --seed 301)
+endfunction()
+
+function(add_folly_shared_promise_matrix target)
+    add_dual_matrix_test(dual-folly ${target} random_t1
+            --strategy random --threads 1 --tasks 2 --rounds 5 --seed 321)
+    add_dual_matrix_test(dual-folly ${target} pct_t1
+            --strategy pct --threads 1 --tasks 2 --rounds 5 --seed 322)
+    add_dual_matrix_test(dual-folly ${target} rr_t1
+            --strategy rr --threads 1 --tasks 2 --rounds 5 --seed 323)
+endfunction()
+
+function(add_folly_shared_mutex_matrix target)
+    add_dual_matrix_test(dual-folly ${target} weighted_t2
+            --strategy random --threads 2 --weights 3,1 --tasks 4
+            --rounds 20 --seed 401)
+    add_dual_matrix_test(dual-folly ${target} pct_t3
+            --strategy pct --threads 3 --tasks 6 --rounds 20 --seed 402)
+    add_dual_matrix_test(dual-folly ${target} rr_t2
+            --strategy rr --threads 2 --tasks 5 --rounds 30 --seed 411)
+    add_dual_matrix_test(dual-folly ${target} tla_t2
+            --strategy tla --threads 2 --tasks 5 --switches 4 --rounds 20)
+    add_dual_matrix_test(dual-folly ${target} pct_min_t3
+            --strategy pct --threads 3 --tasks 6 --rounds 20
+            --minimize=true --exploration_runs=4 --minimization_runs=2)
+endfunction()
+
+function(add_folly_bounded_queue_matrix target)
+    add_dual_matrix_test(dual-folly ${target} random_t2
+            --strategy random --threads 2 --tasks 4 --rounds 20 --seed 501)
+    add_dual_matrix_test(dual-folly ${target} pct_t2
+            --strategy pct --threads 2 --tasks 2 --rounds 5)
+    add_dual_matrix_test(dual-folly ${target} rr_t2
+            --strategy rr --threads 2 --tasks 4 --rounds 10)
+    add_dual_matrix_test(dual-folly ${target} tla_t2
+            --strategy tla --threads 2 --tasks 4 --switches 4 --rounds 5)
+    add_dual_matrix_test(dual-folly ${target} random_min_t2
+            --strategy random --threads 2 --tasks 4 --rounds 15
+            --minimize=true --exploration_runs=3 --minimization_runs=2)
+endfunction()
+
+function(add_folly_mutex_matrix target)
+    add_dual_matrix_test(dual-folly ${target} random_t2
+            --strategy random --threads 2 --tasks 4 --rounds 30 --seed 311)
+    add_dual_matrix_test(dual-folly ${target} pct_t2
+            --strategy pct --threads 2 --tasks 4 --rounds 30 --seed 312)
+    add_dual_matrix_test(dual-folly ${target} rr_t2
+            --strategy rr --threads 2 --tasks 4 --rounds 20 --seed 313)
+    add_dual_matrix_test(dual-folly ${target} tla_t2
+            --strategy tla --threads 2 --tasks 5 --switches 4 --rounds 20)
+    add_dual_matrix_test(dual-folly ${target} pct_min_t2
+            --strategy pct --threads 2 --tasks 4 --rounds 15
+            --minimize=true --exploration_runs=2 --minimization_runs=1
+            --seed 314)
+endfunction()
+
+function(add_folly_unbounded_queue_matrix target)
+    add_dual_matrix_test(dual-folly ${target} weighted_random_t2
+            --strategy random --threads 2 --weights 5,1 --tasks 2 --rounds 5)
+    add_dual_matrix_test(dual-folly ${target} random_t1
+            --strategy random --threads 1 --tasks 2 --rounds 10)
+    add_dual_matrix_test(dual-folly ${target} rr_t1
+            --strategy rr --threads 1 --tasks 2 --rounds 10)
+    add_dual_matrix_test(dual-folly ${target} tla_t2
+            --strategy tla --threads 2 --tasks 2 --switches 4 --rounds 10)
+    add_dual_matrix_test(dual-folly ${target} tla_min_t2
+            --strategy tla --threads 2 --tasks 2 --switches 4 --rounds 5
+            --minimize=true --exploration_runs=3 --minimization_runs=2)
+endfunction()
+
+function(add_libcoro_default_matrix target)
+    add_dual_matrix_test(dual-libcoro ${target} random_t3
+            --strategy random --threads 3 --tasks 8 --rounds 60)
+    add_dual_matrix_test(dual-libcoro ${target} pct_t3
+            --strategy pct --threads 3 --tasks 8 --rounds 40)
+    add_dual_matrix_test(dual-libcoro ${target} weighted_t3
+            --strategy random --threads 3 --weights 3,1,2 --tasks 8
+            --rounds 40)
+    add_dual_matrix_test(dual-libcoro ${target} rr_t2
+            --strategy rr --threads 2 --tasks 6 --rounds 30)
+    add_dual_matrix_test(dual-libcoro ${target} tla_t2
+            --strategy tla --threads 2 --tasks 5 --switches 4 --rounds 15)
+    add_dual_matrix_test(dual-libcoro ${target} pct_min_t3
+            --strategy pct --threads 3 --tasks 8 --rounds 30
+            --minimize=true --exploration_runs=4 --minimization_runs=2)
+endfunction()
+
+function(add_libcoro_shared_mutex_matrix target)
+    add_dual_matrix_test(dual-libcoro ${target} random_t2
+            --strategy random --threads 2 --tasks 4 --rounds 20)
+    add_dual_matrix_test(dual-libcoro ${target} weighted_t2
+            --strategy random --threads 2 --weights 3,1 --tasks 4
+            --rounds 20)
+    add_dual_matrix_test(dual-libcoro ${target} random_t3
+            --strategy random --threads 3 --tasks 6 --rounds 20)
+    add_dual_matrix_test(dual-libcoro ${target} weighted_t3
+            --strategy random --threads 3 --weights 3,1,2 --tasks 6
+            --rounds 20)
+    add_dual_matrix_test(dual-libcoro ${target} rr_t2
+            --strategy rr --threads 2 --tasks 6 --rounds 30)
+endfunction()
+
+function(add_libcoro_mutex_matrix target)
+    add_dual_matrix_test(dual-libcoro ${target} random_t2
+            --strategy random --threads 2 --tasks 4 --rounds 40 --seed 203)
+    add_dual_matrix_test(dual-libcoro ${target} pct_t2
+            --strategy pct --threads 2 --tasks 5 --rounds 20 --seed 202)
+    add_dual_matrix_test(dual-libcoro ${target} rr_t2
+            --strategy rr --threads 2 --tasks 4 --rounds 20 --seed 204)
+    add_dual_matrix_test(dual-libcoro ${target} random_min_t2
+            --strategy random --threads 2 --tasks 4 --rounds 15
+            --minimize=true --exploration_runs=2 --minimization_runs=1
+            --seed 206)
+endfunction()
+
+function(add_libcoro_queue_matrix target)
+    add_dual_matrix_test(dual-libcoro ${target} random_t2
+            --strategy random --threads 2 --tasks 4 --rounds 40 --seed 111)
+    add_dual_matrix_test(dual-libcoro ${target} pct_t2
+            --strategy pct --threads 2 --tasks 4 --rounds 30 --seed 112)
+    add_dual_matrix_test(dual-libcoro ${target} rr_t2
+            --strategy rr --threads 2 --tasks 4 --rounds 30 --seed 113)
+    add_dual_matrix_test(dual-libcoro ${target} tla_t2
+            --strategy tla --threads 2 --tasks 2 --switches 2 --rounds 5
+            --seed 114)
+    add_dual_matrix_test(dual-libcoro ${target} pct_min_t2
+            --strategy pct --threads 2 --tasks 4 --rounds 15
+            --minimize=true --exploration_runs=2 --minimization_runs=1
+            --seed 115)
+endfunction()
+
+function(add_libcoro_semaphore_matrix target)
+    add_dual_matrix_test(dual-libcoro ${target} random_t3
+            --strategy random --threads 3 --tasks 8 --rounds 60)
+    add_dual_matrix_test(dual-libcoro ${target} random_t2
+            --strategy random --threads 2 --tasks 6 --rounds 40)
+    add_dual_matrix_test(dual-libcoro ${target} rr_t2
+            --strategy rr --threads 2 --tasks 6 --rounds 40)
+    add_dual_matrix_test(dual-libcoro ${target} tla_t2
+            --strategy tla --threads 2 --tasks 5 --switches 4 --rounds 20)
+    add_dual_matrix_test(dual-libcoro ${target} random_min_t3
+            --strategy random --threads 3 --tasks 8 --rounds 30
+            --minimize=true --exploration_runs=4 --minimization_runs=2)
+endfunction()
+
+function(add_libcoro_ring_buffer_matrix target)
+    add_dual_matrix_test(dual-libcoro ${target} random_t2
+            --strategy random --threads 2 --tasks 4 --rounds 40 --seed 121)
+    add_dual_matrix_test(dual-libcoro ${target} pct_t2
+            --strategy pct --threads 2 --tasks 4 --rounds 30 --seed 122)
+    add_dual_matrix_test(dual-libcoro ${target} weighted_t2
+            --strategy random --threads 2 --weights 3,1 --tasks 4
+            --rounds 20 --seed 123)
+    add_dual_matrix_test(dual-libcoro ${target} rr_t2
+            --strategy rr --threads 2 --tasks 4 --rounds 30 --seed 124)
+    add_dual_matrix_test(dual-libcoro ${target} tla_t2
+            --strategy tla --threads 2 --tasks 2 --switches 2 --rounds 5
+            --seed 125)
+    add_dual_matrix_test(dual-libcoro ${target} pct_min_t2
+            --strategy pct --threads 2 --tasks 4 --rounds 15
+            --minimize=true --exploration_runs=2 --minimization_runs=1
+            --seed 126)
+endfunction()
+
 add_subdirectory(libcoro)
 add_subdirectory(folly)
 
@@ -138,33 +336,23 @@ else()
     add_custom_target(verify-dual-vk)
 endif()
 
-add_integration_test_dual("coro_async_stack_pct" "verify" FALSE
-        coro_async_stack --strategy pct --rounds 1000 --deadlock_policy=explore
-)
+add_dual_matrix_test(dual-core coro_async_stack pct
+        --strategy pct --rounds 1000)
 
-if(TARGET libcoro_queue)
-    add_integration_test_dual("libcoro_queue_pct" "verify" FALSE
-            libcoro_queue --strategy pct --rounds 1000 --deadlock_policy=explore
-    )
-endif()
+add_libcoro_default_matrix(libcoro_event)
+add_libcoro_default_matrix(libcoro_latch)
+add_libcoro_mutex_matrix(libcoro_mutex)
+add_libcoro_queue_matrix(libcoro_queue)
+add_libcoro_ring_buffer_matrix(libcoro_ring_buffer)
+add_libcoro_semaphore_matrix(libcoro_semaphore)
+add_libcoro_shared_mutex_matrix(libcoro_shared_mutex)
 
-if(TARGET folly_coro_mutex)
-    add_integration_test_dual("folly_coro_mutex_pct" "verify" FALSE
-            folly_coro_mutex --strategy pct --rounds 1000 --deadlock_policy=explore
-    )
-endif()
-
-if(TARGET folly_coro_baton)
-    add_integration_test_dual("folly_coro_baton_pct" "verify" FALSE
-            folly_coro_baton --strategy pct --rounds 1000 --deadlock_policy=explore
-    )
-endif()
-
-if(TARGET folly_coro_shared_mutex)
-    add_integration_test_dual("folly_coro_shared_mutex_pct" "verify" FALSE
-            folly_coro_shared_mutex --strategy pct --rounds 1000 --deadlock_policy=explore
-    )
-endif()
+add_folly_default_matrix(folly_coro_baton)
+add_folly_bounded_queue_matrix(folly_coro_bounded_queue)
+add_folly_mutex_matrix(folly_coro_mutex)
+add_folly_shared_mutex_matrix(folly_coro_shared_mutex)
+add_folly_shared_promise_matrix(folly_coro_shared_promise)
+add_folly_unbounded_queue_matrix(folly_coro_unbounded_queue)
 
 add_custom_target(verify-dual DEPENDS
         ${VERIFY_DUAL_LIST}

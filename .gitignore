@@ -1,23 +1,14 @@
 __pycache__
 build
-build-*/
-build-debug
-build_*/
-build_docker*/
-core
-asan.txt
 venv
 .vscode
 .devcontainer/**
 .cache/**
-tmp/
 third_party/**
 !third_party/CMakeLists.txt
 gidist
-dist/
-.idea/
-cmake-build-debug/
-
+dist
+.idea
 # Local VK sources, targets, specs and verifiers are not part of this branch.
 /verifying/dual/eng/
 /verifying/dual/old_end/

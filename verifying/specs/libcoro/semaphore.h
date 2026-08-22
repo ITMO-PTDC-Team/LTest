@@ -12,6 +12,8 @@
 #include "../../../runtime/include/value_wrapper.h"
 #include "../../../runtime/include/workload_policy.h"
 
+namespace ltest {
+
 template <>
 inline ToStringFunc GetDefaultToString<coro::semaphore_acquire_result>() {
   return [](const ValueWrapper& a) -> std::string {
@@ -27,6 +29,8 @@ inline CompFunc GetDefaultCompator<coro::semaphore_acquire_result>() {
            b.GetValue<coro::semaphore_acquire_result>();
   };
 }
+
+}  // namespace ltest
 
 namespace spec {
 
@@ -59,18 +63,18 @@ struct LibcoroSemaphore {
     return p;
   }
 
-  ValueWrapper TryAcquire(void* /*args*/) {
+  ltest::ValueWrapper TryAcquire(void* /*args*/) {
     if (available <= 0) {
-      return ValueWrapper(false);
+      return ltest::ValueWrapper(false);
     }
 
     --available;
-    return ValueWrapper(true);
+    return ltest::ValueWrapper(true);
   }
 
-  ValueWrapper Release(void* /*args*/) {
+  ltest::ValueWrapper Release(void* /*args*/) {
     if (available >= kMax) {
-      return void_v;
+      return ltest::void_v;
     }
 
     if (!waiting.empty()) {
@@ -81,12 +85,12 @@ struct LibcoroSemaphore {
       ++available;
     }
 
-    return void_v;
+    return ltest::void_v;
   }
 
-  ValueWrapper Shutdown(void* /*args*/) {
+  ltest::ValueWrapper Shutdown(void* /*args*/) {
     if (shutdown) {
-      return void_v;
+      return ltest::void_v;
     }
 
     shutdown = true;
@@ -94,19 +98,19 @@ struct LibcoroSemaphore {
       ready_shutdown.insert(op_id);
     }
     waiting.clear();
-    return void_v;
+    return ltest::void_v;
   }
 
-  ValueWrapper IsShutdown(void* /*args*/) {
-    return ValueWrapper(shutdown);
+  ltest::ValueWrapper IsShutdown(void* /*args*/) {
+    return ltest::ValueWrapper(shutdown);
   }
 
-  ValueWrapper Value(void* /*args*/) {
-    return ValueWrapper(static_cast<std::ptrdiff_t>(available));
+  ltest::ValueWrapper Value(void* /*args*/) {
+    return ltest::ValueWrapper(static_cast<std::ptrdiff_t>(available));
   }
 
-  ValueWrapper Max(void* /*args*/) {
-    return ValueWrapper(static_cast<std::ptrdiff_t>(kMax));
+  ltest::ValueWrapper Max(void* /*args*/) {
+    return ltest::ValueWrapper(static_cast<std::ptrdiff_t>(kMax));
   }
 
   void RequestAcquire(int op_id) {
@@ -124,15 +128,15 @@ struct LibcoroSemaphore {
     waiting.push_back(op_id);
   }
 
-  std::optional<ValueWrapper> FollowUpAcquire(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpAcquire(int op_id) {
     if (ready_acquired.contains(op_id)) {
       ready_acquired.erase(op_id);
-      return ValueWrapper(coro::semaphore_acquire_result::acquired);
+      return ltest::ValueWrapper(coro::semaphore_acquire_result::acquired);
     }
 
     if (ready_shutdown.contains(op_id)) {
       ready_shutdown.erase(op_id);
-      return ValueWrapper(coro::semaphore_acquire_result::shutdown);
+      return ltest::ValueWrapper(coro::semaphore_acquire_result::shutdown);
     }
 
     return std::nullopt;
@@ -140,41 +144,42 @@ struct LibcoroSemaphore {
 
   static auto GetDualMethods() {
     using S = LibcoroSemaphore;
-    DualMethodMap<S> m;
+    ltest::DualMethodMap<S> m;
 
-    m.emplace("try_acquire", DualNonBlockingMethod<S>{
+    m.emplace("try_acquire", ltest::DualNonBlockingMethod<S>{
                                  [](S* s, void* args) {
                                    return s->TryAcquire(args);
                                  }});
-    m.emplace("release", DualNonBlockingMethod<S>{
+    m.emplace("release", ltest::DualNonBlockingMethod<S>{
                              [](S* s, void* args) {
                                return s->Release(args);
                              }});
-    m.emplace("shutdown", DualNonBlockingMethod<S>{
+    m.emplace("shutdown", ltest::DualNonBlockingMethod<S>{
                               [](S* s, void* args) {
                                 return s->Shutdown(args);
                               }});
-    m.emplace("is_shutdown", DualNonBlockingMethod<S>{
+    m.emplace("is_shutdown", ltest::DualNonBlockingMethod<S>{
                                  [](S* s, void* args) {
                                    return s->IsShutdown(args);
                                  }});
-    m.emplace("value", DualNonBlockingMethod<S>{
+    m.emplace("value", ltest::DualNonBlockingMethod<S>{
                            [](S* s, void* args) {
                              return s->Value(args);
                            }});
-    m.emplace("max", DualNonBlockingMethod<S>{
+    m.emplace("max", ltest::DualNonBlockingMethod<S>{
                          [](S* s, void* args) {
                            return s->Max(args);
                          }});
 
-    DualRequestMethod<S> acquire_req =
+    ltest::DualRequestMethod<S> acquire_req =
         [](S* s, void* /*args*/, int op_id) { s->RequestAcquire(op_id); };
-    DualFollowUpMethod<S> acquire_fol =
+    ltest::DualFollowUpMethod<S> acquire_fol =
         [](S* s, void* /*args*/, int op_id) {
           return s->FollowUpAcquire(op_id);
         };
 
-    m.emplace("acquire", DualBlockingMethod<S>{acquire_req, acquire_fol});
+    m.emplace("acquire",
+              ltest::DualBlockingMethod<S>{acquire_req, acquire_fol});
     return m;
   }
 };

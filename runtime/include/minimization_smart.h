@@ -12,6 +12,8 @@
 #include "pretty_print.h"
 #include "scheduler_fwd.h"
 
+namespace ltest {
+
 /**
  * `SmartMinimizorT<Event>` uses a genetic algorithm to minimize the number of
  * tasks in a non-linearizable history. Event is HistoryEvent for ordinary
@@ -302,3 +304,5 @@ struct SmartMinimizorT : public RoundMinimizorT<Event> {
 // Backward-compatible aliases:
 using SmartMinimizor = SmartMinimizorT<HistoryEvent>;
 using DualSmartMinimizor = SmartMinimizorT<DualHistoryEvent>;
+
+}  // namespace ltest

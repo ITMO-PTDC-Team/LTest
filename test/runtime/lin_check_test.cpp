@@ -8,6 +8,7 @@
 #include "lincheck_dual.h"
 #include "lincheck_recursive.h"
 #include "stackfulltask_mock.h"
+using namespace ltest;
 
 struct Counter {
   int count = 0;
@@ -39,7 +40,7 @@ std::shared_ptr<CoroBase> CreateMockTask(std::string name, int ret_val,
   EXPECT_CALL(*mock, GetArgs())
       .Times(testing::AnyNumber())
       .WillRepeatedly(testing::Return(args));
-  mock->MarkFinishedNormally();
+  mock->Terminate();
 
   return static_pointer_cast<CoroBase>(mock);
 }
@@ -342,11 +343,10 @@ class DualTestTask final : public CoroBase {
     id = task_id;
     name = owned_name_;
     ret = std::move(ret_val);
-    MarkFinishedNormally();
+    returned = true;
   }
 
   std::shared_ptr<CoroBase> Restart([[maybe_unused]] void* this_ptr) override {
-    return nullptr;
   }
 
   std::vector<std::string> GetStrArgs() const override { return {}; }
@@ -385,7 +385,7 @@ DualChecker MakeDualChecker(int initial_available = 0) {
                [](DualQueueState* state, [[maybe_unused]] void* args,
                   int op_id) { state->requested.insert(op_id); },
                [](DualQueueState* state, [[maybe_unused]] void* args,
-                  int op_id) -> std::optional<ValueWrapper> {
+                  int op_id) -> std::optional<ltest::ValueWrapper> {
                  if (!state->requested.contains(op_id) ||
                      state->available == 0) {
                    return std::nullopt;
@@ -410,7 +410,7 @@ DualRejectPendingRequestChecker MakeDualRejectPendingRequestChecker() {
                },
                [](DualRejectPendingRequestState* state,
                   [[maybe_unused]] void* args,
-                  int op_id) -> std::optional<ValueWrapper> {
+                  int op_id) -> std::optional<ltest::ValueWrapper> {
                  if (!state->pending.contains(op_id)) {
                    return std::nullopt;
                  }

@@ -14,7 +14,7 @@ namespace spec {
 
 struct LinearBank;
 
-using bank_method_t = std::function<ValueWrapper(LinearBank *l, void *)>;
+using bank_method_t = std::function<ltest::ValueWrapper(LinearBank *l, void *)>;
 
 struct LinearBank {
   std::deque<int> cells;
@@ -41,10 +41,10 @@ struct LinearBank {
   int ReadBoth(int i, int j) { return cells[i] + cells[j]; }
 
   static auto GetMethods() {
-    bank_method_t add_func = [](LinearBank *l, void *args) -> ValueWrapper {
+    bank_method_t add_func = [](LinearBank *l, void *args) -> ltest::ValueWrapper {
       auto real_args = reinterpret_cast<std::tuple<int, size_t> *>(args);
       l->Add(std::get<0>(*real_args), std::get<1>(*real_args));
-      return void_v;
+      return ltest::void_v;
     };
 
     bank_method_t read_func = [](LinearBank *l, void *args) -> int {

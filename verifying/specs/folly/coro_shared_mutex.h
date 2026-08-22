@@ -56,50 +56,50 @@ struct FollyCoroSharedMutex {
     return p;
   }
 
-  ValueWrapper TryLock(void* /*args*/) {
+  ltest::ValueWrapper TryLock(void* /*args*/) {
     if (CanTryLock()) {
       writer_active = true;
-      return ValueWrapper(true);
+      return ltest::ValueWrapper(true);
     }
-    return ValueWrapper(false);
+    return ltest::ValueWrapper(false);
   }
 
-  bool CheckTryLock(void* args, const ValueWrapper* result) {
+  bool CheckTryLock(void* args, const ltest::ValueWrapper* result) {
     if (result != nullptr && !result->GetValue<bool>()) {
       return true;
     }
     return TryLock(args).GetValue<bool>();
   }
 
-  ValueWrapper TryLockShared(void* /*args*/) {
+  ltest::ValueWrapper TryLockShared(void* /*args*/) {
     if (CanTryLockShared()) {
       ++active_readers;
-      return ValueWrapper(true);
+      return ltest::ValueWrapper(true);
     }
-    return ValueWrapper(false);
+    return ltest::ValueWrapper(false);
   }
 
-  bool CheckTryLockShared(void* args, const ValueWrapper* result) {
+  bool CheckTryLockShared(void* args, const ltest::ValueWrapper* result) {
     if (result != nullptr && !result->GetValue<bool>()) {
       return true;
     }
     return TryLockShared(args).GetValue<bool>();
   }
 
-  ValueWrapper Unlock(void* /*args*/) {
+  ltest::ValueWrapper Unlock(void* /*args*/) {
     writer_active = false;
     WakeNextWaiters();
-    return void_v;
+    return ltest::void_v;
   }
 
-  ValueWrapper UnlockShared(void* /*args*/) {
+  ltest::ValueWrapper UnlockShared(void* /*args*/) {
     if (active_readers > 0) {
       --active_readers;
     }
     if (active_readers == 0) {
       WakeNextWaiters();
     }
-    return void_v;
+    return ltest::void_v;
   }
 
   void RequestLock(int op_id) {
@@ -111,14 +111,14 @@ struct FollyCoroSharedMutex {
     }
   }
 
-  std::optional<ValueWrapper> FollowUpLock(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpLock(int op_id) {
     if (!ready_locks.contains(op_id) || writer_active ||
         active_readers != 0) {
       return std::nullopt;
     }
     ready_locks.erase(op_id);
     writer_active = true;
-    return void_v;
+    return ltest::void_v;
   }
 
   void RequestLockShared(int op_id) {
@@ -129,49 +129,49 @@ struct FollyCoroSharedMutex {
     }
   }
 
-  std::optional<ValueWrapper> FollowUpLockShared(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpLockShared(int op_id) {
     if (!ready_shared_locks.contains(op_id) || writer_active) {
       return std::nullopt;
     }
     ready_shared_locks.erase(op_id);
     ++active_readers;
-    return void_v;
+    return ltest::void_v;
   }
 
   static auto GetDualMethods() {
     using S = FollyCoroSharedMutex;
-    DualMethodMap<S> m;
+    ltest::DualMethodMap<S> m;
 
     m.emplace("try_lock",
-              DualNonBlockingPredicateMethod<S>{
-                  [](S* s, void* args, const ValueWrapper* result) {
+              ltest::DualNonBlockingPredicateMethod<S>{
+                  [](S* s, void* args, const ltest::ValueWrapper* result) {
                     return s->CheckTryLock(args, result);
                   }});
     m.emplace("try_lock_shared",
-              DualNonBlockingPredicateMethod<S>{
-                  [](S* s, void* args, const ValueWrapper* result) {
+              ltest::DualNonBlockingPredicateMethod<S>{
+                  [](S* s, void* args, const ltest::ValueWrapper* result) {
                     return s->CheckTryLockShared(args, result);
                   }});
-    m.emplace("unlock", DualNonBlockingMethod<S>{
+    m.emplace("unlock", ltest::DualNonBlockingMethod<S>{
                             [](S* s, void* args) { return s->Unlock(args); }});
     m.emplace("unlock_shared",
-              DualNonBlockingMethod<S>{
+              ltest::DualNonBlockingMethod<S>{
                   [](S* s, void* args) { return s->UnlockShared(args); }});
 
-    DualRequestMethod<S> lock_req =
+    ltest::DualRequestMethod<S> lock_req =
         [](S* s, void* /*args*/, int op_id) { s->RequestLock(op_id); };
-    DualFollowUpMethod<S> lock_fol =
+    ltest::DualFollowUpMethod<S> lock_fol =
         [](S* s, void* /*args*/, int op_id) { return s->FollowUpLock(op_id); };
-    m.emplace("lock", DualBlockingMethod<S>{lock_req, lock_fol});
+    m.emplace("lock", ltest::DualBlockingMethod<S>{lock_req, lock_fol});
 
-    DualRequestMethod<S> lock_shared_req =
+    ltest::DualRequestMethod<S> lock_shared_req =
         [](S* s, void* /*args*/, int op_id) { s->RequestLockShared(op_id); };
-    DualFollowUpMethod<S> lock_shared_fol =
+    ltest::DualFollowUpMethod<S> lock_shared_fol =
         [](S* s, void* /*args*/, int op_id) {
           return s->FollowUpLockShared(op_id);
         };
     m.emplace("lock_shared",
-              DualBlockingMethod<S>{lock_shared_req, lock_shared_fol});
+              ltest::DualBlockingMethod<S>{lock_shared_req, lock_shared_fol});
 
     return m;
   }

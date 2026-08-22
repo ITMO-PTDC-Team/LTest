@@ -44,7 +44,7 @@ FollowUpResponse(result)
 
 - `runtime/include/verifying_macro.h` - `target_method_dual` и awaiter-wrapper.
 - `runtime/include/lincheck_dual.h` - типы дуальной истории и checker.
-- `runtime/include/scheduler.h` - `DualStrategyScheduler`, `DualTLAScheduler`,
+- `runtime/include/scheduler.h` - `DualStrategyScheduler`
   replay, minimization, deadlock handling.
 - `runtime/include/verifying.h` - `SpecDual`, `RunDual`,
   `LTEST_ENTRYPOINT_DUAL`.
@@ -74,19 +74,11 @@ target_method_dual(genArgs, Ret, Target, method, Args...);
 5. после wakeup пишет `FollowUpInvoke`, вызывает `await_resume()` и пишет
    `FollowUpResponse`.
 
-Wrapper также управляет временем жизни awaitable-объектов через `KeepAlive`,
-отложенным уничтожением coroutine handles через `DeferDestroy`, и умеет
-вызывать `unregister()` у awaiter-а при принудительном завершении раунда.
-
-Для некоторых внешних awaiter-ов есть два opt-in флага:
+Для некоторых внешних awaiter-ов есть один opt-in флаг:
 
 - `ltest_emit_request_before_suspend = true` - request считается завершённым
   до вызова `await_suspend()`. Это нужно, если сам `await_suspend()` ожидает,
   что request уже виден checker-у.
-- `ltest_cleanup_before_target_destroy = true` - deferred cleanup выполняется
-  до уничтожения target-объекта. Это нужно для awaiter-ов, которые при cleanup
-  обращаются к объекту примитива.
-
 ## Контракт спецификации
 
 Дуальный target использует `SpecDual` и entrypoint:
@@ -104,10 +96,10 @@ LTEST_ENTRYPOINT_DUAL(spec_t);
 ```cpp
 static auto GetDualMethods() {
   using S = MySpec;
-  DualMethodMap<S> m;
+  ltest::DualMethodMap<S> m;
 
   m.emplace("try_op", DualNonBlockingMethod<S>{
-      [](S* s, void* args) -> ValueWrapper {
+      [](S* s, void* args) -> ltest::ValueWrapper {
         return s->TryOp(args);
       }});
 
@@ -117,7 +109,7 @@ static auto GetDualMethods() {
       };
 
   DualFollowUpMethod<S> wait_fol =
-      [](S* s, void* args, int op_id) -> std::optional<ValueWrapper> {
+      [](S* s, void* args, int op_id) -> std::optional<ltest::ValueWrapper> {
         return s->FollowUpWait(args, op_id);
       };
 
@@ -336,8 +328,7 @@ cmake --build build-folly --target folly_coro_mutex
   --deadlock_policy=explore
 ```
 
-Если dynamic linker не находит runtime или gflags, выставить `LD_LIBRARY_PATH`
-как в matrix-скриптах:
+Если dynamic linker не находит runtime или gflags, выставить `LD_LIBRARY_PATH`:
 
 ```bash
 export LD_LIBRARY_PATH="$PWD/build/runtime:$PWD/build/codegen:$PWD/build/third_party/gflags/lib:$PWD/build/runtime/third_party/gflags/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -345,52 +336,38 @@ export LD_LIBRARY_PATH="$PWD/build/runtime:$PWD/build/codegen:$PWD/build/third_p
 
 Для другого build-dir заменить `build` на нужный каталог.
 
-## Matrix-скрипты
+## Matrix через CTest
 
-Скрипты запускают несколько стратегий и параметров для группы targets, пишут
-логи в `/tmp` и поддерживают переменные окружения.
+Кейсы для `libcoro` и `folly` зарегистрированы как CMake/CTest integration
+tests. Для запуска достаточно сконфигурировать build-dir, собрать нужный custom
+target и запустить `ctest` по CTest label.
 
 libcoro:
 
 ```bash
-BUILD_DIR="$PWD/build-libcoro" \
-LOG_DIR=/tmp/ltest_libcoro_matrix/manual \
-DEADLOCK_POLICY=explore \
-./scripts/run_dual_libcoro_matrix.sh
+cmake -S . -B build-libcoro -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-libcoro --target verify-dual-libcoro
+ctest --test-dir build-libcoro -L dual-libcoro --parallel 4 -V --output-on-failure
 ```
 
 Folly:
 
 ```bash
-BUILD_DIR="$PWD/build-folly" \
-LOG_DIR=/tmp/ltest_folly_matrix/manual \
-DEADLOCK_POLICY=explore \
-./scripts/run_dual_folly_matrix.sh
+cmake -S . -B build-folly -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-folly --target verify-dual-folly
+ctest --test-dir build-folly -L dual-folly --parallel 4 -V --output-on-failure
 ```
 
-VK:
+Дополнительные аргументы CTest передаются напрямую:
 
 ```bash
-BUILD_DIR="$PWD/build-vk" \
-LOG_DIR=/tmp/ltest_vk_matrix/manual \
-DEADLOCK_POLICY=explore \
-./scripts/run_dual_vk_matrix.sh
+ctest --test-dir build-folly -L dual-folly -V --timeout 180
 ```
 
-Общие полезные переменные:
+Полезные параметры:
 
-- `BUILD_DIR` - где искать собранные бинарники;
-- `LOG_DIR` - куда писать логи;
-- `TIMEOUT` - timeout одного кейса, например `180s`;
-- `RUN_TLA=0` - отключить TLA-варианты;
-- `RUN_MINIMIZE=0` - отключить варианты с `--minimize=true`;
-- `DEADLOCK_POLICY=explore|rollback|checker|fail`;
-- `CONTINUE_ON_FAIL=1` - не останавливать матрицу на первом падении.
-
-Для `libcoro` и `folly` матрицы дополнительно принимают:
-
-- `ALLOW_KNOWN_FAILURES`;
-- `INCLUDE_KNOWN_FAILURES` для libcoro.
+- `CTEST_PARALLEL_LEVEL` - параллелизм `ctest`;
+- `LTEST_DUAL_TEST_TIMEOUT` - CMake cache value для timeout одного теста.
 
 ## Основные флаги verifier-а
 

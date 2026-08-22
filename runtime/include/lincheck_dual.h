@@ -18,6 +18,8 @@
 #include "linearization_search.h"
 #include "value_wrapper.h"  // ValueWrapper
 
+namespace ltest {
+
 // -----------------------------
 // Dual history events
 // -----------------------------
@@ -494,3 +496,5 @@ struct LinearizabilityDualCheckerRecursive final : DualLinearizabilityChecker {
   MethodMap methods;
   SpecState init_state;
 };
+
+}  // namespace ltest

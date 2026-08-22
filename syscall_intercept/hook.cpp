@@ -1,17 +1,23 @@
+#include <dlfcn.h>
 #include <libsyscall_intercept_hook_point.h>
 #include <linux/futex.h>
 #include <sys/syscall.h>
 #include <syscall.h>
 
 #include <cerrno>
+#include <cstdint>
+#include <cstdlib>
 
 #include "runtime/include/block_manager.h"
 #include "runtime/include/coro_ctx_guard.h"
 #include "runtime/include/lib.h"
 #include "runtime/include/logger.h"
+#include "runtime/include/verifying_macro.h"
 
 static int ltest_sched_yield(long *result) {
   debug(stderr, "caught sched_yield()\n");
+  // otherwise here will  be a infinity loop
+  ltest::CoroCtxGuard guard;
   CoroYield();
   *result = 0;
   return 0;
@@ -22,18 +28,20 @@ static int ltest_futex(long arg0, long arg1, long arg2, long *result) {
         (unsigned long)arg0, arg1, arg2, *((int *)arg0));
   arg1 = arg1 & FUTEX_CMD_MASK;
   if (arg1 == FUTEX_WAIT || arg1 == FUTEX_WAIT_BITSET) {
-    auto fstate = BlockState{arg0, arg2};
+    auto fstate = ltest::BlockState{arg0, arg2};
     if (fstate.CanBeBlocked()) {
-      this_coro->SetBlocked(fstate);
+      ltest::this_coro->SetBlocked(fstate);
+      // otherwise here will  be a infinity loop
+      ltest::CoroCtxGuard guard;
       CoroYield();
       *result = 0;
     } else {
       errno = EAGAIN;
-      *result = 1;
+      *result = -1;
     }
   } else if (arg1 == FUTEX_WAKE || arg1 == FUTEX_WAKE_BITSET) {
     debug(stderr, "caught wake\n");
-    *result = block_manager.UnblockOn(arg0, arg2);
+    *result = ltest::block_manager.UnblockOn(arg0, arg2);
   } else {
     assert(false && "unsupported futex call");
   }
@@ -42,20 +50,50 @@ static int ltest_futex(long arg0, long arg1, long arg2, long *result) {
 
 static int hook(long syscall_number, long arg0, long arg1, long arg2, long arg3,
                 long arg4, long arg5, long *result) {
-  if (!ltest_coro_ctx) {
+  if (!ltest::ltest_coro_ctx) {
     return 1;
   }
+  // to avoid allocation mismatches
+  ltest::SchedCtxGuard guard;
+  int res;
   switch (syscall_number) {
     case SYS_sched_yield:
-      return ltest_sched_yield(result);
+      res = ltest_sched_yield(result);
+      break;
     case SYS_futex:
-      return ltest_futex(arg0, arg1, arg2, result);
+      res = ltest_futex(arg0, arg1, arg2, result);
+      break;
     default:
-      return 1;
+      res = 1;
   }
+  return res;
 }
 
 static __attribute__((constructor)) void init(void) {
   // Set up the callback function
   intercept_hook_point = hook;
+}
+extern "C" {
+void __assert_fail(const char *assertion, const char *file, unsigned int line,
+                   const char *function) {
+  if (ltest::ltest_coro_ctx) {
+    {
+      ltest::SchedCtxGuard guard;
+      ltest::SetTestFailure(
+          ltest::FormatTestFailure(assertion, file, line, function));
+    }
+    CoroYield();
+    {
+      ltest::SchedCtxGuard guard;
+      assert("after triggered failed assert, the test should be finished");
+    }
+  }
+
+  static void (*real_assert)(const char *assertion, const char *file,
+                             unsigned int line, const char *function);
+  if (!real_assert) {
+    reinterpret_cast<void *&>(real_assert) = dlsym(RTLD_NEXT, "__assert_fail");
+  }
+  real_assert(assertion, file, line, function);
+}
 }

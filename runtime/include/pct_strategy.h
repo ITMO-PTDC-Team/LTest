@@ -7,6 +7,8 @@
 
 #include "scheduler.h"
 
+namespace ltest {
+
 // https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/asplos277-pct.pdf
 // K represents the maximal number of potential switches in the program
 // Although it's impossible to predict the exact number of switches(since it's
@@ -24,7 +26,10 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
                                                      std::move(target_factory),
                                                      seed),
         current_depth(1),
-        current_schedule_length(0) {
+        current_schedule_length(0),
+        count_chosen_same(0),
+        last_chosen(0),
+        fair_start(0) {
     PrepareForDepth(current_depth, 1);
   }
 
@@ -43,6 +48,9 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
           continue;
         }
         if (!is_free && !this->VerifyExistingTask(threads[i].back(), i)) {
+          continue;
+        }
+        if (!this->CanThreadContinue(i) || !this->NewTaskAreEnabled(i)) {
           continue;
         }
         index = i;
@@ -90,6 +98,9 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         // resume)
         continue;
       }
+      if (!this->CanThreadContinue(i) || !this->NewTaskAreEnabled(i)) {
+        continue;
+      }
       if (!is_free && !this->VerifyExistingTask(threads[i].back(), i)) {
         continue;
       }
@@ -120,9 +131,11 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     return index_of_max;
   }
 
+  bool IsExhausted() override { return false; }
+
   // NOTE: `Next` version use heuristics for livelock avoiding, but not there
   // refactor later to avoid copy-paste
-  std::optional<TaskWithMetaData> NextSchedule() override {
+  StrategyNextResult NextSchedule() override {
     auto& round_schedule = this->round_schedule;
     auto& threads = this->threads;
     size_t max = std::numeric_limits<size_t>::min();
@@ -181,7 +194,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     }
 
     if (max == std::numeric_limits<size_t>::min()) {
-      return std::nullopt;
+      return DEADLOCK;
     }
 
     // Check whether the priority change is required
@@ -218,8 +231,6 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     BaseStrategyWithThreads<TargetObj, Verifier>::SetCustomRound(custom_round);
     UpdateStatistics();
   }
-
-  ~PctStrategy() { this->TerminateTasks(); }
 
  private:
   void UpdateStatistics() {
@@ -263,6 +274,18 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     }
   }
 
+  void UpdateSimulatorState(size_t thread_id, Scheduler::SeqHistory& seq,
+                            FullHistoryWithThreads& full) override {
+    BaseStrategyWithThreads<TargetObj, Verifier>::UpdateSimulatorState(
+        thread_id, seq, full);
+    if (this->threads.size() > this->priorities.size()) {
+      size_t new_k = k_statistics.empty() ? 1
+                                          : std::reduce(k_statistics.begin(),
+                                                        k_statistics.end()) /
+                                                k_statistics.size();
+      PrepareForDepth(current_depth, new_k);
+    }
+  }
   std::vector<size_t> k_statistics;
   size_t current_depth;
   size_t current_schedule_length;
@@ -276,3 +299,5 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   std::vector<size_t> priority_change_points;
   std::mt19937 rng;
 };
+
+}  // namespace ltest

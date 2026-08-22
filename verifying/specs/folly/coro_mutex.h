@@ -44,15 +44,15 @@ struct FollyCoroMutex {
 
   // ----- ordinary methods -----
 
-  ValueWrapper TryLock(void* /*args*/) {
+  ltest::ValueWrapper TryLock(void* /*args*/) {
     if (!locked) {
       locked = true;
-      return ValueWrapper(true);
+      return ltest::ValueWrapper(true);
     }
-    return ValueWrapper(false);
+    return ltest::ValueWrapper(false);
   }
 
-  ValueWrapper Unlock(void* /*args*/) {
+  ltest::ValueWrapper Unlock(void* /*args*/) {
     // Protocol legality is handled by verifier.
     if (!waiting_locks.empty()) {
       int op_id = waiting_locks.front();
@@ -64,7 +64,7 @@ struct FollyCoroMutex {
     } else {
       locked = false;
     }
-    return void_v;
+    return ltest::void_v;
   }
 
   // ----- dual lock -----
@@ -78,41 +78,41 @@ struct FollyCoroMutex {
     }
   }
 
-  std::optional<ValueWrapper> FollowUpLock(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpLock(int op_id) {
     if (!ready_locks.contains(op_id)) {
       return std::nullopt;
     }
     ready_locks.erase(op_id);
-    return void_v;
+    return ltest::void_v;
   }
 
   static auto GetDualMethods() {
     using S = FollyCoroMutex;
-    DualMethodMap<S> m;
+    ltest::DualMethodMap<S> m;
 
-    DualNonBlockingMethod<S> try_lock =
-        [](S* s, void* args) -> ValueWrapper {
+    ltest::DualNonBlockingMethod<S> try_lock =
+        [](S* s, void* args) -> ltest::ValueWrapper {
       return s->TryLock(args);
     };
 
-    DualNonBlockingMethod<S> unlock =
-        [](S* s, void* args) -> ValueWrapper {
+    ltest::DualNonBlockingMethod<S> unlock =
+        [](S* s, void* args) -> ltest::ValueWrapper {
       return s->Unlock(args);
     };
 
-    DualRequestMethod<S> lock_req =
+    ltest::DualRequestMethod<S> lock_req =
         [](S* s, void* /*args*/, int op_id) {
       s->RequestLock(op_id);
     };
 
-    DualFollowUpMethod<S> lock_fol =
-        [](S* s, void* /*args*/, int op_id) -> std::optional<ValueWrapper> {
+    ltest::DualFollowUpMethod<S> lock_fol =
+        [](S* s, void* /*args*/, int op_id) -> std::optional<ltest::ValueWrapper> {
       return s->FollowUpLock(op_id);
     };
 
     m.emplace("try_lock", try_lock);
     m.emplace("unlock", unlock);
-    m.emplace("lock", DualBlockingMethod<S>{lock_req, lock_fol});
+    m.emplace("lock", ltest::DualBlockingMethod<S>{lock_req, lock_fol});
 
     return m;
   }

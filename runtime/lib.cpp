@@ -1,8 +1,11 @@
 #include "include/lib.h"
 
+#include <atomic>
 #include <cassert>
-#include <deque>
+#include <cstdint>
+#include <new>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -10,43 +13,52 @@
 #include "logger.h"
 #include "value_wrapper.h"
 
-#include <atomic>
+namespace ltest {
 
 // See comments in the lib.h.
 Task this_coro{};
 int this_thread_id = -1;
 
-boost::context::fiber_context sched_ctx;
+context::fiber_context sched_ctx;
 std::optional<CoroutineStatus> coroutine_status;
-bool ltest_round_terminating = false;
+bool ltest_initialized = false;
 
 namespace {
-std::deque<std::coroutine_handle<>> g_external_resumes;
 std::atomic<std::uint64_t> g_dual_event_seqno{0};
+std::unordered_map<void*, size_t> fiber_stacks;
 }  // namespace
 
-namespace ltest {
+boost::context::stack_context context::AllocateFiberStack() {
+  SchedCtxGuard guard;
+  const size_t size = boost::context::stack_traits::default_size();
+  void* const memory = ::operator new(size);
+  fiber_stacks.emplace(memory, size);
+  return {.size = size, .sp = static_cast<char*>(memory) + size};
+}
+
+void context::DeallocateFiberStack(
+    boost::context::stack_context& context) noexcept {
+  SchedCtxGuard guard;
+  void* const memory = static_cast<char*>(context.sp) - context.size;
+  fiber_stacks.erase(memory);
+  ::operator delete(memory);
+}
+
+std::size_t context::FreeForgottenFiberStacks() noexcept {
+  SchedCtxGuard guard;
+  std::unordered_map<void*, size_t> forgotten_stacks;
+  forgotten_stacks.swap(fiber_stacks);
+  const std::size_t count = forgotten_stacks.size();
+  for (const auto& [memory, size] : forgotten_stacks) {
+    (void)size;
+    ::operator delete(memory);
+  }
+  return count;
+}
+
 std::vector<TaskBuilder> task_builders{};
 
-void EnqueueExternalResume(std::coroutine_handle<> h) {
-  if (h) {
-    g_external_resumes.push_back(h);
-  }
-}
-
-void DrainExternalResumes() {
-  while (!g_external_resumes.empty()) {
-    auto h = g_external_resumes.front();
-    g_external_resumes.pop_front();
-    if (h) {
-      h.resume();
-    }
-  }
-}
-}
-
 // Test failure tracking for litmus tests, which could expectedly fail.
-namespace ltest {
 namespace {
 bool test_failed{false};
 std::string test_failure_message{};
@@ -65,38 +77,11 @@ void ClearTestFailure() {
   test_failed = false;
   test_failure_message.clear();
 }
-}  // namespace ltest
 
 Task CoroBase::GetPtr() { return shared_from_this(); }
 
-// ---- deferred cleanup / keepalive ----
-void CoroBase::KeepAlive(std::shared_ptr<void> p) {
-  if (!p) return;
-  keepalive_.push_back(std::move(p));
-}
-
-void CoroBase::DeferDestroy(std::coroutine_handle<> h) {
-  if (!h) return;
-  deferred_destroy_.push_back(h);
-}
-
-void CoroBase::RunDeferredCleanup() {
-  // Destroy deferred coroutine handles
-  for (auto h : deferred_destroy_) {
-    if (h) {
-      h.destroy();
-    }
-  }
-  deferred_destroy_.clear();
-
-  // Release kept-alive heap objects
-  keepalive_.clear();
-
-  // (Optional safety) drop any pending dual events; at round end they should not matter.
-  pending_dual_events_.clear();
-}
-
 void CoroBase::EmitDualEvent(DualEventKind kind, ValueWrapper result) {
+  SchedCtxGuard guard;
   pending_dual_events_.push_back(
       DualEvent{kind, g_dual_event_seqno.fetch_add(1, std::memory_order_relaxed),
                 std::move(result)});
@@ -108,8 +93,7 @@ std::vector<CoroBase::DualEvent> CoroBase::DrainDualEvents() {
   return out;
 }
 
-void CoroBase::Resume(int resumed_thread_id) {
-  ltest::DrainExternalResumes();
+void CoroBase::Resume(size_t resumed_thread_id) {
   this_coro = this->GetPtr();
   this_thread_id = resumed_thread_id;
   assert(!this_coro->IsReturned() && this_coro->ctx);
@@ -119,24 +103,29 @@ void CoroBase::Resume(int resumed_thread_id) {
   // NOTE(kmitkin): Guard below prevents us from call CoroYield in the scheduler
   // coroutine, area that protected by it should be as small as possible to
   // reduce errors
-  {
-    ltest::CoroCtxGuard guard{};
-    boost::context::fiber_context([coro](boost::context::fiber_context&& ctx) {
-      sched_ctx = std::move(ctx);
-      coro->ctx = std::move(coro->ctx).resume();
-      return std::move(sched_ctx);
-    }).resume();
-  }
+  auto returned_context = context::fiber_context(
+      [coro](context::fiber_context&& ctx) {
+        sched_ctx = std::move(ctx);
+        {
+          CoroCtxGuard guard{};
+          coro->ctx = std::move(coro->ctx).resume();
+        }
+        return std::move(sched_ctx);
+      }).resume();
+  returned_context.forget();
   this_coro.reset();
   this_thread_id = -1;
-  ltest::DrainExternalResumes();
 }
 
 void CoroBase::setWakeupCondition(std::function<bool()> cond) {
+  SchedCtxGuard guard;
   wakeup_condition_ = std::move(cond);
 }
 
-void CoroBase::clearWakeupCondition() { wakeup_condition_ = nullptr; }
+void CoroBase::clearWakeupCondition() {
+  SchedCtxGuard guard;
+  wakeup_condition_ = nullptr;
+}
 
 bool CoroBase::hasWakeupCondition() const {
   return static_cast<bool>(wakeup_condition_);
@@ -154,9 +143,6 @@ ValueWrapper CoroBase::GetRetVal() const {
 }
 
 CoroBase::~CoroBase() {
-  // Ensure no leaked coroutine handles if cleanup wasn't called explicitly.
-  RunDeferredCleanup();
-
   // The coroutine must be returned if we want to restart it.
   // We can't just Terminate() it because it is the runtime responsibility to
   // decide, in which order the tasks should be terminated.
@@ -165,66 +151,55 @@ CoroBase::~CoroBase() {
 
 std::string_view CoroBase::GetName() const { return name; }
 
-bool CoroBase::IsReturned() const { return finish_kind_ != FinishKind::Running; }
+bool CoroBase::IsReturned() const { return returned; }
 
-CoroBase::FinishKind CoroBase::GetFinishKind() const {
-  return finish_kind_;
-}
-
-bool CoroBase::FinishedNormally() const {
-  return finish_kind_ == FinishKind::ReturnedNormally;
-}
-
-bool CoroBase::FinishedDuringTermination() const {
-  return finish_kind_ == FinishKind::ReturnedDuringTermination;
-}
-
-void CoroBase::MarkFinishedNormally() {
-  finish_kind_ = FinishKind::ReturnedNormally;
-}
-
-void CoroBase::MarkFinishedDuringTermination() {
-  finish_kind_ = FinishKind::ReturnedDuringTermination;
-}
-
-void CoroBase::MarkFinishedNormallyIfRunning() {
-  if (!IsReturned()) {
-    MarkFinishedNormally();
-  }
-}
+}  // namespace ltest
 
 extern "C" void CoroYield() {
-  if (!ltest_coro_ctx) [[unlikely]] {
+  if (!ltest::ltest_coro_ctx || ltest::ltest_target_construction) [[unlikely]] {
     return;
   }
-  //
-  // ReleaseWithAser <-
-  // shared_ptr<CoroBase>
-  assert(this_coro && sched_ctx);
-  boost::context::fiber_context([](boost::context::fiber_context&& ctx) {
-    this_coro->ctx = std::move(ctx);
-    return std::move(sched_ctx);
-  }).resume();
+  assert(ltest::this_coro && ltest::sched_ctx);
+  ltest::ltest_coro_ctx = false;
+  auto returned_context = ltest::context::fiber_context(
+      [](ltest::context::fiber_context&& ctx) {
+        ltest::this_coro->ctx = std::move(ctx);
+        return std::move(ltest::sched_ctx);
+      }).resume();
+  returned_context.forget();
+  ltest::ltest_coro_ctx = true;
 }
 
 extern "C" void CoroutineStatusChange(char* name, bool start) {
   // assert(!coroutine_status.has_value());
-  coroutine_status.emplace(name, start);
+  ltest::coroutine_status.emplace(name, start);
   CoroYield();
 }
 
-void CoroBase::Terminate(int running_thread_id) {
-  int tries = 0;
-  while (!IsReturned()) {
-    ++tries;
-    Resume(running_thread_id);
-    assert(tries < 1000000 &&
-           "coroutine is spinning too long, possible wrong terminating order");
+namespace ltest {
+
+void CoroBase::DestroyContext() {
+  if (ctx) {
+    ctx.forget();
   }
 }
 
-void CoroBase::TryTerminate(int running_thread_id) {
-  for (size_t i = 0; i < 1000 && !IsReturned(); ++i) {
-    Resume(running_thread_id);
-  }
+void CoroBase::Terminate() {
+  returned = true;
+  fstate = {};
+  clearWakeupCondition();
+  DestroyContext();
 }
+
+void CoroBase::DiscardRoundResults() {
+  SchedCtxGuard guard;
+  ret = {};
+  pending_dual_events_.clear();
+}
+
+void CoroBase::TerminateWith(const ValueWrapper& value) {
+  Terminate();
+  ret = value;
+}
+
+}  // namespace ltest

@@ -7,7 +7,7 @@ namespace spec {
 struct SharedMutexVerifier {
   enum : int32_t { READER = 4, WRITER = 1, FREE = 0 };
   /// Verify checks the state of a mutex on starting of `ctask`
-  bool Verify(const std::string& task_name, size_t thread_id) {
+  bool Verify(const std::string& task_name, size_t thread_id, bool) {
     debug(stderr, "validating method %s, thread_id: %zu\n", task_name.data(),
           thread_id);
     if (status.count(thread_id) == 0) {
@@ -28,7 +28,7 @@ struct SharedMutexVerifier {
     }
   }
 
-  void OnFinished(Task& task, size_t thread_id) {
+  void OnFinished(ltest::Task& task, size_t thread_id) {
     auto task_name = task->GetName();
     debug(stderr, "On finished method %s, thread_id: %zu\n", task_name.data(),
           thread_id);
@@ -45,16 +45,15 @@ struct SharedMutexVerifier {
     }
   }
 
-  std::optional<std::string> ReleaseTask(size_t thread_id) {
-    if (status[thread_id] == WRITER) {
-      return {"unlock"};
-    } else if (status[thread_id] == READER) {
-      return {"unlock_shared"};
-    }
-    return std::nullopt;
-  }
-
   void Reset() { status.clear(); }
+
+  std::vector<std::string> GetDeadlockProgressMethods(
+      const std::string& task_name) const {
+    if (task_name == "lock" || task_name == "lock_shared") {
+      return {"unlock", "unlock_shared"};
+    }
+    return {};
+  }
 
   std::unordered_map<size_t, size_t> status;
 };

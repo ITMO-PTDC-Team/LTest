@@ -5,6 +5,8 @@
 #include <new>
 #include <utility>
 
+namespace ltest {
+
 template <typename T>
 struct StableVector {
   StableVector() = default;
@@ -111,3 +113,5 @@ struct StableVector {
   std::array<type_t *, 31> entities{};
   size_t total_size = 0;
 };
+
+}  // namespace ltest

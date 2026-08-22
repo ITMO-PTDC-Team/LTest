@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+namespace ltest {
+
 Logger l{};
 
 void logger_init(bool verbose) { l.verbose = verbose; }
@@ -13,3 +15,5 @@ void Logger::flush() {
 }
 
 Logger& log() { return l; }
+
+}  // namespace ltest

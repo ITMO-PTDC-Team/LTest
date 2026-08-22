@@ -20,12 +20,12 @@ struct BufferedChannel {
     return value;
   }
 
-  using method_t = std::function<ValueWrapper(BufferedChannel *l, void *args)>;
+  using method_t = std::function<ltest::ValueWrapper(BufferedChannel *l, void *args)>;
   static auto GetMethods() {
     method_t send_func = [](BufferedChannel *l, void *args) {
       auto real_args = reinterpret_cast<std::tuple<int> *>(args);
       l->Send(std::get<0>(*real_args));
-      return void_v;
+      return ltest::void_v;
     };
 
     method_t recv_func = [](BufferedChannel *l, void *args) -> int {

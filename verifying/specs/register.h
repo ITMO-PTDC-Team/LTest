@@ -10,7 +10,7 @@ namespace spec {
 struct LinearRegister;
 
 using register_method_t =
-    std::function<ValueWrapper(LinearRegister *l, void *)>;
+    std::function<ltest::ValueWrapper(LinearRegister *l, void *)>;
 
 struct LinearRegister {
   int x = 0;
@@ -20,7 +20,7 @@ struct LinearRegister {
   static auto GetMethods() {
     register_method_t add_func = [](LinearRegister *l, void *) {
       l->add();
-      return void_v;
+      return ltest::void_v;
     };
 
     register_method_t get_func = [](LinearRegister *l, void *) {

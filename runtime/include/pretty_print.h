@@ -14,6 +14,8 @@
 #include "lincheck_dual.h"
 #include "logger.h"
 
+namespace ltest {
+
 using std::string;
 using std::to_string;
 
@@ -25,7 +27,7 @@ struct PrettyPrinter {
 
   template <typename Out_t>
   void PrettyPrint(const std::vector<std::variant<Invoke, Response>>& result,
-                   int threads_num, Out_t& out) {
+                   size_t threads_num, Out_t& out) {
     auto get_thread_num = [](const std::variant<Invoke, Response>& v) {
       if (v.index() == 0) {
         return get<0>(v).thread_id;
@@ -348,3 +350,5 @@ struct PrettyPrinter {
     PrintMethodCall(task, fp);
   }
 };
+
+}  // namespace ltest

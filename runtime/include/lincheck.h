@@ -9,6 +9,8 @@
 #include "lib.h"
 #include "value_wrapper.h"
 
+namespace ltest {
+
 struct Response {
   Response(const Task& task, ValueWrapper result, int thread_id);
 
@@ -37,6 +39,7 @@ typedef std::variant<Invoke, Response> HistoryEvent;
 // ModelChecker is the general checker interface which is implemented by
 // different checkers, each of which checks its own consistency model
 struct ModelChecker {
+  virtual ~ModelChecker() = default;
   virtual bool Check(const std::vector<HistoryEvent>& history) = 0;
 };
 
@@ -238,3 +241,5 @@ bool LinearizabilityChecker<
 
   return true;
 }
+
+}  // namespace ltest

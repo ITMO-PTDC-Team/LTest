@@ -39,12 +39,12 @@ struct FollyCoroSharedPromise {
     return p;
   }
 
-  ValueWrapper SetValue(void* args) {
+  ltest::ValueWrapper SetValue(void* args) {
     auto* tup = reinterpret_cast<std::tuple<int>*>(args);
     int v = std::get<0>(*tup);
 
     if (value.has_value()) {
-      return ValueWrapper(false);
+      return ltest::ValueWrapper(false);
     }
 
     value = v;
@@ -53,11 +53,11 @@ struct FollyCoroSharedPromise {
       waiting_gets.pop_front();
       ready_gets[op_id] = v;
     }
-    return ValueWrapper(true);
+    return ltest::ValueWrapper(true);
   }
 
-  ValueWrapper IsFulfilled(void* /*args*/) const {
-    return ValueWrapper(value.has_value());
+  ltest::ValueWrapper IsFulfilled(void* /*args*/) const {
+    return ltest::ValueWrapper(value.has_value());
   }
 
   void RequestGet(int op_id) {
@@ -68,7 +68,7 @@ struct FollyCoroSharedPromise {
     }
   }
 
-  std::optional<ValueWrapper> FollowUpGet(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpGet(int op_id) {
     auto it = ready_gets.find(op_id);
     if (it == ready_gets.end()) {
       return std::nullopt;
@@ -76,25 +76,25 @@ struct FollyCoroSharedPromise {
 
     int v = it->second;
     ready_gets.erase(it);
-    return ValueWrapper(v);
+    return ltest::ValueWrapper(v);
   }
 
   static auto GetDualMethods() {
     using S = FollyCoroSharedPromise;
-    DualMethodMap<S> m;
+    ltest::DualMethodMap<S> m;
 
     m.emplace("set_value",
-              DualNonBlockingMethod<S>{
+              ltest::DualNonBlockingMethod<S>{
                   [](S* s, void* args) { return s->SetValue(args); }});
     m.emplace("is_fulfilled",
-              DualNonBlockingMethod<S>{
+              ltest::DualNonBlockingMethod<S>{
                   [](S* s, void* args) { return s->IsFulfilled(args); }});
 
-    DualRequestMethod<S> get_req =
+    ltest::DualRequestMethod<S> get_req =
         [](S* s, void* /*args*/, int op_id) { s->RequestGet(op_id); };
-    DualFollowUpMethod<S> get_fol =
+    ltest::DualFollowUpMethod<S> get_fol =
         [](S* s, void* /*args*/, int op_id) { return s->FollowUpGet(op_id); };
-    m.emplace("get", DualBlockingMethod<S>{get_req, get_fol});
+    m.emplace("get", ltest::DualBlockingMethod<S>{get_req, get_fol});
 
     return m;
   }

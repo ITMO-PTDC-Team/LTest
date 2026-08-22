@@ -51,7 +51,7 @@ set(FOLLY_NO_PLUGIN_TARGETS
 foreach(source_name ${FOLLY_SOURCE_TARGET_LIST})
     get_filename_component(target ${source_name} NAME_WE)
     if(target IN_LIST FOLLY_NO_PLUGIN_TARGETS)
-        verify_target_without_plugin(${target})
+        verify_target_with_global_reset(${target})
         target_compile_options(${target} PRIVATE -DNDEBUG)
     else()
         verify_target(${target})

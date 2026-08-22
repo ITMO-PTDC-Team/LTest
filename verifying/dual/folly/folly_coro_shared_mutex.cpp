@@ -56,9 +56,6 @@ struct FollyCoroSharedMutexTarget {
   }
 
   non_atomic bool try_lock() {
-    if (ltest_round_terminating) {
-      return false;
-    }
     bool ok = m.try_lock();
     if (ok) {
       harness_exclusive = true;
@@ -67,9 +64,6 @@ struct FollyCoroSharedMutexTarget {
   }
 
   non_atomic bool try_lock_shared() {
-    if (ltest_round_terminating) {
-      return false;
-    }
     bool ok = m.try_lock_shared();
     if (ok) {
       ++harness_shared;
@@ -78,9 +72,6 @@ struct FollyCoroSharedMutexTarget {
   }
 
   non_atomic void unlock() {
-    if (ltest_round_terminating) {
-      return;
-    }
     if (!harness_exclusive) {
       return;
     }
@@ -89,9 +80,6 @@ struct FollyCoroSharedMutexTarget {
   }
 
   non_atomic void unlock_shared() {
-    if (ltest_round_terminating) {
-      return;
-    }
     if (harness_shared <= 0) {
       return;
     }

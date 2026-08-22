@@ -7,8 +7,8 @@
 #include "runtime/include/strategy_verifier.h"
 #include "verifying/specs/libcoro/mutex.h"
 
-struct LibcoroMutexVerifierBase : DefaultStrategyTaskVerifier {
-  bool Verify(const std::string& task_name, size_t thread_id) {
+struct LibcoroMutexVerifierBase : ltest::DefaultStrategyTaskVerifier {
+  bool Verify(const std::string& task_name, size_t thread_id, bool) {
     if (task_name == "lock" || task_name == "try_lock") {
       return !IsOwner(thread_id);
     }
@@ -21,11 +21,11 @@ struct LibcoroMutexVerifierBase : DefaultStrategyTaskVerifier {
     return false;
   }
 
-  void OnFinished(Task& task, size_t thread_id) {
+  void OnFinished(ltest::Task& task, size_t thread_id) {
     const std::string task_name = std::string(task->GetName());
 
     if (task_name == "lock") {
-      if (task->FinishedNormally()) {
+      if (task->IsReturned()) {
         owner_thread_ = thread_id;
       }
       return;
@@ -48,17 +48,6 @@ struct LibcoroMutexVerifierBase : DefaultStrategyTaskVerifier {
     assert(false && "unexpected finished method name in LibcoroMutexVerifier");
   }
 
-  std::optional<std::string> ReleaseTask(size_t thread_id) {
-    if (IsOwner(thread_id)) {
-      return {"unlock"};
-    }
-    return std::nullopt;
-  }
-
-  void OnRoundStart(std::size_t /*threads*/) {
-    owner_thread_.reset();
-  }
-
  private:
   bool IsOwner(size_t thread_id) const {
     return owner_thread_.has_value() && *owner_thread_ == thread_id;
@@ -68,4 +57,4 @@ struct LibcoroMutexVerifierBase : DefaultStrategyTaskVerifier {
 };
 
 using LibcoroMutexVerifier =
-    ReservePolicyVerifier<spec::LibcoroMutex, LibcoroMutexVerifierBase>;
+    ltest::ReservePolicyVerifier<spec::LibcoroMutex, LibcoroMutexVerifierBase>;

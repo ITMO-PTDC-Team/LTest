@@ -6,6 +6,8 @@
 
 #include "scheduler_fwd.h"
 
+namespace ltest {
+
 // Traits used by minimizers to detect which history events start visible
 // operations. Ordinary histories start operations with Invoke. Dual histories
 // start blocking operations with RequestInvoke and ordinary operations with
@@ -372,3 +374,5 @@ using StrategyExplorationMinimizor = StrategyExplorationMinimizorT<HistoryEvent>
 using DualRoundMinimizor = RoundMinimizorT<DualHistoryEvent>;
 using DualSameInterleavingMinimizor = SameInterleavingMinimizorT<DualHistoryEvent>;
 using DualStrategyExplorationMinimizor = StrategyExplorationMinimizorT<DualHistoryEvent>;
+
+}  // namespace ltest

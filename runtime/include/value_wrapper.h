@@ -6,6 +6,8 @@
 #include <string>
 #include <type_traits>
 
+namespace ltest {
+
 class ValueWrapper;
 
 using ToStringFunc = std::function<std::string(const ValueWrapper&)>;
@@ -76,3 +78,5 @@ class Void {};
 
 static ValueWrapper void_v{Void{}, [](auto& a, auto& b) { return true; },
                            [](auto& a) { return "void"; }};
+
+}  // namespace ltest

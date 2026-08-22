@@ -4,6 +4,8 @@
 
 #include "pick_strategy.h"
 
+namespace ltest {
+
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 struct RoundRobinStrategy : PickStrategy<TargetObj, Verifier> {
   using TargetFactory =
@@ -27,7 +29,9 @@ struct RoundRobinStrategy : PickStrategy<TargetObj, Verifier> {
       const bool is_free = threads[cur].empty() || threads[cur].back()->IsReturned();
       if (!this->AllowNewTasks() && is_free) continue;
 
-      if (!threads[cur].empty() && threads[cur].back()->IsBlocked()) {
+      if ((!threads[cur].empty() && threads[cur].back()->IsBlocked()) ||
+          !this->CanThreadContinue(cur) ||
+          !this->NewTaskAreEnabled(cur)) {
         continue;
       }
       if (!is_free && !this->VerifyExistingTask(threads[cur].back(), cur)) {
@@ -58,3 +62,5 @@ struct RoundRobinStrategy : PickStrategy<TargetObj, Verifier> {
 
   size_t next_task;
 };
+
+}  // namespace ltest

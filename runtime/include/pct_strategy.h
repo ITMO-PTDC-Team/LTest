@@ -121,7 +121,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     current_schedule_length++;
     for (size_t i = 0; i < priority_change_points.size(); ++i) {
       if (current_schedule_length == priority_change_points[i]) {
-        priorities[index_of_max] = current_depth - i;
+        priorities[index_of_max] = current_depth - i - 1;
       }
     }
 
@@ -201,7 +201,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     current_schedule_length++;
     for (size_t i = 0; i < priority_change_points.size(); ++i) {
       if (current_schedule_length == priority_change_points[i]) {
-        priorities[index_of_max] = current_depth - i;
+        priorities[index_of_max] = current_depth - i - 1;
       }
     }
 
@@ -258,19 +258,18 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     // argument from the command string
     size_t threads_count = this->threads.size();
 
-    // Generates priorities
-    priorities = std::vector<int>(threads_count);
-    for (size_t i = 0; i < priorities.size(); ++i) {
-      priorities[i] = current_depth + i;
+    priorities.clear();
+    priorities.reserve(threads_count);
+    while (priorities.size() < threads_count) {
+      AddPriority();
     }
-    std::shuffle(priorities.begin(), priorities.end(), rng);
 
     // Generates priority_change_points
     auto k_distribution =
         std::uniform_int_distribution<std::mt19937::result_type>(1, k);
     priority_change_points = std::vector<size_t>(depth - 1);
     for (size_t i = 0; i < depth - 1; ++i) {
-      priority_change_points[i] = k_distribution(rng);
+      priority_change_points[i] = k_distribution(this->rng);
     }
   }
 
@@ -279,13 +278,23 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     BaseStrategyWithThreads<TargetObj, Verifier>::UpdateSimulatorState(
         thread_id, seq, full);
     if (this->threads.size() > this->priorities.size()) {
-      size_t new_k = k_statistics.empty() ? 1
-                                          : std::reduce(k_statistics.begin(),
-                                                        k_statistics.end()) /
-                                                k_statistics.size();
-      PrepareForDepth(current_depth, new_k);
+      AddPriority();
     }
   }
+
+  void AddPriority() {
+    const size_t min_priority = current_depth;
+    auto priority_distribution = std::uniform_int_distribution(
+        min_priority, std::numeric_limits<size_t>::max());
+
+    size_t priority;
+    do {
+      priority = priority_distribution(this->rng);
+    } while (std::find(priorities.begin(), priorities.end(), priority) !=
+             priorities.end());
+    priorities.push_back(priority);
+  }
+
   std::vector<size_t> k_statistics;
   size_t current_depth;
   size_t current_schedule_length;
@@ -295,9 +304,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   size_t last_chosen;
   size_t fair_start;
   size_t fair_stage{0};
-  std::vector<int> priorities;
+  std::vector<size_t> priorities;
   std::vector<size_t> priority_change_points;
-  std::mt19937 rng;
 };
 
 }  // namespace ltest

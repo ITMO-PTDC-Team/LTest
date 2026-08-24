@@ -113,6 +113,13 @@ void CoroBase::Resume(size_t resumed_thread_id) {
         return std::move(sched_ctx);
       }).resume();
   returned_context.forget();
+  // pthread_exit() marks the task returned before its final CoroYield().
+  // That yield stores the suspended target context back in the task after
+  // TerminateWith() has already detached the previous handle.  Do not leave
+  // that live handle pointing at a stack that ResetOSState() will reclaim.
+  if (coro->IsReturned()) {
+    coro->DestroyContext();
+  }
   this_coro.reset();
   this_thread_id = -1;
 }

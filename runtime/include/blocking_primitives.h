@@ -18,6 +18,10 @@ struct mutex {
       CoroYield();
     }
     locked = 1;
+    {
+      CoroCtxGuard guard;
+      CoroYield();
+    }
   }
 
   as_atomic bool try_lock() {
@@ -27,6 +31,10 @@ struct mutex {
       return false;
     }
     locked = 1;
+    {
+      CoroCtxGuard guard;
+      CoroYield();
+    }
     return true;
   }
 
@@ -34,6 +42,10 @@ struct mutex {
     locked = 0;
     // To have the ability schedule any coroutine.
     block_manager.UnblockAllOn(addr());
+    {
+      CoroCtxGuard guard;
+      CoroYield();
+    }
   }
 
  private:
@@ -99,8 +111,8 @@ struct recursive_mutex {
 
 struct condition_variable {
   as_atomic void wait(std::unique_lock<ltest::mutex>& lock) {
-    lock.unlock();
     this_coro->SetBlocked({addr(), 1});
+    lock.unlock();
     {
       CoroCtxGuard guard;
       CoroYield();
@@ -111,8 +123,8 @@ struct condition_variable {
   // Is needed to match pthread API, which does not have std::unique_lock.
   template <typename Mutex>
   as_atomic void wait(Mutex& lock) {
-    lock.unlock();
     this_coro->SetBlocked({addr(), 1});
+    lock.unlock();
     {
       CoroCtxGuard guard;
       CoroYield();

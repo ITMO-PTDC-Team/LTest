@@ -82,9 +82,12 @@ class latomic {
       // std::cout << "Load: coro id=" << this_coro->GetId() << ", thread=" <<
       // this_thread_id
       //           << ", name=" << this_coro->GetName() << std::endl;
-      T value = wmmGraph.Load<T>(locationId, this_thread_id,
-                                 WmmUtils::OrderFromStd(order));
-      return value;
+      auto result = wmmGraph.Load<T>(locationId, this_thread_id,
+                                     WmmUtils::OrderFromStd(order));
+
+      if (result.has_value()) {
+        return result.value();
+      }
     }
 
     return atomicValue.load(order);
@@ -105,9 +108,13 @@ class latomic {
              std::memory_order order = std::memory_order_seq_cst) noexcept {
     T prev = atomicValue.exchange(desired, order);
     if (IsWmmEnabled()) {
-      return wmmGraph.UnconditionalReadModifyWrite<T>(
+      auto rmwResult = wmmGraph.UnconditionalReadModifyWrite<T>(
           locationId, this_thread_id, AtomicRmwOp::Exchange, desired,
           WmmUtils::OrderFromStd(order));
+
+      if (rmwResult.has_value()) {
+        return rmwResult.value();
+      }
     }
     return prev;
   }
@@ -131,10 +138,13 @@ class latomic {
       // std::cout << "Compare exchange weak: coro id=" << this_coro->GetId() <<
       // ", thread=" << this_thread_id
       //           << ", name=" << this_coro->GetName() << std::endl;
-      auto [rmwSuccess, readValue] = wmmGraph.ReadModifyWrite(
+      auto rmwResult = wmmGraph.ReadModifyWrite(
           locationId, this_thread_id, &expected, desired,
           WmmUtils::OrderFromStd(success), WmmUtils::OrderFromStd(failure));
-      value = rmwSuccess;
+      if (rmwResult.has_value()) {
+        auto [rmwSuccess, readValue] = rmwResult.value();
+        value = rmwSuccess;
+      }
     } else {
       // update expected only if we are not in a coroutine
       expected = myExpected;
@@ -174,10 +184,13 @@ class latomic {
                                                      success, failure);
 
     if (IsWmmEnabled()) {
-      auto [rmwSuccess, readValue] = wmmGraph.ReadModifyWrite(
+      auto rmwResult = wmmGraph.ReadModifyWrite(
           locationId, this_thread_id, &expected, desired,
           WmmUtils::OrderFromStd(success), WmmUtils::OrderFromStd(failure));
-      value = rmwSuccess;
+      if (rmwResult.has_value()) {
+        auto [rmwSuccess, readValue] = rmwResult.value();
+        value = rmwSuccess;
+      }
     } else {
       // update expected only if we are not in a coroutine
       expected = myExpected;
@@ -237,9 +250,13 @@ class latomic {
               std::memory_order order = std::memory_order_seq_cst) noexcept {
     T prev = atomicValue.fetch_add(arg, order);
     if (IsWmmEnabled()) {
-      return wmmGraph.UnconditionalReadModifyWrite<T>(
+      auto rmwResult = wmmGraph.UnconditionalReadModifyWrite<T>(
           locationId, this_thread_id, AtomicRmwOp::FetchAdd, arg,
           WmmUtils::OrderFromStd(order));
+
+      if (rmwResult.has_value()) {
+        return rmwResult.value();
+      }
     }
     return prev;
   }
@@ -265,9 +282,13 @@ class latomic {
               std::memory_order order = std::memory_order_seq_cst) noexcept {
     T prev = atomicValue.fetch_sub(arg, order);
     if (IsWmmEnabled()) {
-      return wmmGraph.UnconditionalReadModifyWrite<T>(
+      auto rmwResult = wmmGraph.UnconditionalReadModifyWrite<T>(
           locationId, this_thread_id, AtomicRmwOp::FetchSub, arg,
           WmmUtils::OrderFromStd(order));
+
+      if (rmwResult.has_value()) {
+        return rmwResult.value();
+      }
     }
     return prev;
   }
@@ -325,9 +346,13 @@ class latomic {
               std::memory_order order = std::memory_order_seq_cst) noexcept {
     T prev = atomicValue.fetch_max(arg, order);
     if (IsWmmEnabled()) {
-      return wmmGraph.UnconditionalReadModifyWrite<T>(
+      auto rmwResult = wmmGraph.UnconditionalReadModifyWrite<T>(
           locationId, this_thread_id, AtomicRmwOp::FetchMax, arg,
           WmmUtils::OrderFromStd(order));
+
+      if (rmwResult.has_value()) {
+        return rmwResult.value();
+      }
     }
     return prev;
   }
@@ -342,9 +367,13 @@ class latomic {
               std::memory_order order = std::memory_order_seq_cst) noexcept {
     T prev = atomicValue.fetch_min(arg, order);
     if (IsWmmEnabled()) {
-      return wmmGraph.UnconditionalReadModifyWrite<T>(
+      auto rmwResult = wmmGraph.UnconditionalReadModifyWrite<T>(
           locationId, this_thread_id, AtomicRmwOp::FetchMin, arg,
           WmmUtils::OrderFromStd(order));
+
+      if (rmwResult.has_value()) {
+        return rmwResult.value();
+      }
     }
     return prev;
   }
@@ -385,9 +414,13 @@ class latomic {
               std::memory_order order = std::memory_order_seq_cst) noexcept {
     T prev = atomicValue.fetch_and(arg, order);
     if (IsWmmEnabled()) {
-      return wmmGraph.UnconditionalReadModifyWrite<T>(
+      auto rmwResult = wmmGraph.UnconditionalReadModifyWrite<T>(
           locationId, this_thread_id, AtomicRmwOp::FetchAnd, arg,
           WmmUtils::OrderFromStd(order));
+
+      if (rmwResult.has_value()) {
+        return rmwResult.value();
+      }
     }
     return prev;
   }
@@ -402,9 +435,13 @@ class latomic {
              std::memory_order order = std::memory_order_seq_cst) noexcept {
     T prev = atomicValue.fetch_or(arg, order);
     if (IsWmmEnabled()) {
-      return wmmGraph.UnconditionalReadModifyWrite<T>(
+      auto rmwResult = wmmGraph.UnconditionalReadModifyWrite<T>(
           locationId, this_thread_id, AtomicRmwOp::FetchOr, arg,
           WmmUtils::OrderFromStd(order));
+
+      if (rmwResult.has_value()) {
+        return rmwResult.value();
+      }
     }
     return prev;
   }
@@ -419,9 +456,13 @@ class latomic {
               std::memory_order order = std::memory_order_seq_cst) noexcept {
     T prev = atomicValue.fetch_xor(arg, order);
     if (IsWmmEnabled()) {
-      return wmmGraph.UnconditionalReadModifyWrite<T>(
+      auto rmwResult = wmmGraph.UnconditionalReadModifyWrite<T>(
           locationId, this_thread_id, AtomicRmwOp::FetchXor, arg,
           WmmUtils::OrderFromStd(order));
+
+      if (rmwResult.has_value()) {
+        return rmwResult.value();
+      }
     }
     return prev;
   }

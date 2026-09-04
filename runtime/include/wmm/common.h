@@ -24,6 +24,8 @@ enum class AtomicRmwOp {
   FetchMax,
 };
 
+// TODO: here the derived relations (like SC which could be acquired via checking
+//       for the memory orders on the edge ends) could be removed from basic edge types 
 enum class EdgeType {
   PO,  // program order / sequenced before
   SC,  // seq-cst edge
@@ -115,5 +117,9 @@ struct WmmUtils {
   // belong to
   inline static int INIT_THREAD_ID = 0;
 };
+
+// Full release-sequence semantics in the WMM graph; controlled by --wmm_relseq
+// (see runtime/verifying.cpp).
+extern bool wmm_relseq;
 
 }  // namespace ltest::wmm

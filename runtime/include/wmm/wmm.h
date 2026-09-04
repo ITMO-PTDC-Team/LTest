@@ -22,6 +22,8 @@ class ExecutionGraph {
     return instance;
   }
 
+  void OnExecutionComplete() { graph.OnExecutionComplete(); }
+
   // Empties graph events and sets new number of threads.
   void Reset(int nThreads) {
     log() << "Reset Graph: threads=" << nThreads << "\n";
@@ -47,14 +49,16 @@ class ExecutionGraph {
   }
 
   template <class T>
-  T Load(int location, int threadId, MemoryOrder order) {
+  std::optional<T> Load(int location, int threadId, MemoryOrder order) {
     // TODO: if we now only do real atomics, then they should be stored in
     // graph, I guess?
     log() << "Load: loc-" << location << ", thread=" << threadId
           << ", order=" << WmmUtils::OrderToString(order) << "\n";
-    T readValue = graph.AddReadEvent<T>(location, threadId, order);
-    log() << "Read value: " << readValue << "\n";
-    graph.Print(log());
+    auto readValue = graph.AddReadEvent<T>(location, threadId, order);
+    if (readValue.has_value()) {
+      log() << "Read value: " << readValue.value() << "\n";
+      graph.Print(log());
+    }
     return readValue;
   }
 
@@ -65,36 +69,45 @@ class ExecutionGraph {
           << "\n";
     graph.AddWriteEvent(location, threadId, order, value);
 
-    graph.Print(log());
+    if (!IsExecutionInfeasible()) {
+      // on infeasible execution graph will be printed internally
+      graph.Print(log());
+    }
   }
 
   template <class T>
-  std::pair<bool, T> ReadModifyWrite(int location, int threadId, T* expected,
-                                     T desired, MemoryOrder success,
-                                     MemoryOrder failure) {
+  std::optional<std::pair<bool, T>> ReadModifyWrite(int location, int threadId,
+                                                    T* expected, T desired,
+                                                    MemoryOrder success,
+                                                    MemoryOrder failure) {
     log() << "RMW CAS: loc-" << location << ", thread=" << threadId
           << ", expected=" << *expected << ", desired=" << desired
           << ", success=" << WmmUtils::OrderToString(success)
           << ", failure=" << WmmUtils::OrderToString(failure) << "\n";
     auto rmwResult = graph.AddRMWEvent<T>(location, threadId, expected, desired,
                                           success, failure);
-    graph.Print(log());
-    log() << "RMW result: " << (rmwResult.first ? "MODIFY" : "READ")
-          << ", value=" << rmwResult.second << "\n";
+    if (rmwResult.has_value()) {
+      log() << "RMW result: " << (rmwResult.value().first ? "MODIFY" : "READ")
+            << ", value=" << rmwResult.value().second << "\n";
+      graph.Print(log());
+    }
     return rmwResult;
   }
 
   /// Exchange / fetch_* : returns the value read (old) before the write.
   template <class T>
-  T UnconditionalReadModifyWrite(int location, int threadId, AtomicRmwOp op,
-                                 T operand, MemoryOrder order) {
+  std::optional<T> UnconditionalReadModifyWrite(int location, int threadId,
+                                                AtomicRmwOp op, T operand,
+                                                MemoryOrder order) {
     log() << "RMW " << WmmUtils::AtomicRmwOpToString(op) << ": loc-" << location
           << ", thread=" << threadId << ", operand=" << operand
           << ", order=" << WmmUtils::OrderToString(order) << "\n";
-    T oldValue = graph.AddUnconditionalRMWEvent<T>(location, threadId, op,
-                                                   operand, order);
-    graph.Print(log());
-    log() << "RMW old value read: " << oldValue << "\n";
+    auto oldValue = graph.AddUnconditionalRMWEvent<T>(location, threadId, op,
+                                                      operand, order);
+    if (oldValue.has_value()) {
+      log() << "RMW old value read: " << oldValue.value() << "\n";
+      graph.Print(log());
+    }
     return oldValue;
   }
 

@@ -1,25 +1,28 @@
 #pragma once
 
 #include <algorithm>
-#include <cassert>
+#include <map>
 #include <sstream>
 #include <string>
-#include <vector>
 
 namespace ltest::wmm {
+// A vector clock over a dynamic set of threads: threads are added lazily
+// (on first `Increment`), and a thread missing from the map is treated as
+// having a logical time of zero.
 struct VectorClock {
   VectorClock() = default;
-  VectorClock(int nThreads) : times(nThreads, 0) {}
 
   std::string AsString() const {
     std::stringstream ss;
 
     ss << "[";
-    for (size_t i = 0; i < times.size(); ++i) {
-      ss << times[i];
-      if (i < times.size() - 1) {
+    bool first = true;
+    for (const auto& [threadId, time] : times) {
+      if (!first) {
         ss << ",";
       }
+      ss << threadId << ":" << time;
+      first = false;
     }
     ss << "]";
 
@@ -27,10 +30,8 @@ struct VectorClock {
   }
 
   bool IsSubsetOf(const VectorClock& other) const {
-    assert(IsSameLength(other));
-
-    for (int i = 0; i < times.size(); ++i) {
-      if (times[i] > other.times[i]) {
+    for (const auto& [threadId, time] : times) {
+      if (time > other.GetTime(threadId)) {
         return false;
       }
     }
@@ -39,23 +40,21 @@ struct VectorClock {
   }
 
   void UniteWith(const VectorClock& other) {
-    assert(IsSameLength(other));
-
-    for (int i = 0; i < times.size(); ++i) {
-      times[i] = std::max(times[i], other.times[i]);
+    for (const auto& [threadId, time] : other.times) {
+      auto& mine = times[threadId];
+      mine = std::max(mine, time);
     }
   }
 
-  void Increment(int threadId) {
-    assert(threadId >= 0 && threadId < times.size());
-    times[threadId]++;
-  }
+  void Increment(int threadId) { ++times[threadId]; }
 
  private:
-  bool IsSameLength(const VectorClock& other) const {
-    return times.size() == other.times.size();
+  // Missing threads are assumed to have a logical time of zero.
+  int GetTime(int threadId) const {
+    auto it = times.find(threadId);
+    return it != times.end() ? it->second : 0;
   }
 
-  std::vector<int> times;
+  std::map<int, int> times;
 };
 }  // namespace ltest::wmm

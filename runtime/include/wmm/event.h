@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <concepts>
 #include <sstream>
+#include <cassert>
 
 #include "common.h"
 #include "vector_clock.h"
@@ -11,14 +12,13 @@ namespace ltest::wmm {
 
 struct Event {
  protected:
-  Event(EventId id, EventType type, int nThreads, int location, int threadId,
+  Event(EventId id, EventType type, int location, int threadId,
         MemoryOrder order)
       : id(id),
         type(type),
         location(location),
         threadId(threadId),
-        order(order),
-        clock(nThreads) {}
+        order(order) {}
 
  public:
   EventId id;
@@ -98,16 +98,16 @@ struct Event {
 };
 
 struct DummyEvent : Event {
-  DummyEvent(EventId id, int nThreads, int threadId)
-      : Event(id, EventType::DUMMY, nThreads, -1 /* non-existing location */,
-              threadId, MemoryOrder::Relaxed) {}
+  DummyEvent(EventId id, int threadId)
+      : Event(id, EventType::DUMMY, -1 /* non-existing location */, threadId,
+              MemoryOrder::Relaxed) {}
 };
 
 template <class T>
 struct WriteEvent : Event {
-  WriteEvent(EventId id, int nThreads, int location, int threadId,
-             MemoryOrder order, T value)
-      : Event(id, EventType::WRITE, nThreads, location, threadId, order),
+  WriteEvent(EventId id, int location, int threadId, MemoryOrder order,
+             T value)
+      : Event(id, EventType::WRITE, location, threadId, order),
         value(std::move(value)) {}  // , moBefore(-1)
 
   virtual std::string AsString() const {
@@ -127,9 +127,8 @@ struct WriteEvent : Event {
 
 template <class T>
 struct ReadEvent : Event {
-  ReadEvent(EventId id, int nThreads, int location, int threadId,
-            MemoryOrder order)
-      : Event(id, EventType::READ, nThreads, location, threadId, order),
+  ReadEvent(EventId id, int location, int threadId, MemoryOrder order)
+      : Event(id, EventType::READ, location, threadId, order),
         readFrom(nullptr) {}
 
   virtual void SetReadFromEvent(Event* event) override {
@@ -224,9 +223,8 @@ T ApplyAtomicRmwOp(AtomicRmwOp op, T readValue, T operand) {
 template <class T>
 struct RMWEventBase : Event {
  protected:
-  RMWEventBase(EventId id, int nThreads, int location, int threadId,
-               MemoryOrder order)
-      : Event(id, EventType::RMW, nThreads, location, threadId, order),
+  RMWEventBase(EventId id, int location, int threadId, MemoryOrder order)
+      : Event(id, EventType::RMW, location, threadId, order),
         readFrom(nullptr) {}
 
   static std::string StateAsString(RMWState s) {
@@ -252,9 +250,9 @@ struct RMWEventBase : Event {
 /// Compare-exchange: may resolve to READ (fail) or MODIFY (success).
 template <class T>
 struct CASRMWEvent : RMWEventBase<T> {
-  CASRMWEvent(EventId id, int nThreads, int location, int threadId, T* expected,
-              T desired, MemoryOrder successOrder, MemoryOrder failureOrder)
-      : RMWEventBase<T>(id, nThreads, location, threadId, successOrder),
+  CASRMWEvent(EventId id, int location, int threadId, T* expected, T desired,
+              MemoryOrder successOrder, MemoryOrder failureOrder)
+      : RMWEventBase<T>(id, location, threadId, successOrder),
         // `expected` must not be nullptr according to
         // https://en.cppreference.com/cpp/atomic/atomic_ref/compare_exchange,
         // so we can dereference it
@@ -412,9 +410,9 @@ struct CASRMWEvent : RMWEventBase<T> {
 /// memory order).
 template <class T>
 struct UnconditionalRMWEvent : RMWEventBase<T> {
-  UnconditionalRMWEvent(EventId id, int nThreads, int location, int threadId,
-                        AtomicRmwOp op, T operand, MemoryOrder order)
-      : RMWEventBase<T>(id, nThreads, location, threadId, order),
+  UnconditionalRMWEvent(EventId id, int location, int threadId, AtomicRmwOp op,
+                        T operand, MemoryOrder order)
+      : RMWEventBase<T>(id, location, threadId, order),
         op(op),
         operand(operand) {}
 

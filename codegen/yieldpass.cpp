@@ -1,4 +1,7 @@
-#include "globalvariables.h"
+#include <set>
+
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -223,16 +226,11 @@ llvmGetPassPluginInfo() {
                     mpm.addPass(MainReplacerPass());
                     return true;
                   }
-                  if (Name == "globvariables") {
-                    mpm.addPass(ltest::GlobalVarsPass());
-                    return true;
-                  }
                   return false;
                 });
             PB.registerPipelineStartEPCallback(
                 [](ModulePassManager &MPM, OptimizationLevel Level) {
                   MPM.addPass(YieldInsertPass());
-                  MPM.addPass(ltest::GlobalVarsPass());
 #if defined(LTEST_EXTERNAL_LAUNCH)
                   MPM.addPass(MainReplacerPass());
 #endif

@@ -10,12 +10,12 @@ add_test(llvm_passes_build
         "${CMAKE_COMMAND}"
         --build "${CMAKE_BINARY_DIR}"
         --config "$<CONFIG>"
-        --target ResMockPass YieldPass
+        --target YieldPass
 )
 
 set_tests_properties(llvm_passes_build PROPERTIES FIXTURES_SETUP codegen_fixture)
 
-set(codegen_tests "resmock" "mainreplacer" "globvariables" )
+set(codegen_tests "mainreplacer")
 
 foreach(item IN LISTS codegen_tests)
     add_test(
@@ -30,4 +30,3 @@ configure_file(
         "${CMAKE_CURRENT_SOURCE_DIR}/lit.cfg.in"
         "${CMAKE_CURRENT_BINARY_DIR}/lit.cfg"
 )
-

@@ -18,18 +18,18 @@ using PopRet  = coro::task<tl::expected<int, coro::queue_consume_result>>;
 using PushMethod = PushRet (Q::*)(const int&);
 using PopMethod = PopRet (Q::*)();
 
-static PushMethod push_ptr LTEST_REGISTRATION_GLOBAL =
+static PushMethod push_ptr =
     static_cast<PushMethod>(&Q::push);
 
-static PopMethod pop_ptr LTEST_REGISTRATION_GLOBAL =
+static PopMethod pop_ptr =
     static_cast<PopMethod>(&Q::pop);
 
 ltest::TargetDualMethod<coro::queue_produce_result, Q, int>
-    push_ltest_dual_method_cls LTEST_REGISTRATION_GLOBAL{
+    push_ltest_dual_method_cls{
         "push", genInt, push_ptr};
 
 ltest::TargetDualMethod<tl::expected<int, coro::queue_consume_result>, Q>
-    pop_ltest_dual_method_cls LTEST_REGISTRATION_GLOBAL{
+    pop_ltest_dual_method_cls{
         "pop", ltest::generators::genEmpty, pop_ptr};
 
 using spec_t = ltest::SpecDual<Q, spec::LibcoroQueue>;

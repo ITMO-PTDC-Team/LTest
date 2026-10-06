@@ -3,7 +3,6 @@
 #include <atomic>
 #include <cassert>
 #include <cstdint>
-#include <new>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -19,42 +18,13 @@ namespace ltest {
 Task this_coro{};
 int this_thread_id = -1;
 
-context::fiber_context sched_ctx;
+boost::context::fiber sched_ctx;
 std::optional<CoroutineStatus> coroutine_status;
 bool ltest_initialized = false;
 
 namespace {
 std::atomic<std::uint64_t> g_dual_event_seqno{0};
-std::unordered_map<void*, size_t> fiber_stacks;
 }  // namespace
-
-boost::context::stack_context context::AllocateFiberStack() {
-  SchedCtxGuard guard;
-  const size_t size = boost::context::stack_traits::default_size();
-  void* const memory = ::operator new(size);
-  fiber_stacks.emplace(memory, size);
-  return {.size = size, .sp = static_cast<char*>(memory) + size};
-}
-
-void context::DeallocateFiberStack(
-    boost::context::stack_context& context) noexcept {
-  SchedCtxGuard guard;
-  void* const memory = static_cast<char*>(context.sp) - context.size;
-  fiber_stacks.erase(memory);
-  ::operator delete(memory);
-}
-
-std::size_t context::FreeForgottenFiberStacks() noexcept {
-  SchedCtxGuard guard;
-  std::unordered_map<void*, size_t> forgotten_stacks;
-  forgotten_stacks.swap(fiber_stacks);
-  const std::size_t count = forgotten_stacks.size();
-  for (const auto& [memory, size] : forgotten_stacks) {
-    (void)size;
-    ::operator delete(memory);
-  }
-  return count;
-}
 
 std::vector<TaskBuilder> task_builders{};
 
@@ -97,28 +67,9 @@ void CoroBase::Resume(size_t resumed_thread_id) {
   this_coro = this->GetPtr();
   this_thread_id = resumed_thread_id;
   assert(!this_coro->IsReturned() && this_coro->ctx);
-  // debug(stderr, "name: %s\n",
-  // std::string(this_coro->GetPtr()->GetName()).c_str());
-  auto coro = this_coro.get();  // std::shared_ptr also can be interleaved
-  // NOTE(kmitkin): Guard below prevents us from call CoroYield in the scheduler
-  // coroutine, area that protected by it should be as small as possible to
-  // reduce errors
-  auto returned_context = context::fiber_context(
-      [coro](context::fiber_context&& ctx) {
-        sched_ctx = std::move(ctx);
-        {
-          CoroCtxGuard guard{};
-          coro->ctx = std::move(coro->ctx).resume();
-        }
-        return std::move(sched_ctx);
-      }).resume();
-  returned_context.forget();
-  // pthread_exit() marks the task returned before its final CoroYield().
-  // That yield stores the suspended target context back in the task after
-  // TerminateWith() has already detached the previous handle.  Do not leave
-  // that live handle pointing at a stack that ResetOSState() will reclaim.
-  if (coro->IsReturned()) {
-    coro->DestroyContext();
+  {
+    CoroCtxGuard guard;
+    ctx = std::move(ctx).resume();
   }
   this_coro.reset();
   this_thread_id = -1;
@@ -150,9 +101,8 @@ ValueWrapper CoroBase::GetRetVal() const {
 }
 
 CoroBase::~CoroBase() {
-  // The coroutine must be returned if we want to restart it.
-  // We can't just Terminate() it because it is the runtime responsibility to
-  // decide, in which order the tasks should be terminated.
+  // Suspended coroutines are abandoned when the worker exits; never unwind
+  // them to clean up an attempt. Only completed tasks may be destroyed.
   assert(IsReturned() && "Task not returned at destruction");
 }
 
@@ -168,12 +118,7 @@ extern "C" void CoroYield() {
   }
   assert(ltest::this_coro && ltest::sched_ctx);
   ltest::ltest_coro_ctx = false;
-  auto returned_context = ltest::context::fiber_context(
-      [](ltest::context::fiber_context&& ctx) {
-        ltest::this_coro->ctx = std::move(ctx);
-        return std::move(ltest::sched_ctx);
-      }).resume();
-  returned_context.forget();
+  ltest::sched_ctx = std::move(ltest::sched_ctx).resume();
   ltest::ltest_coro_ctx = true;
 }
 
@@ -185,23 +130,11 @@ extern "C" void CoroutineStatusChange(char* name, bool start) {
 
 namespace ltest {
 
-void CoroBase::DestroyContext() {
-  if (ctx) {
-    ctx.forget();
-  }
-}
-
 void CoroBase::Terminate() {
+  // Keep a suspended fiber owned by this task until the worker calls _exit.
   returned = true;
   fstate = {};
   clearWakeupCondition();
-  DestroyContext();
-}
-
-void CoroBase::DiscardRoundResults() {
-  SchedCtxGuard guard;
-  ret = {};
-  pending_dual_events_.clear();
 }
 
 void CoroBase::TerminateWith(const ValueWrapper& value) {

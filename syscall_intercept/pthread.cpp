@@ -8,19 +8,10 @@
 #include "runtime/include/blocking_primitives.h"
 #include "runtime/include/coro_ctx_guard.h"
 #include "runtime/include/os_simulator.h"
-#include "runtime/include/pthread_key.h"
 using namespace ltest;
 
 [[nodiscard]] bool ShouldUseMock() {
   return ltest_initialized && ltest_coro_ctx;
-}
-
-template <class Function>
-Function GetRealPthreadFunction(const char* name) {
-  Function function = nullptr;
-  reinterpret_cast<void*&>(function) = dlsym(RTLD_NEXT, name);
-  assert(function);
-  return function;
 }
 
 #define PTHREAD_MOCK_INIT_ROUTINE(name, ...)                              \
@@ -44,7 +35,6 @@ extern int pthread_create(pthread_t *__restrict __newthread,
   std::string name = "NewThread";
   thread_info.emplace(CreatedThreadInfo(
       [__start_routine, __arg](void *) {
-        CoroYield();
         return __start_routine(__arg);
       },
       name));
@@ -97,63 +87,6 @@ extern "C" int __cxa_atexit(void (*)(void*), void*, void*) noexcept {
   // LTest abandons target and runtime objects instead of running process-exit
   // destructors against state that crossed simulated rounds.
   return 0;
-}
-
-extern "C" int pthread_atfork(void (*)(), void (*)(), void (*)()) noexcept {
-  // fork() is not part of the simulated OS model.
-  return 0;
-}
-
-extern "C" int __register_atfork(void (*)(), void (*)(), void (*)(),
-                                  void*) noexcept {
-  // glibc's pthread_atfork() delegates to this symbol. Interpose both entry
-  // points so no process-global handler survives across simulated rounds.
-  return 0;
-}
-
-extern int pthread_key_create(pthread_key_t* key,
-                              void (*destructor)(void*)) __THROW {
-  if (ltest::ShouldUseMockPthreadKeys()) {
-    return ltest::CreateMockPthreadKey(key);
-  }
-  static decltype(&pthread_key_create) real_fn =
-      GetRealPthreadFunction<decltype(&pthread_key_create)>("pthread_key_create");
-  const int result = real_fn(key, destructor);
-  if (result == 0) {
-    ltest::RegisterRealPthreadKey(*key);
-  }
-  return result;
-}
-
-extern int pthread_key_delete(pthread_key_t key) __THROW {
-  if (ltest::IsMockPthreadKey(key)) {
-    ltest::DeletePthreadKey(key);
-    return 0;
-  }
-  const int result = GetRealPthreadFunction<decltype(&pthread_key_delete)>(
-      "pthread_key_delete")(key);
-  if (result == 0) {
-    ltest::DeletePthreadKey(key);
-  }
-  return result;
-}
-
-extern void* pthread_getspecific(pthread_key_t key) __THROW {
-  if (!ltest::ShouldUseMockPthreadKeys()) {
-    return GetRealPthreadFunction<decltype(&pthread_getspecific)>(
-        "pthread_getspecific")(key);
-  }
-  ltest::SchedCtxGuard guard;
-  return ltest::GetPthreadKeyValue(key);
-}
-
-extern int pthread_setspecific(pthread_key_t key, const void* value) __THROW {
-  if (!ltest::ShouldUseMockPthreadKeys()) {
-    return GetRealPthreadFunction<decltype(&pthread_setspecific)>(
-        "pthread_setspecific")(key, value);
-  }
-  ltest::SchedCtxGuard guard;
-  return ltest::SetPthreadKeyValue(key, value);
 }
 
 template <class... Ts>

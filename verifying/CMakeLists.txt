@@ -7,12 +7,6 @@ set (PASS_PATH ${CMAKE_BINARY_DIR}/codegen/lib${PASS}.so)
 set(EXTERNAL_PASS YieldPassExternal)
 set(EXTERNAL_PASS_PATH ${CMAKE_BINARY_DIR}/codegen/lib${EXTERNAL_PASS}.so)
 
-set(GLOBALS_PASS GlobalVarsPass)
-set(GLOBALS_PASS_PATH ${CMAKE_BINARY_DIR}/codegen/lib${GLOBALS_PASS}.so)
-
-set(RESMOCK_PASS ResMockPass)
-set(RESMOCK_PASS_PATH ${CMAKE_BINARY_DIR}/codegen/lib${RESMOCK_PASS}.so)
-
 set (COPASS CoYieldPass)
 set (COPASS_PATH ${CMAKE_BINARY_DIR}/codegen/lib${COPASS}.so)
 
@@ -68,13 +62,6 @@ function(verify_target target)
     add_dependencies(${target} runtime plugin_pass)
     target_link_options(${target} PRIVATE ${CMAKE_ASAN_FLAGS})
     target_compile_options(${target} PRIVATE -fpass-plugin=${PASS_PATH} ${CMAKE_ASAN_FLAGS})
-endfunction()
-
-function(verify_target_with_global_reset target)
-    verify_target_without_plugin(${target})
-    add_dependencies(${target} globalvars_plugin_pass)
-    target_compile_options(${target} PRIVATE
-            -fpass-plugin=${GLOBALS_PASS_PATH} ${CMAKE_ASAN_FLAGS})
 endfunction()
 
 function(verify_external_target target)

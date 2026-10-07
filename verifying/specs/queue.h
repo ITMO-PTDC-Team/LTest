@@ -48,7 +48,6 @@ struct QueueHash {
 };
 
 struct QueueEquals {
-  template <typename PushArgTuple, int ValueIndex>
   bool operator()(const Queue<> &lhs, const Queue<> &rhs) const {
     return lhs.deq == rhs.deq;
   }

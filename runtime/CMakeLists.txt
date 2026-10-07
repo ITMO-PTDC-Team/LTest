@@ -7,8 +7,8 @@ set (SOURCE_FILES
         generators.cpp
         coro_ctx_guard.cpp
         os_simulator.cpp
-        mock_res.cpp
-        pthread_key.cpp
+        fork_round.cpp
+        attempt.cpp
 )
 
 add_library(runtime SHARED ${SOURCE_FILES})

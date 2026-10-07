@@ -22,6 +22,8 @@ class ExecutionGraph {
     return instance;
   }
 
+  void Seed(unsigned seed) { graph.Seed(seed); }
+
   // Empties graph events and sets new number of threads.
   void Reset(int nThreads) {
     log() << "Reset Graph: threads=" << nThreads << "\n";

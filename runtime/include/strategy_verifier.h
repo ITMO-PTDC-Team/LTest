@@ -33,10 +33,6 @@ struct DefaultStrategyTaskVerifier {
     return true;
   }
 
-  inline bool VerifyExisting(Task& task, std::size_t thread_id) {
-    return Verify(std::string(task->GetName()), thread_id, true);
-  }
-
   inline void OnFinished(Task& /*task*/, std::size_t /*thread_id*/) {}
 
   inline void Reset() {}
@@ -180,17 +176,6 @@ struct ReservePolicyVerifier {
 
   inline bool Verify(const std::string& name, std::size_t thread_id, bool is_new) {
     return base_.Verify(name, thread_id, is_new);
-  }
-
-  inline bool VerifyExisting(Task& task, std::size_t thread_id) {
-    if constexpr (requires(BaseVerifier& base, Task& existing_task,
-                           std::size_t existing_thread_id) {
-                    base.VerifyExisting(existing_task, existing_thread_id);
-                  }) {
-      return base_.VerifyExisting(task, thread_id);
-    } else {
-      return base_.Verify(std::string(task->GetName()), thread_id);
-    }
   }
 
   inline void OnFinished(Task& task, std::size_t thread_id) {

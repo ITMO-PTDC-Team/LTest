@@ -122,7 +122,7 @@ struct FollyCoroSharedMutex {
   }
 
   void RequestLockShared(int op_id) {
-    if (!writer_active) {
+    if (!writer_active && waiters.empty() && ready_locks.empty()) {
       ready_shared_locks.insert(op_id);
     } else {
       waiters.push_back(Waiter{op_id, false});
@@ -183,7 +183,7 @@ struct FollyCoroSharedMutex {
   }
 
   bool CanTryLockShared() const {
-    return !writer_active && ready_locks.empty();
+    return !writer_active && waiters.empty() && ready_locks.empty();
   }
 
   void WakeNextWaiters() {

@@ -19,12 +19,10 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
   explicit PickStrategy(size_t threads_count,
                         std::vector<TaskBuilder> constructors,
-                        TargetFactory target_factory,
-                        size_t seed = 0)
+                        TargetFactory target_factory)
       : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count,
                                                      std::move(constructors),
-                                                     std::move(target_factory),
-                                                     seed) {}
+                                                     std::move(target_factory)) {}
 
   std::optional<size_t> NextThreadId() override { return Pick(); }
 
@@ -42,13 +40,6 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     return TaskWithMetaData{this->threads[current_thread][next_task_index],
                             is_new, current_thread};
   }
-
-  bool IsExhausted() override {
-    return false;
-  }
-
- protected:
-  size_t next_task = 0;
 };
 
 }  // namespace ltest

@@ -9,13 +9,6 @@
 
 namespace ltest {
 
-struct Strategy;
-
-enum class ReplayMode {
-  CompleteOnLast,
-  NoForceComplete,
-};
-
 enum class DeadlockPolicy {
   // Report a visible deadlock as a failure.
   Fail,
@@ -46,9 +39,6 @@ template <class Event>
 struct StrategyExplorationMinimizorT;
 
 template <class Event>
-struct SmartMinimizorT;
-
-template <class Event>
 struct BasicScheduler {
   using event_t = Event;
 
@@ -71,42 +61,9 @@ struct BasicScheduler {
   virtual ~BasicScheduler() = default;
 };
 
-template <class Event>
-struct BasicSchedulerWithReplay : BasicScheduler<Event> {
- protected:
-  template <class>
-  friend struct GreedyRoundMinimizorT;
-  template <class>
-  friend struct SameInterleavingMinimizorT;
-  template <class>
-  friend struct StrategyExplorationMinimizorT;
-  template <class>
-  friend struct SmartMinimizorT;
-
-  using Base = BasicScheduler<Event>;
-  using Result = typename Base::Result;
-  using NonLinearizableHistory = typename Base::NonLinearizableHistory;
-
-  virtual Result RunRound() = 0;
-
-  virtual Result ExploreRound(int runs,
-                              bool log_each_interleaving = false) = 0;
-
-  virtual Result ReplayRound(
-      const std::vector<int>& tasks_ordering,
-      ReplayMode mode = ReplayMode::CompleteOnLast) = 0;
-
-  [[nodiscard]] virtual Strategy& GetStrategy() const = 0;
-
-  virtual void Minimize(NonLinearizableHistory& nonlinear_history,
-                        const RoundMinimizorT<Event>& minimizor) = 0;
-};
-
 using Scheduler = BasicScheduler<HistoryEvent>;
-using SchedulerWithReplay = BasicSchedulerWithReplay<HistoryEvent>;
 
 using DualScheduler = BasicScheduler<DualHistoryEvent>;
-using DualSchedulerWithReplay = BasicSchedulerWithReplay<DualHistoryEvent>;
 // ----------------------------
 // Backward-compatible aliases (normal + dual)
 // ----------------------------

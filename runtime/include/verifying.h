@@ -2,6 +2,7 @@
 #include <gflags/gflags.h>
 
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <stdexcept>
 #include <type_traits>
@@ -161,27 +162,25 @@ struct DefaultOptions {
 
 void SetOpts(const DefaultOptions &def);
 Opts ParseOpts();
+int RunStrategyRounds(const Opts &opts, Strategy &strategy,
+                      const std::function<int(bool)> &run,
+                      const std::vector<CustomRound> &custom_rounds = {});
 std::vector<std::string> split(const std::string &s, char delim);
 DeadlockPolicy DeadlockPolicyFromLiteral(std::string a);
 
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 std::unique_ptr<Strategy> MakeStrategy(
-    Opts &opts, std::vector<TaskBuilder> l,
+    const Opts &opts, std::vector<TaskBuilder> l,
     std::function<std::unique_ptr<TargetObj>()> target_factory) {
+  std::cout << "strategy = ";
   switch (opts.typ) {
     case RR: {
       std::cout << "round-robin\n";
-      if (opts.seed != 0) {
-        std::cout << "seed     = " << opts.seed << "\n";
-      }
       return std::make_unique<RoundRobinStrategy<TargetObj, Verifier>>(
-          opts.threads, std::move(l), std::move(target_factory), opts.seed);
+          opts.threads, std::move(l), std::move(target_factory));
     }
     case RND: {
       std::cout << "random\n";
-      if (opts.seed != 0) {
-        std::cout << "seed     = " << opts.seed << "\n";
-      }
       std::vector<int> weights = opts.thread_weights;
       if (weights.empty()) {
         weights.assign(opts.threads, 1);
@@ -192,85 +191,35 @@ std::unique_ptr<Strategy> MakeStrategy(
       }
       return std::make_unique<RandomStrategy<TargetObj, Verifier>>(
           opts.threads, std::move(l), std::move(weights),
-          std::move(target_factory), opts.seed);
+          std::move(target_factory));
     }
     case PCT: {
       std::cout << "pct\n";
-      if (opts.seed != 0) {
-        std::cout << "seed     = " << opts.seed << "\n";
-      }
-      return std::make_unique<PctStrategy<TargetObj, Verifier>>(opts.threads,
-                                                                std::move(l),
-                                                                std::move(target_factory),
-                                                                opts.seed);
+      return std::make_unique<PctStrategy<TargetObj, Verifier>>(
+          opts.threads, std::move(l), std::move(target_factory));
     }
-    case TLA:{
+    case TLA: {
       std::cout << "tla\n";
-      if (opts.seed != 0) {
-        std::cout << "seed     = " << opts.seed << "\n";
-      }
-      return std::make_unique<TLAStrategy<TargetObj, Verifier>>(opts.threads,
-                                                                std::move(l),
-                                                                std::move(target_factory),
-                                                                opts.seed);
+      return std::make_unique<TLAStrategy<TargetObj, Verifier>>(
+          opts.threads, std::move(l), std::move(target_factory));
     }
     default:
       throw std::invalid_argument{"unexpected strategy type"};
   }
 }
 
-// Keeps pointer to strategy to pass reference to base scheduler.
 template <StrategyTaskVerifier Verifier>
-struct StrategySchedulerWrapper : StrategyScheduler<Verifier> {
-  StrategySchedulerWrapper(std::unique_ptr<Strategy> strategy_ptr,
-                           ModelChecker& checker,
-                           std::vector<CustomRound> custom_rounds,
-                           PrettyPrinter& pretty_printer, size_t max_tasks,
-                           size_t max_rounds, bool minimize,
-                           size_t exploration_runs, size_t minimization_runs,
-                           DeadlockPolicy deadlock_policy)
-      : StrategyScheduler<Verifier>(*strategy_ptr.get(), checker,
-                                    std::move(custom_rounds), pretty_printer,
-                                    max_tasks, max_rounds, minimize,
-                                    exploration_runs, minimization_runs,
-                                    deadlock_policy),
-        strategy(std::move(strategy_ptr)) {}
-
- private:
-  std::unique_ptr<Strategy> strategy;
-};
-
-template <typename TargetObj, StrategyTaskVerifier Verifier>
-std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker, Opts &opts,
-                                         const std::vector<TaskBuilder> &l,
-                                         std::vector<CustomRound> custom_rounds,
-                                         PrettyPrinter &pretty_printer,
-                                         std::function<std::unique_ptr<TargetObj>()>
-                                             target_factory) {
-  std::cout << "strategy = ";
-  switch (opts.typ) {
-    case RR:
-    case PCT:
-    case RND:
-    case TLA: {
-      auto strategy = MakeStrategy<TargetObj, Verifier>(
-          opts, std::move(l), std::move(target_factory));
-      auto scheduler = std::make_unique<StrategySchedulerWrapper<Verifier>>(
-          std::move(strategy), checker, std::move(custom_rounds),
-          pretty_printer, opts.tasks, opts.rounds, opts.minimize,
-          opts.exploration_runs, opts.minimization_runs, opts.deadlock_policy);
-      return scheduler;
-    }
-    default: {
-      assert(false && "Unknown strategy type specified");
-    }
-  }
+std::unique_ptr<Scheduler> MakeScheduler(
+    ModelChecker& checker, const Opts& opts, Strategy& strategy,
+    bool custom_round, PrettyPrinter& pretty_printer) {
+  return std::make_unique<StrategyScheduler<Verifier>>(
+      strategy, checker, custom_round, pretty_printer, opts.tasks,
+      opts.deadlock_policy);
 }
 
-inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
-                   PrettyPrinter &pretty_printer) {
+inline int TrapRun(Scheduler& scheduler, PrettyPrinter& pretty_printer) {
   ltest::ClearTestFailure();
-  auto result = scheduler->Run();
+  auto result = scheduler.Run();
   if (ltest::HasTestFailure()) {
     std::cout << ltest::GetTestFailureMessage() << "\n";
     return 1;
@@ -279,15 +228,13 @@ inline int TrapRun(std::unique_ptr<Scheduler> &&scheduler,
     if (result->reason == Scheduler::NonLinearizableHistory::Reason::DEADLOCK) {
       std::cout << "deadlock detected:\n";
       pretty_printer.PrettyPrint(
-          result->seq, scheduler->GetStrategyThreadsCount(), std::cout);
-      (void)scheduler.release();
+          result->seq, scheduler.GetStrategyThreadsCount(), std::cout);
       return 4;
     } else if (result->reason == Scheduler::NonLinearizableHistory::Reason::
                                      NON_LINEARIZABLE_HISTORY) {
       std::cout << "non linearized:\n";
       pretty_printer.PrettyPrint(
-          result->seq, scheduler->GetStrategyThreadsCount(), std::cout);
-      (void)scheduler.release();
+          result->seq, scheduler.GetStrategyThreadsCount(), std::cout);
       return 3;
     } else {
       std::abort();
@@ -306,71 +253,32 @@ struct NoopDualChecker final : DualLinearizabilityChecker {
 };
 
 template <StrategyTaskVerifier Verifier>
-struct DualStrategySchedulerWrapper : DualStrategyScheduler<Verifier> {
-  DualStrategySchedulerWrapper(std::unique_ptr<Strategy> strategy_ptr,
-                               DualLinearizabilityChecker& checker,
-                               PrettyPrinter& pretty_printer,
-                               size_t max_tasks, size_t max_rounds,
-                               bool minimize,
-                               size_t exploration_runs,
-                               size_t minimization_runs,
-                               DeadlockPolicy deadlock_policy)
-      : DualStrategyScheduler<Verifier>(*strategy_ptr.get(),
-                                        checker,
-                                        pretty_printer,
-                                        max_tasks,
-                                        max_rounds,
-                                        minimize,
-                                        exploration_runs,
-                                        minimization_runs,
-                                        deadlock_policy),
-        strategy(std::move(strategy_ptr)) {}
-
- private:
-  std::unique_ptr<Strategy> strategy;
-};
-
-template <typename TargetObj, StrategyTaskVerifier Verifier>
 std::unique_ptr<DualScheduler> MakeDualScheduler(
-    DualLinearizabilityChecker &checker, Opts &opts,
-    const std::vector<TaskBuilder> &l, PrettyPrinter &pretty_printer,
-    std::function<std::unique_ptr<TargetObj>()> target_factory) {
-  std::cout << "strategy = " << GetLiteral(opts.typ) << "\n";
-  // We support RR/RND/PCT the same way as normal.
-  switch (opts.typ) {
-    case RR:
-    case PCT:
-    case RND:
-    case TLA: {
-      auto strategy = MakeStrategy<TargetObj, Verifier>(
-          opts, std::move(l), std::move(target_factory));
-      return std::make_unique<DualStrategySchedulerWrapper<Verifier>>(
-          std::move(strategy), checker, pretty_printer, opts.tasks, opts.rounds,
-          opts.minimize, opts.exploration_runs, opts.minimization_runs,
-          opts.deadlock_policy);
-    }
-    default:
-      assert(false);
-  }
+    DualLinearizabilityChecker &checker, const Opts &opts,
+    Strategy& strategy, PrettyPrinter &pretty_printer) {
+  return std::make_unique<DualStrategyScheduler<Verifier>>(
+      strategy, checker, pretty_printer, opts.tasks, opts.deadlock_policy);
 }
 
-inline int TrapRunDual(std::unique_ptr<DualScheduler> &&scheduler,
-                       PrettyPrinter &pretty_printer) {
-  auto result = scheduler->Run();
+inline int TrapRunDual(DualScheduler& scheduler, PrettyPrinter& pretty_printer) {
+  ltest::ClearTestFailure();
+  auto result = scheduler.Run();
+  if (ltest::HasTestFailure()) {
+    std::cout << ltest::GetTestFailureMessage() << "\n";
+    return 1;
+  }
   if (result.has_value()) {
     if (result->reason ==
         DualScheduler::NonLinearizableHistory::Reason::DEADLOCK) {
       std::cout << "deadlock detected:\n";
       pretty_printer.PrettyPrint(
-          result->seq, scheduler->GetStrategyThreadsCount(), std::cout);
-      (void)scheduler.release();
+          result->seq, scheduler.GetStrategyThreadsCount(), std::cout);
       return 4;
     } else if (result->reason == DualScheduler::NonLinearizableHistory::Reason::
                                      NON_LINEARIZABLE_HISTORY) {
       std::cout << "non linearized:\n";
       pretty_printer.PrettyPrint(
-          result->seq, scheduler->GetStrategyThreadsCount(), std::cout);
-      (void)scheduler.release();
+          result->seq, scheduler.GetStrategyThreadsCount(), std::cout);
       return 3;
     } else {
       std::abort();
@@ -407,22 +315,23 @@ int Run(int argc, char *argv[], std::vector<CustomRound> custom_rounds = {}) {
   std::cout << "wmm enabled = " << std::boolalpha << opts.wmm_enabled << "\n";
   std::cout << "targets  = " << task_builders.size() << "\n";
 
-  PrettyPrinter pretty_printer;
-
-  using lchecker_t =
-      LinearizabilityCheckerRecursive<typename Spec::linear_spec_t,
-                                      typename Spec::linear_spec_hash_t,
-                                      typename Spec::linear_spec_equals_t>;
-  lchecker_t checker{Spec::linear_spec_t::GetMethods(),
-                     typename Spec::linear_spec_t{}};
-  auto target_factory = detail::MakeTargetFactory<Spec>();
-
-  auto scheduler = MakeScheduler<typename Spec::target_obj_t, Verifier>(
-      checker, opts, std::move(task_builders), std::move(custom_rounds),
-      pretty_printer, std::move(target_factory));
-  std::cout << "\n\n";
-  std::cout.flush();
-  return TrapRun(std::move(scheduler), pretty_printer);
+  auto strategy = MakeStrategy<typename Spec::target_obj_t, Verifier>(
+      opts, std::move(task_builders), detail::MakeTargetFactory<Spec>());
+  auto run_once = [&](bool custom_round) {
+    PrettyPrinter pretty_printer;
+    using lchecker_t =
+        LinearizabilityCheckerRecursive<typename Spec::linear_spec_t,
+                                        typename Spec::linear_spec_hash_t,
+                                        typename Spec::linear_spec_equals_t>;
+    lchecker_t checker{Spec::linear_spec_t::GetMethods(),
+                      typename Spec::linear_spec_t{}};
+    auto scheduler = MakeScheduler<Verifier>(checker, opts, *strategy,
+                                             custom_round, pretty_printer);
+    std::cout << "\n\n";
+    std::cout.flush();
+    return TrapRun(*scheduler, pretty_printer);
+  };
+  return RunStrategyRounds(opts, *strategy, run_once, custom_rounds);
 }
 
 template <class SpecDual,
@@ -450,22 +359,24 @@ int RunDual(int argc, char *argv[]) {
   }
   std::cout << "targets  = " << task_builders.size() << "\n";
 
-  PrettyPrinter pretty_printer;
-
-  using dual_checker_t =
-      LinearizabilityDualCheckerRecursive<
-          typename SpecDual::linear_spec_t,
-          typename SpecDual::linear_spec_hash_t,
-          typename SpecDual::linear_spec_equals_t>;
-  dual_checker_t checker{SpecDual::linear_spec_t::GetDualMethods(),
-                         typename SpecDual::linear_spec_t{}};
-  auto target_factory = detail::MakeTargetFactory<SpecDual>();
-  auto scheduler = MakeDualScheduler<typename SpecDual::target_obj_t, Verifier>(
-      checker, opts, std::move(task_builders), pretty_printer,
-      std::move(target_factory));
-  std::cout << "\n\n";
-  std::cout.flush();
-  return TrapRunDual(std::move(scheduler), pretty_printer);
+  auto strategy = MakeStrategy<typename SpecDual::target_obj_t, Verifier>(
+      opts, std::move(task_builders), detail::MakeTargetFactory<SpecDual>());
+  auto run_once = [&](bool) {
+    PrettyPrinter pretty_printer;
+    using dual_checker_t =
+        LinearizabilityDualCheckerRecursive<
+            typename SpecDual::linear_spec_t,
+            typename SpecDual::linear_spec_hash_t,
+            typename SpecDual::linear_spec_equals_t>;
+    dual_checker_t checker{SpecDual::linear_spec_t::GetDualMethods(),
+                          typename SpecDual::linear_spec_t{}};
+    auto scheduler =
+        MakeDualScheduler<Verifier>(checker, opts, *strategy, pretty_printer);
+    std::cout << "\n\n";
+    std::cout.flush();
+    return TrapRunDual(*scheduler, pretty_printer);
+  };
+  return RunStrategyRounds(opts, *strategy, run_once);
 }
 
 }  // namespace ltest

@@ -113,9 +113,8 @@ struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
     pick_weights.clear();
   }
 
-  void UpdateSimulatorState(size_t thread_id, AttemptReport &report) override {
-    BaseStrategyWithThreads<TargetObj, Verifier>::UpdateSimulatorState(
-        thread_id, report);
+  void UpdateSimulatorState(size_t thread_id) override {
+    BaseStrategyWithThreads<TargetObj, Verifier>::UpdateSimulatorState(thread_id);
     weights.resize(this->threads.size(), 1);
   }
 

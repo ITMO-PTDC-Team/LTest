@@ -259,8 +259,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     }
   }
 
-  void UpdateSimulatorState(size_t thread_id, AttemptReport& report) override {
-    Base::UpdateSimulatorState(thread_id, report);
+  void UpdateSimulatorState(size_t thread_id) override {
+    Base::UpdateSimulatorState(thread_id);
     if (this->threads.size() > this->priorities.size()) {
       AddPriority();
     }

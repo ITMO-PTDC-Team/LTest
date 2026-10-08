@@ -1,6 +1,5 @@
 #pragma once
 #include <functional>
-#include <optional>
 #include <variant>
 #include <vector>
 
@@ -42,19 +41,7 @@ template <class Event>
 struct BasicScheduler {
   using event_t = Event;
 
-  using FullHistory = std::vector<std::reference_wrapper<Task>>;
-  using SeqHistory = std::vector<Event>;
-
-  struct NonLinearizableHistory {
-    enum class Reason { ASSERT_FAILURE, DEADLOCK, NON_LINEARIZABLE_HISTORY };
-    FullHistory full;
-    SeqHistory seq;
-    Reason reason;
-  };
-
-  using Result = std::optional<NonLinearizableHistory>;
-
-  virtual Result Run() = 0;
+  virtual void Run() = 0;
 
   virtual size_t GetStrategyThreadsCount() const = 0;
 

@@ -31,29 +31,41 @@ extern "C" int test_main(int argc, char *argv[]);
 
 class Test {
  public:
-  int Main(int argc, char *argv[]) { return test_main(argc, argv); };
+  int Main(int argc, char *argv[]) {
+    const int result = test_main(argc, argv);
+    if (result != 0) {
+      SchedCtxGuard guard;
+      SetTestFailure("target main returned " + std::to_string(result));
+    }
+    return result;
+  }
 };
 
 target_method(spec::genMainArgs, int, Test, Main, int, char **);
 
 class DummyChecker : public ModelChecker {
  public:
-  bool Check(const std::vector<HistoryEvent> &) override { return true; }
+  bool Check(const std::vector<HistoryEvent>&) override { return true; }
 };
 extern "C" int ltest_main(int argc, char *argv[]) {
   ltest_initialized = true;
+  SetOpts(spec::FireAndForgetOptionsOverride::GetOptions());
   spec::test_argc = argc;
   spec::test_argv = argv;
-  SetOpts(spec::FireAndForgetOptionsOverride::GetOptions());
   Opts opts = ParseOpts();
 
   logger_init(opts.verbose);
 
-  PrettyPrinter pretty_printer;
-  DummyChecker checker;
-  auto scheduler = MakeScheduler<Test, OnlyOneTaskPerThreadVerifier>(
-      checker, opts, task_builders, {}, pretty_printer,  [](){return std::make_unique<Test>();});
-  std::cout << "\n\n";
-  std::cout.flush();
-  return TrapRun(std::move(scheduler), pretty_printer);
+  auto strategy = MakeStrategy<Test, OnlyOneTaskPerThreadVerifier>(
+      opts, task_builders, []() { return std::make_unique<Test>(); });
+  auto run_once = [&](bool) {
+    PrettyPrinter pretty_printer;
+    DummyChecker checker;
+    auto scheduler = MakeScheduler<OnlyOneTaskPerThreadVerifier>(
+        checker, opts, *strategy, false, pretty_printer);
+    std::cout << "\n\n";
+    std::cout.flush();
+    return TrapRun(*scheduler, pretty_printer);
+  };
+  return RunStrategyRounds(opts, *strategy, run_once);
 }

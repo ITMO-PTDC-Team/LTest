@@ -35,8 +35,6 @@ struct DefaultStrategyTaskVerifier {
 
   inline void OnFinished(Task& /*task*/, std::size_t /*thread_id*/) {}
 
-  inline void Reset() {}
-
   inline std::vector<std::string> GetDeadlockProgressMethods(
       const std::string& /*method*/) const {
     return {};
@@ -180,14 +178,6 @@ struct ReservePolicyVerifier {
 
   inline void OnFinished(Task& task, std::size_t thread_id) {
     base_.OnFinished(task, thread_id);
-  }
-
-  inline void Reset() {
-    started_by_method_.clear();
-    started_task_ids_.clear();
-    if constexpr (requires(BaseVerifier& base) { base.Reset(); }) {
-      base_.Reset();
-    }
   }
 
   inline std::vector<std::string> GetDeadlockProgressMethods(

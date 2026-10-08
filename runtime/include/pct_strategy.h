@@ -219,9 +219,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     last_chosen = index_of_max;
     // Picked thread is `index_of_max`
     int next_task_index = this->GetNextTaskInThread(index_of_max);
-    bool is_new = round_schedule[index_of_max] != next_task_index;
     round_schedule[index_of_max] = next_task_index;
-    return TaskWithMetaData{threads[index_of_max][next_task_index], is_new,
+    return TaskWithMetaData{threads[index_of_max][next_task_index],
                             index_of_max};
   }
 

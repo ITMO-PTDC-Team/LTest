@@ -51,9 +51,6 @@ using MethodName = std::string;
 std::map<size_t, size_t> get_inv_res_mapping(
     const std::vector<HistoryEvent>& history);
 
-std::map<size_t, size_t> get_inv_res_full_mapping(
-    const std::vector<HistoryEvent>& history);
-
 template <class LinearSpecificationObject,
           class SpecificationObjectHash = std::hash<LinearSpecificationObject>,
           class SpecificationObjectEqual =

@@ -34,11 +34,9 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     }
     size_t current_thread = current_thread_opt.value();
     int next_task_index = this->GetNextTaskInThread(current_thread);
-    bool is_new = round_schedule[current_thread] != next_task_index;
-
     round_schedule[current_thread] = next_task_index;
     return TaskWithMetaData{this->threads[current_thread][next_task_index],
-                            is_new, current_thread};
+                            current_thread};
   }
 };
 

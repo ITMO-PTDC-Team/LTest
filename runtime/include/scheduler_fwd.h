@@ -1,7 +1,4 @@
 #pragma once
-#include <functional>
-#include <variant>
-#include <vector>
 
 #include "lincheck.h"
 #include "lincheck_dual.h"
@@ -26,24 +23,10 @@ enum class DeadlockPolicy {
 };
 
 template <class Event>
-struct RoundMinimizorT;
-
-template <class Event>
-struct GreedyRoundMinimizorT;
-
-template <class Event>
-struct SameInterleavingMinimizorT;
-
-template <class Event>
-struct StrategyExplorationMinimizorT;
-
-template <class Event>
 struct BasicScheduler {
   using event_t = Event;
 
   virtual void Run() = 0;
-
-  virtual size_t GetStrategyThreadsCount() const = 0;
 
   virtual ~BasicScheduler() = default;
 };
@@ -51,19 +34,5 @@ struct BasicScheduler {
 using Scheduler = BasicScheduler<HistoryEvent>;
 
 using DualScheduler = BasicScheduler<DualHistoryEvent>;
-// ----------------------------
-// Backward-compatible aliases (normal + dual)
-// ----------------------------
-
-// normal (HistoryEvent)
-using RoundMinimizor = RoundMinimizorT<HistoryEvent>;
-using GreedyRoundMinimizor = GreedyRoundMinimizorT<HistoryEvent>;
-using SameInterleavingMinimizor = SameInterleavingMinimizorT<HistoryEvent>;
-using StrategyExplorationMinimizor = StrategyExplorationMinimizorT<HistoryEvent>;
-
-// dual (DualHistoryEvent)
-using DualRoundMinimizor = RoundMinimizorT<DualHistoryEvent>;
-using DualSameInterleavingMinimizor = SameInterleavingMinimizorT<DualHistoryEvent>;
-using DualStrategyExplorationMinimizor = StrategyExplorationMinimizorT<DualHistoryEvent>;
 
 }  // namespace ltest

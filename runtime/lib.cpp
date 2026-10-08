@@ -19,7 +19,6 @@ Task this_coro{};
 int this_thread_id = -1;
 
 boost::context::fiber sched_ctx;
-std::optional<CoroutineStatus> coroutine_status;
 bool ltest_initialized = false;
 
 namespace {
@@ -122,11 +121,7 @@ extern "C" void CoroYield() {
   ltest::ltest_coro_ctx = true;
 }
 
-extern "C" void CoroutineStatusChange(char* name, bool start) {
-  // assert(!coroutine_status.has_value());
-  ltest::coroutine_status.emplace(name, start);
-  CoroYield();
-}
+extern "C" void CoroutineStatusChange(char*, bool) { CoroYield(); }
 
 namespace ltest {
 

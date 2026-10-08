@@ -43,7 +43,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         std::min<size_t>(this->GetSharedState().completed_rounds + 1, 50);
     current_schedule_length = 0;
     Base::InitializeRound(custom_round);
-    if (!custom_round) {
+    if (!custom_round ||
+        attempt_session->request.kind != AttemptKind::Generate) {
       PrepareForDepth(current_depth, MeanLength());
     }
   }
@@ -259,9 +260,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     }
   }
 
-  void UpdateSimulatorState(size_t thread_id,
-                            Scheduler::SeqHistory& seq) override {
-    Base::UpdateSimulatorState(thread_id, seq);
+  void UpdateSimulatorState(size_t thread_id, AttemptReport& report) override {
+    Base::UpdateSimulatorState(thread_id, report);
     if (this->threads.size() > this->priorities.size()) {
       AddPriority();
     }

@@ -227,14 +227,16 @@ inline int TrapRun(Scheduler& scheduler, PrettyPrinter& pretty_printer) {
   if (result.has_value()) {
     if (result->reason == Scheduler::NonLinearizableHistory::Reason::DEADLOCK) {
       std::cout << "deadlock detected:\n";
-      pretty_printer.PrettyPrint(
-          result->seq, scheduler.GetStrategyThreadsCount(), std::cout);
+      pretty_printer.PrettyPrint(attempt_session->report,
+                                 scheduler.GetStrategyThreadsCount(),
+                                 std::cout);
       return 4;
     } else if (result->reason == Scheduler::NonLinearizableHistory::Reason::
                                      NON_LINEARIZABLE_HISTORY) {
       std::cout << "non linearized:\n";
-      pretty_printer.PrettyPrint(
-          result->seq, scheduler.GetStrategyThreadsCount(), std::cout);
+      pretty_printer.PrettyPrint(attempt_session->report,
+                                 scheduler.GetStrategyThreadsCount(),
+                                 std::cout);
       return 3;
     } else {
       std::abort();
@@ -271,14 +273,16 @@ inline int TrapRunDual(DualScheduler& scheduler, PrettyPrinter& pretty_printer) 
     if (result->reason ==
         DualScheduler::NonLinearizableHistory::Reason::DEADLOCK) {
       std::cout << "deadlock detected:\n";
-      pretty_printer.PrettyPrint(
-          result->seq, scheduler.GetStrategyThreadsCount(), std::cout);
+      pretty_printer.PrettyPrint(attempt_session->report,
+                                 scheduler.GetStrategyThreadsCount(),
+                                 std::cout);
       return 4;
     } else if (result->reason == DualScheduler::NonLinearizableHistory::Reason::
                                      NON_LINEARIZABLE_HISTORY) {
       std::cout << "non linearized:\n";
-      pretty_printer.PrettyPrint(
-          result->seq, scheduler.GetStrategyThreadsCount(), std::cout);
+      pretty_printer.PrettyPrint(attempt_session->report,
+                                 scheduler.GetStrategyThreadsCount(),
+                                 std::cout);
       return 3;
     } else {
       std::abort();

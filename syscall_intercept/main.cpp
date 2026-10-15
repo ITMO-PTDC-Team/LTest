@@ -45,7 +45,7 @@ target_method(spec::genMainArgs, int, Test, Main, int, char **);
 
 class DummyChecker : public ModelChecker {
  public:
-  bool Check(const std::vector<HistoryEvent>&) override { return true; }
+  bool Check(const std::vector<HistoryEvent> &) override { return true; }
 };
 extern "C" int ltest_main(int argc, char *argv[]) {
   ltest_initialized = true;
@@ -65,7 +65,7 @@ extern "C" int ltest_main(int argc, char *argv[]) {
         checker, opts, *strategy, false, pretty_printer);
     std::cout << "\n\n";
     std::cout.flush();
-    return TrapRun(*scheduler, pretty_printer);
+    TrapRun(*scheduler, pretty_printer);
   };
   return RunStrategyRounds(opts, *strategy, run_once);
 }

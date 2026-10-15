@@ -219,10 +219,10 @@ static ltest::WorkloadPolicy GetWorkloadPolicy() {
 - `fail` - видимый deadlock считается ошибкой, процесс возвращает код `4`;
 - `checker` - при deadlock проверить partial history; если она
   линеаризуема, раунд принимается как неинформативный;
-- `explore` - если partial history линеаризуема, scheduler пробует соседние
-  interleavings через `ExploreRound`;
-- `rollback` - если partial history линеаризуема, scheduler пытается удалить
-  blocked wait-задачу, добавить progress-метод из policy и replay-нуть раунд;
+- `explore` - если partial history линеаризуема, родительский процесс
+  пробует соседние interleavings в новых дочерних процессах;
+- `rollback` - если partial history линеаризуема, родительский процесс пытается
+  удалить blocked wait-задачу, добавить progress-метод из policy и replay-нуть раунд;
   затем fallback к `explore`.
 
 Для acceptance-прогонов дуальных структур обычно используется:
@@ -236,14 +236,14 @@ static ltest::WorkloadPolicy GetWorkloadPolicy() {
 
 ## Коды возврата
 
-`TrapRunDual()` возвращает:
+Процесс LTest возвращает:
 
 - `0` - `success!`, нарушений не найдено;
 - `3` - `non linearized:`, checker нашёл нелинеаризуемую историю;
 - `4` - `deadlock detected:`, deadlock был признан ошибкой политики.
 
-При `--minimize=true` scheduler сначала печатает полный сценарий, потом
-пытается сократить его тем же interleaving, rescheduling и smart minimizer-ом.
+При `--minimize=true` сначала печатается полный сценарий, потом родительский
+процесс пытается сократить его тем же interleaving, rescheduling и smart minimizer-ом.
 
 ## Сборка
 

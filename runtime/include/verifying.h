@@ -163,7 +163,7 @@ struct DefaultOptions {
 void SetOpts(const DefaultOptions &def);
 Opts ParseOpts();
 int RunStrategyRounds(const Opts &opts, Strategy &strategy,
-                      const std::function<int(bool)> &run,
+                      const std::function<void(bool)> &run,
                       const std::vector<CustomRound> &custom_rounds = {});
 std::vector<std::string> split(const std::string &s, char delim);
 DeadlockPolicy DeadlockPolicyFromLiteral(std::string a);
@@ -217,42 +217,39 @@ std::unique_ptr<Scheduler> MakeScheduler(
       opts.deadlock_policy);
 }
 
-inline int TrapRun(Scheduler& scheduler, PrettyPrinter& pretty_printer) {
-  ltest::ClearTestFailure();
-  auto result = scheduler.Run();
-  if (ltest::HasTestFailure()) {
-    std::cout << ltest::GetTestFailureMessage() << "\n";
-    return 1;
+template <class Event>
+int TrapRun(BasicScheduler<Event> &scheduler, PrettyPrinter &pretty_printer) {
+  ClearTestFailure();
+  scheduler.Run();
+  const auto& report = attempt_session->report;
+  const int threads = scheduler.GetStrategyThreadsCount();
+  // Checked deadlocks remain in the report for parent-driven exploration.
+  int result = report.result;
+  if (result == 4 && scheduler.GetDeadlockPolicy() != DeadlockPolicy::Fail) {
+    result = 0;
   }
-  if (result.has_value()) {
-    if (result->reason == Scheduler::NonLinearizableHistory::Reason::DEADLOCK) {
-      std::cout << "deadlock detected:\n";
-      pretty_printer.PrettyPrint(attempt_session->report,
-                                 scheduler.GetStrategyThreadsCount(),
-                                 std::cout);
-      return 4;
-    } else if (result->reason == Scheduler::NonLinearizableHistory::Reason::
-                                     NON_LINEARIZABLE_HISTORY) {
+  switch (result) {
+    case 0:
+      std::cout << "success!\n";
+      break;
+    case 1:
+      std::cout << ltest::GetTestFailureMessage() << "\n";
+      break;
+    case 3:
       std::cout << "non linearized:\n";
-      pretty_printer.PrettyPrint(attempt_session->report,
-                                 scheduler.GetStrategyThreadsCount(),
-                                 std::cout);
-      return 3;
-    } else {
+      pretty_printer.PrettyPrint(report, threads, std::cout);
+      break;
+    case 4:
+      std::cout << "deadlock detected:\n";
+      pretty_printer.PrettyPrint(report, threads, std::cout);
+      break;
+    default:
       std::abort();
-    }
-  } else {
-    std::cout << "success!\n";
-    return 0;
   }
+  return result;
 }
 
 // ---- dual runner ----
-
-// A checker stub for: always "passes".
-struct NoopDualChecker final : DualLinearizabilityChecker {
-  bool Check(const std::vector<DualHistoryEvent> &) override { return true; }
-};
 
 template <StrategyTaskVerifier Verifier>
 std::unique_ptr<DualScheduler> MakeDualScheduler(
@@ -262,35 +259,9 @@ std::unique_ptr<DualScheduler> MakeDualScheduler(
       strategy, checker, pretty_printer, opts.tasks, opts.deadlock_policy);
 }
 
-inline int TrapRunDual(DualScheduler& scheduler, PrettyPrinter& pretty_printer) {
-  ltest::ClearTestFailure();
-  auto result = scheduler.Run();
-  if (ltest::HasTestFailure()) {
-    std::cout << ltest::GetTestFailureMessage() << "\n";
-    return 1;
-  }
-  if (result.has_value()) {
-    if (result->reason ==
-        DualScheduler::NonLinearizableHistory::Reason::DEADLOCK) {
-      std::cout << "deadlock detected:\n";
-      pretty_printer.PrettyPrint(attempt_session->report,
-                                 scheduler.GetStrategyThreadsCount(),
-                                 std::cout);
-      return 4;
-    } else if (result->reason == DualScheduler::NonLinearizableHistory::Reason::
-                                     NON_LINEARIZABLE_HISTORY) {
-      std::cout << "non linearized:\n";
-      pretty_printer.PrettyPrint(attempt_session->report,
-                                 scheduler.GetStrategyThreadsCount(),
-                                 std::cout);
-      return 3;
-    } else {
-      std::abort();
-    }
-  } else {
-    std::cout << "success!\n";
-    return 0;
-  }
+inline int TrapRunDual(DualScheduler &scheduler,
+                       PrettyPrinter &pretty_printer) {
+  return TrapRun(scheduler, pretty_printer);
 }
 
 template <class Spec,
@@ -333,7 +304,7 @@ int Run(int argc, char *argv[], std::vector<CustomRound> custom_rounds = {}) {
                                              custom_round, pretty_printer);
     std::cout << "\n\n";
     std::cout.flush();
-    return TrapRun(*scheduler, pretty_printer);
+    TrapRun(*scheduler, pretty_printer);
   };
   return RunStrategyRounds(opts, *strategy, run_once, custom_rounds);
 }
@@ -378,7 +349,7 @@ int RunDual(int argc, char *argv[]) {
         MakeDualScheduler<Verifier>(checker, opts, *strategy, pretty_printer);
     std::cout << "\n\n";
     std::cout.flush();
-    return TrapRunDual(*scheduler, pretty_printer);
+    TrapRunDual(*scheduler, pretty_printer);
   };
   return RunStrategyRounds(opts, *strategy, run_once);
 }

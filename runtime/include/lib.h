@@ -1,5 +1,5 @@
 #pragma once
-#include "fiber_context.h"
+#include <boost/context/fiber.hpp>
 #include <cassert>
 #include <cstdint>
 #include <exception>
@@ -23,12 +23,6 @@ extern "C" void CoroutineStatusChange(char* coroutine, bool start);
 namespace ltest {
 
 struct CoroBase;
-struct CoroutineStatus;
-
-struct CoroutineStatus {
-  std::string_view name;
-  bool has_started;
-};
 
 extern bool ltest_initialized;
 
@@ -37,9 +31,7 @@ extern std::shared_ptr<CoroBase> this_coro;
 extern int this_thread_id;
 
 // Scheduler context
-extern context::fiber_context sched_ctx;
-
-extern std::optional<CoroutineStatus> coroutine_status;
+extern boost::context::fiber sched_ctx;
 
 struct TestFailure : public std::exception {
   explicit TestFailure(std::string message) : msg(std::move(message)) {}
@@ -58,8 +50,6 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   CoroBase(const CoroBase&) = delete;
   CoroBase(CoroBase&&) = delete;
   CoroBase& operator=(CoroBase&&) = delete;
-
-  virtual std::shared_ptr<CoroBase> Restart(void* this_ptr) = 0;
 
   // Resume the coroutine to the next yield.
   void Resume(size_t resumed_thread_id);
@@ -86,8 +76,6 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
 
   // Terminate the coroutine.
   void Terminate();
-  void DiscardRoundResults();
-  void DestroyContext();
 
   void SetBlocked(const BlockState& state) {
     fstate = state;
@@ -132,8 +120,6 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
 
   virtual ~CoroBase();
 
-  context::fiber_context& GetCtx() { return ctx; }
-
  protected:
   CoroBase() = default;
 
@@ -151,7 +137,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
 
   BlockState fstate{};
   std::string_view name;
-  context::fiber_context ctx;
+  boost::context::fiber ctx;
 
  private:
   bool is_dual_task_{false};
@@ -163,18 +149,6 @@ struct Coro final : public CoroBase {
   using CoroF = std::function<ValueWrapper(Target*, Args...)>;
   using ArgsToStringsF =
       std::function<std::vector<std::string>(std::shared_ptr<void>)>;
-
-  std::shared_ptr<CoroBase> Restart(void* this_ptr) override {
-    SchedCtxGuard guard;
-    assert(IsReturned());
-    auto coro = New(func, this_ptr, args, args_to_strings, name, id);
-
-    // Preserve dual marker across round reset / replay.
-    // Otherwise dual tasks turn into non-dual after Restart(), breaking dual history.
-    coro->SetDual(this->IsDual());
-
-    return coro;
-  }
 
   static std::shared_ptr<CoroBase> New(CoroF func, void* this_ptr,
                                        std::shared_ptr<void> args,
@@ -196,7 +170,8 @@ struct Coro final : public CoroBase {
     // The fiber only needs non-owning access to the object while it is alive.
     Coro* self = c.get();
 
-    c->ctx = context::fiber_context([self](context::fiber_context&& ctx) {
+    c->ctx = boost::context::fiber([self](boost::context::fiber&& ctx) {
+        sched_ctx = std::move(ctx);
         auto real_args = static_cast<std::tuple<Args...>*>(self->args.get());
         auto this_arg =
             std::tuple<Target*>{static_cast<Target*>(self->this_ptr)};
@@ -212,7 +187,7 @@ struct Coro final : public CoroBase {
         }
         self->returned = true;
         ltest_coro_ctx = false;
-        return std::move(ctx);
+        return std::move(sched_ctx);
     });
 
     return c;

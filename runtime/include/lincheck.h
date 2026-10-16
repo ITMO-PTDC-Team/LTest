@@ -39,7 +39,6 @@ typedef std::variant<Invoke, Response> HistoryEvent;
 // ModelChecker is the general checker interface which is implemented by
 // different checkers, each of which checks its own consistency model
 struct ModelChecker {
-  virtual ~ModelChecker() = default;
   virtual bool Check(const std::vector<HistoryEvent>& history) = 0;
 };
 

@@ -58,14 +58,13 @@ extern "C" int ltest_main(int argc, char *argv[]) {
 
   auto strategy = MakeStrategy<Test, OnlyOneTaskPerThreadVerifier>(
       opts, task_builders, []() { return std::make_unique<Test>(); });
-  auto run_once = [&](bool) {
+  auto run_once = [&] {
     PrettyPrinter pretty_printer;
     DummyChecker checker;
-    auto scheduler = MakeScheduler<OnlyOneTaskPerThreadVerifier>(
-        checker, opts, *strategy, false, pretty_printer);
+    auto scheduler = MakeScheduler(checker, opts, *strategy, pretty_printer);
     std::cout << "\n\n";
     std::cout.flush();
-    TrapRun(*scheduler, pretty_printer);
+    TrapRun(std::move(scheduler), pretty_printer);
   };
   return RunStrategyRounds(opts, *strategy, run_once);
 }

@@ -27,6 +27,7 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   std::optional<size_t> NextThreadId() override { return Pick(); }
 
   StrategyNextResult NextSchedule() override {
+    if (auto task = this->GetReplayTask()) return *task;
     auto& round_schedule = this->round_schedule;
     auto current_thread_opt = PickSchedule();
     if (!current_thread_opt.has_value()) {

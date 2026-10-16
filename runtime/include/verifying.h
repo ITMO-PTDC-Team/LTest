@@ -163,14 +163,14 @@ struct DefaultOptions {
 void SetOpts(const DefaultOptions &def);
 Opts ParseOpts();
 int RunStrategyRounds(const Opts &opts, Strategy &strategy,
-                      const std::function<void(bool)> &run,
+                      const std::function<void()> &run,
                       const std::vector<CustomRound> &custom_rounds = {});
 std::vector<std::string> split(const std::string &s, char delim);
 DeadlockPolicy DeadlockPolicyFromLiteral(std::string a);
 
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 std::unique_ptr<Strategy> MakeStrategy(
-    const Opts &opts, std::vector<TaskBuilder> l,
+    Opts &opts, std::vector<TaskBuilder> l,
     std::function<std::unique_ptr<TargetObj>()> target_factory) {
   std::cout << "strategy = ";
   switch (opts.typ) {
@@ -208,24 +208,24 @@ std::unique_ptr<Strategy> MakeStrategy(
   }
 }
 
-template <StrategyTaskVerifier Verifier>
-std::unique_ptr<Scheduler> MakeScheduler(
-    ModelChecker& checker, const Opts& opts, Strategy& strategy,
-    bool custom_round, PrettyPrinter& pretty_printer) {
-  return std::make_unique<StrategyScheduler<Verifier>>(
-      strategy, checker, custom_round, pretty_printer, opts.tasks,
-      opts.deadlock_policy);
+inline std::unique_ptr<Scheduler> MakeScheduler(ModelChecker &checker,
+                                                const Opts &opts,
+                                                Strategy &strategy,
+                                                PrettyPrinter &pretty_printer) {
+  return std::make_unique<StrategyScheduler>(strategy, checker, pretty_printer,
+                                             opts.tasks, opts.deadlock_policy);
 }
 
 template <class Event>
-int TrapRun(BasicScheduler<Event> &scheduler, PrettyPrinter &pretty_printer) {
+int TrapRun(std::unique_ptr<BasicScheduler<Event>> &&scheduler,
+            PrettyPrinter &pretty_printer) {
   ClearTestFailure();
-  scheduler.Run();
+  scheduler->Run();
   const auto& report = attempt_session->report;
-  const int threads = scheduler.GetStrategyThreadsCount();
+  const size_t threads = scheduler->GetStrategyThreadsCount();
   // Checked deadlocks remain in the report for parent-driven exploration.
   int result = report.result;
-  if (result == 4 && scheduler.GetDeadlockPolicy() != DeadlockPolicy::Fail) {
+  if (result == 4 && scheduler->GetDeadlockPolicy() != DeadlockPolicy::Fail) {
     result = 0;
   }
   switch (result) {
@@ -251,17 +251,16 @@ int TrapRun(BasicScheduler<Event> &scheduler, PrettyPrinter &pretty_printer) {
 
 // ---- dual runner ----
 
-template <StrategyTaskVerifier Verifier>
-std::unique_ptr<DualScheduler> MakeDualScheduler(
-    DualLinearizabilityChecker &checker, const Opts &opts,
-    Strategy& strategy, PrettyPrinter &pretty_printer) {
-  return std::make_unique<DualStrategyScheduler<Verifier>>(
+inline std::unique_ptr<DualScheduler> MakeDualScheduler(
+    DualLinearizabilityChecker &checker, const Opts &opts, Strategy &strategy,
+    PrettyPrinter &pretty_printer) {
+  return std::make_unique<DualStrategyScheduler>(
       strategy, checker, pretty_printer, opts.tasks, opts.deadlock_policy);
 }
 
-inline int TrapRunDual(DualScheduler &scheduler,
+inline int TrapRunDual(std::unique_ptr<DualScheduler> &&scheduler,
                        PrettyPrinter &pretty_printer) {
-  return TrapRun(scheduler, pretty_printer);
+  return TrapRun(std::move(scheduler), pretty_printer);
 }
 
 template <class Spec,
@@ -292,7 +291,7 @@ int Run(int argc, char *argv[], std::vector<CustomRound> custom_rounds = {}) {
 
   auto strategy = MakeStrategy<typename Spec::target_obj_t, Verifier>(
       opts, std::move(task_builders), detail::MakeTargetFactory<Spec>());
-  auto run_once = [&](bool custom_round) {
+  auto run_once = [&] {
     PrettyPrinter pretty_printer;
     using lchecker_t =
         LinearizabilityCheckerRecursive<typename Spec::linear_spec_t,
@@ -300,11 +299,10 @@ int Run(int argc, char *argv[], std::vector<CustomRound> custom_rounds = {}) {
                                         typename Spec::linear_spec_equals_t>;
     lchecker_t checker{Spec::linear_spec_t::GetMethods(),
                       typename Spec::linear_spec_t{}};
-    auto scheduler = MakeScheduler<Verifier>(checker, opts, *strategy,
-                                             custom_round, pretty_printer);
+    auto scheduler = MakeScheduler(checker, opts, *strategy, pretty_printer);
     std::cout << "\n\n";
     std::cout.flush();
-    TrapRun(*scheduler, pretty_printer);
+    TrapRun(std::move(scheduler), pretty_printer);
   };
   return RunStrategyRounds(opts, *strategy, run_once, custom_rounds);
 }
@@ -336,7 +334,7 @@ int RunDual(int argc, char *argv[]) {
 
   auto strategy = MakeStrategy<typename SpecDual::target_obj_t, Verifier>(
       opts, std::move(task_builders), detail::MakeTargetFactory<SpecDual>());
-  auto run_once = [&](bool) {
+  auto run_once = [&] {
     PrettyPrinter pretty_printer;
     using dual_checker_t =
         LinearizabilityDualCheckerRecursive<
@@ -346,10 +344,10 @@ int RunDual(int argc, char *argv[]) {
     dual_checker_t checker{SpecDual::linear_spec_t::GetDualMethods(),
                           typename SpecDual::linear_spec_t{}};
     auto scheduler =
-        MakeDualScheduler<Verifier>(checker, opts, *strategy, pretty_printer);
+        MakeDualScheduler(checker, opts, *strategy, pretty_printer);
     std::cout << "\n\n";
     std::cout.flush();
-    TrapRunDual(*scheduler, pretty_printer);
+    TrapRunDual(std::move(scheduler), pretty_printer);
   };
   return RunStrategyRounds(opts, *strategy, run_once);
 }

@@ -31,11 +31,6 @@ struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
 
   BaseStrategySharedState& GetSharedState() override { return *shared_state; }
 
-  void InitializeRound(const CustomRound* custom_round = nullptr) override {
-    PickStrategy<TargetObj, Verifier>::InitializeRound(custom_round);
-    weights.resize(this->threads.size(), 1);
-  }
-
   std::optional<size_t> Pick() override {
     pick_weights.clear();
     auto &threads = this->threads;
@@ -72,6 +67,7 @@ struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
   }
 
   std::optional<size_t> PickSchedule() override {
+    weights.resize(this->threads.size(), 1);
     pick_weights.clear();
     auto &threads = this->threads;
 

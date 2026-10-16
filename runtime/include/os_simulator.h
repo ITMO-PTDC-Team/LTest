@@ -33,7 +33,6 @@ class OSSimulator {
   std::unordered_map<uint64_t, std::pair<uint64_t, void**>> join_pairs;
 
  public:
-  OSSimulator() = default;
   virtual ~OSSimulator() = default;
   bool CanThreadContinue(std::size_t number);
   void UpdateOSState(size_t thread);

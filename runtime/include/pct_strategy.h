@@ -49,7 +49,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     }
   }
 
-  void FinishRound() override {
+  void StartNextRound() override {
     auto& state = this->GetSharedState();
     state.total_length += current_schedule_length;
     ++state.completed_rounds;
@@ -150,6 +150,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   // NOTE: `Next` version use heuristics for livelock avoiding, but not there
   // refactor later to avoid copy-paste
   StrategyNextResult NextSchedule() override {
+    if (auto task = this->GetReplayTask()) return *task;
     while (priorities.size() < this->threads.size()) AddPriority();
     auto& round_schedule = this->round_schedule;
     auto& threads = this->threads;

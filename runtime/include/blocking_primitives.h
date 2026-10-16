@@ -110,17 +110,7 @@ struct recursive_mutex {
 };
 
 struct condition_variable {
-  as_atomic void wait(std::unique_lock<ltest::mutex>& lock) {
-    this_coro->SetBlocked({addr(), 1});
-    lock.unlock();
-    {
-      CoroCtxGuard guard;
-      CoroYield();
-    }
-    lock.lock();
-  }
-
-  // Is needed to match pthread API, which does not have std::unique_lock.
+  // Accepts both mutexes and std::unique_lock wrappers.
   template <typename Mutex>
   as_atomic void wait(Mutex& lock) {
     this_coro->SetBlocked({addr(), 1});

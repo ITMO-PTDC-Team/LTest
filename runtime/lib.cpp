@@ -126,7 +126,7 @@ extern "C" void CoroutineStatusChange(char*, bool) { CoroYield(); }
 namespace ltest {
 
 void CoroBase::Terminate() {
-  // Keep a suspended fiber owned by this task until the worker calls _exit.
+  // Keep a suspended fiber owned by this task until the worker exits.
   returned = true;
   fstate = {};
   clearWakeupCondition();

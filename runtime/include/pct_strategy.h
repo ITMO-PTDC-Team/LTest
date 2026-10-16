@@ -39,21 +39,17 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     return static_cast<PctSharedState&>(*shared_state);
   }
 
-  void InitializeRound(const CustomRound* custom_round = nullptr) override {
+  void StartNextRound(const CustomRound* custom_round = nullptr) override {
     current_depth =
         std::min<size_t>(this->GetSharedState().completed_rounds + 1, 50);
     current_schedule_length = 0;
-    Base::InitializeRound(custom_round);
+    Base::StartNextRound(custom_round);
     if (!custom_round ||
         attempt_session->request.kind != AttemptKind::Generate) {
       PrepareForDepth(current_depth, MeanLength());
     }
-  }
-
-  void StartNextRound() override {
-    auto& state = this->GetSharedState();
-    state.total_length += current_schedule_length;
-    ++state.completed_rounds;
+    if (attempt_session->request.kind == AttemptKind::Generate)
+      ++this->GetSharedState().completed_rounds;
   }
 
   void AvoidLivelock(size_t& index, size_t& prior) {
@@ -136,6 +132,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
     // Check whether the priority change is required
     current_schedule_length++;
+    if (attempt_session->request.kind == AttemptKind::Generate)
+      ++this->GetSharedState().total_length;
     for (size_t i = 0; i < priority_change_points.size(); ++i) {
       if (current_schedule_length == priority_change_points[i]) {
         priorities[index_of_max] = current_depth - i - 1;
@@ -212,6 +210,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
     // Check whether the priority change is required
     current_schedule_length++;
+    if (attempt_session->request.kind == AttemptKind::Generate)
+      ++this->GetSharedState().total_length;
     for (size_t i = 0; i < priority_change_points.size(); ++i) {
       if (current_schedule_length == priority_change_points[i]) {
         priorities[index_of_max] = current_depth - i - 1;

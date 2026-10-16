@@ -27,6 +27,8 @@ struct BasicScheduler {
   using event_t = Event;
 
   virtual void Run() = 0;
+  virtual size_t GetStrategyThreadsCount() const = 0;
+  virtual DeadlockPolicy GetDeadlockPolicy() const = 0;
 
   virtual ~BasicScheduler() = default;
 };

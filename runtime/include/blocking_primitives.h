@@ -112,7 +112,7 @@ struct recursive_mutex {
 struct condition_variable {
   // Accepts both mutexes and std::unique_lock wrappers.
   template <typename Mutex>
-  as_atomic void wait(Mutex& lock) {
+  as_atomic void wait(Mutex &lock) {
     this_coro->SetBlocked({addr(), 1});
     lock.unlock();
     {

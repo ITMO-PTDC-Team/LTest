@@ -25,16 +25,16 @@
 namespace ltest {
 extern std::vector<TaskBuilder> task_builders;
 
-inline std::string FormatTestFailure(const char *expr, const char *file,
-                                     unsigned int line, const char *func) {
+inline std::string FormatTestFailure(const char* expr, const char* file,
+                                     unsigned int line, const char* func) {
   std::ostringstream oss;
   oss << "test failed: " << expr << " at " << file << ":" << line << " in "
       << func;
   return oss.str();
 }
 
-[[noreturn]] inline void LtestFail(const char *expr, const char *file,
-                                   unsigned int line, const char *func) {
+[[noreturn]] inline void LtestFail(const char* expr, const char* file,
+                                   unsigned int line, const char* func) {
   SchedCtxGuard guard;
   throw TestFailure(FormatTestFailure(expr, file, line, func));
 }
@@ -623,21 +623,19 @@ struct TargetDualMethod {
       return coro;
     };
 
-    task_builders.push_back(
-        TaskBuilder(std::string(method_name), builder));
+    task_builders.push_back(TaskBuilder(std::string(method_name), builder));
   }
 };
 
 }  // namespace ltest
 
-#define declare_task_name(symbol)                                      \
+#define declare_task_name(symbol) \
   static const char* symbol##_task_name = #symbol
 
 #define target_method(gen, ret, cls, symbol, ...)          \
   declare_task_name(symbol);                               \
-  ltest::TargetMethod<ret, cls __VA_OPT__(, ) __VA_ARGS__>              \
-      symbol##_ltest_method_cls{                                      \
-          symbol##_task_name, gen, &cls::symbol};
+  ltest::TargetMethod<ret, cls __VA_OPT__(, ) __VA_ARGS__> \
+      symbol##_ltest_method_cls{symbol##_task_name, gen, &cls::symbol};
 
 #define stringify_detail(x) #x
 #define stringify(x) stringify_detail(x)
@@ -647,14 +645,12 @@ struct TargetDualMethod {
                                                            params,            \
                                                            &cls::symbol)
 
-#define target_method_async(gen, ret, cls, symbol, ...)              \
-  declare_task_name(symbol);                                          \
-  ltest::TargetAwaitableMethod<ret, cls __VA_OPT__(, ) __VA_ARGS__>     \
-      symbol##_ltest_async_method_cls{                                \
-          symbol##_task_name, gen, &cls::symbol};
+#define target_method_async(gen, ret, cls, symbol, ...)             \
+  declare_task_name(symbol);                                        \
+  ltest::TargetAwaitableMethod<ret, cls __VA_OPT__(, ) __VA_ARGS__> \
+      symbol##_ltest_async_method_cls{symbol##_task_name, gen, &cls::symbol};
 
 #define target_method_dual(gen, ret, cls, symbol, ...)         \
   declare_task_name(symbol);                                   \
-  ltest::TargetDualMethod<ret, cls __VA_OPT__(, ) __VA_ARGS__>          \
-      symbol##_ltest_dual_method_cls{                                 \
-          symbol##_task_name, gen, &cls::symbol};
+  ltest::TargetDualMethod<ret, cls __VA_OPT__(, ) __VA_ARGS__> \
+      symbol##_ltest_dual_method_cls{symbol##_task_name, gen, &cls::symbol};

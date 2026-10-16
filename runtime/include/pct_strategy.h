@@ -21,7 +21,8 @@ struct PctSharedState : StrategySharedState<PctSharedState> {
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
  private:
-  SharedStrategyStatePtr shared_state = MapStrategySharedState<PctSharedState>();
+  SharedStrategyStatePtr shared_state =
+      MapStrategySharedState<PctSharedState>();
 
  public:
   using Base = BaseStrategyWithThreads<TargetObj, Verifier>;
@@ -234,7 +235,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   size_t MeanLength() {
     const auto& state = this->GetSharedState();
     return state.completed_rounds
-               ? std::max<size_t>(1, state.total_length / state.completed_rounds)
+               ? std::max<size_t>(1,
+                                  state.total_length / state.completed_rounds)
                : 1;
   }
 

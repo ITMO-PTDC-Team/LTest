@@ -35,7 +35,8 @@ void OSSimulator::UpdateOSState(size_t thread) {
     return;
   }
   std::visit(Overloads{[this, thread](CreatedThreadInfo& info) {
-                         const int id = -static_cast<int>(current_max_thread_id);
+                         const int id =
+                             -static_cast<int>(current_max_thread_id);
                          auto& report = attempt_session->report;
                          report.operations.emplace_back(
                              id, 0, threads.size(), report.ordering.size(),

@@ -20,9 +20,9 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   explicit PickStrategy(size_t threads_count,
                         std::vector<TaskBuilder> constructors,
                         TargetFactory target_factory)
-      : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count,
-                                                     std::move(constructors),
-                                                     std::move(target_factory)) {}
+      : BaseStrategyWithThreads<TargetObj, Verifier>(
+            threads_count, std::move(constructors), std::move(target_factory)) {
+  }
 
   std::optional<size_t> NextThreadId() override { return Pick(); }
 

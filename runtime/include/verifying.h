@@ -221,7 +221,7 @@ int TrapRun(std::unique_ptr<BasicScheduler<Event>> &&scheduler,
             PrettyPrinter &pretty_printer) {
   ClearTestFailure();
   scheduler->Run();
-  const auto& report = attempt_session->report;
+  const auto &report = attempt_session->report;
   const size_t threads = scheduler->GetStrategyThreadsCount();
   // Checked deadlocks remain in the report for parent-driven exploration.
   int result = report.result;
@@ -298,7 +298,7 @@ int Run(int argc, char *argv[], std::vector<CustomRound> custom_rounds = {}) {
                                         typename Spec::linear_spec_hash_t,
                                         typename Spec::linear_spec_equals_t>;
     lchecker_t checker{Spec::linear_spec_t::GetMethods(),
-                      typename Spec::linear_spec_t{}};
+                       typename Spec::linear_spec_t{}};
     auto scheduler = MakeScheduler(checker, opts, *strategy, pretty_printer);
     std::cout << "\n\n";
     std::cout.flush();
@@ -336,13 +336,11 @@ int RunDual(int argc, char *argv[]) {
       opts, std::move(task_builders), detail::MakeTargetFactory<SpecDual>());
   auto run_once = [&] {
     PrettyPrinter pretty_printer;
-    using dual_checker_t =
-        LinearizabilityDualCheckerRecursive<
-            typename SpecDual::linear_spec_t,
-            typename SpecDual::linear_spec_hash_t,
-            typename SpecDual::linear_spec_equals_t>;
+    using dual_checker_t = LinearizabilityDualCheckerRecursive<
+        typename SpecDual::linear_spec_t, typename SpecDual::linear_spec_hash_t,
+        typename SpecDual::linear_spec_equals_t>;
     dual_checker_t checker{SpecDual::linear_spec_t::GetDualMethods(),
-                          typename SpecDual::linear_spec_t{}};
+                           typename SpecDual::linear_spec_t{}};
     auto scheduler =
         MakeDualScheduler(checker, opts, *strategy, pretty_printer);
     std::cout << "\n\n";

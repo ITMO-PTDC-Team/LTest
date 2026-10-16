@@ -72,18 +72,18 @@ extern void pthread_exit(void *__retval) __attribute__((__noreturn__)) {
       "noreturn attribute");
 }
 
-extern "C" int __cxa_thread_atexit(void (*)(void*), void*, void*) noexcept {
+extern "C" int __cxa_thread_atexit(void (*)(void *), void *, void *) noexcept {
   // LTest deliberately has no thread-local lifetime model.
   return 0;
 }
 
-extern "C" int __cxa_thread_atexit_impl(void (*)(void*), void*, void*)
-    noexcept {
+extern "C" int __cxa_thread_atexit_impl(void (*)(void *), void *,
+                                        void *) noexcept {
   // LTest deliberately has no thread-local lifetime model.
   return 0;
 }
 
-extern "C" int __cxa_atexit(void (*)(void*), void*, void*) noexcept {
+extern "C" int __cxa_atexit(void (*)(void *), void *, void *) noexcept {
   // LTest abandons target and runtime objects instead of running process-exit
   // destructors against state that crossed simulated rounds.
   return 0;
@@ -97,7 +97,8 @@ struct Overloads : Ts... {
 // we need to call this mutex method in almost each mutex function, because
 // mutex can be initialized by macros
 static decltype(mutexes)::mapped_type &InsertMutex(
-    pthread_mutex_t *__mutex, const pthread_mutexattr_t *__mutexattr = nullptr) {
+    pthread_mutex_t *__mutex,
+    const pthread_mutexattr_t *__mutexattr = nullptr) {
   auto it = mutexes.find(__mutex);
   if (it == mutexes.end()) {
     int type = PTHREAD_MUTEX_NORMAL;
@@ -228,7 +229,7 @@ extern int pthread_cond_wait(pthread_cond_t *__restrict __cond,
   PTHREAD_MOCK_INIT_ROUTINE(pthread_cond_wait, __cond, __mutex)
   auto &m = InsertMutex(__mutex);
   auto &c = InsertCond(__cond);
-  std::visit([&c](auto& mutex) { c.wait(mutex); }, m);
+  std::visit([&c](auto &mutex) { c.wait(mutex); }, m);
   return 0;
 }
 
@@ -274,10 +275,8 @@ extern int pthread_rwlock_rdlock(pthread_rwlock_t *__rwlock) {
 extern int pthread_rwlock_tryrdlock(pthread_rwlock_t *__rwlock) {
   PTHREAD_MOCK_INIT_ROUTINE(pthread_rwlock_tryrdlock, __rwlock)
   auto &it = InsertSharedLock(__rwlock);
-  return std::visit(Overloads{[](auto &a) {
-                      return a.try_lock_shared() ? 0 : EBUSY;
-                    }},
-                    it);
+  return std::visit(
+      Overloads{[](auto &a) { return a.try_lock_shared() ? 0 : EBUSY; }}, it);
 }
 
 /* Acquire write lock for RWLOCK.  */
@@ -295,9 +294,7 @@ extern int pthread_rwlock_wrlock(pthread_rwlock_t *__rwlock) {
 extern int pthread_rwlock_trywrlock(pthread_rwlock_t *__rwlock) {
   PTHREAD_MOCK_INIT_ROUTINE(pthread_rwlock_trywrlock, __rwlock)
   auto &it = InsertSharedLock(__rwlock);
-  return std::visit(Overloads{[](auto &a) {
-                      return a.try_lock() ? 0 : EBUSY;
-                    }},
+  return std::visit(Overloads{[](auto &a) { return a.try_lock() ? 0 : EBUSY; }},
                     it);
 }
 

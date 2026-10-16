@@ -32,7 +32,7 @@ struct RoundRobinStrategy : PickStrategy<TargetObj, Verifier> {
   }
 
   std::optional<size_t> Pick() override {
-    auto &threads = this->threads;
+    auto& threads = this->threads;
     for (size_t attempt = 0; attempt < threads.size(); ++attempt) {
       auto cur = (next_task++) % threads.size();
 

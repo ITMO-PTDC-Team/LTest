@@ -171,23 +171,22 @@ struct Coro final : public CoroBase {
     Coro* self = c.get();
 
     c->ctx = boost::context::fiber([self](boost::context::fiber&& ctx) {
-        sched_ctx = std::move(ctx);
-        auto real_args = static_cast<std::tuple<Args...>*>(self->args.get());
-        auto this_arg =
-            std::tuple<Target*>{static_cast<Target*>(self->this_ptr)};
-        try {
-          self->ret =
-              std::apply(self->func, std::tuple_cat(this_arg, *real_args));
-        } catch (const TestFailure& ex) {
-          SchedCtxGuard guard;
-          SetTestFailure(ex.what());
-          self->ret = void_v;
-        } catch (...) {
-          throw;
-        }
-        self->returned = true;
-        ltest_coro_ctx = false;
-        return std::move(sched_ctx);
+      sched_ctx = std::move(ctx);
+      auto real_args = static_cast<std::tuple<Args...>*>(self->args.get());
+      auto this_arg = std::tuple<Target*>{static_cast<Target*>(self->this_ptr)};
+      try {
+        self->ret =
+            std::apply(self->func, std::tuple_cat(this_arg, *real_args));
+      } catch (const TestFailure& ex) {
+        SchedCtxGuard guard;
+        SetTestFailure(ex.what());
+        self->ret = void_v;
+      } catch (...) {
+        throw;
+      }
+      self->returned = true;
+      ltest_coro_ctx = false;
+      return std::move(sched_ctx);
     });
 
     return c;

@@ -29,7 +29,7 @@ struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
                                           std::move(target_factory)},
         weights{std::move(weights)} {}
 
-  BaseStrategySharedState& GetSharedState() override { return *shared_state; }
+  BaseStrategySharedState &GetSharedState() override { return *shared_state; }
 
   std::optional<size_t> Pick() override {
     weights.resize(this->threads.size(), 1);

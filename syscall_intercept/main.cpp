@@ -62,8 +62,6 @@ extern "C" int ltest_main(int argc, char *argv[]) {
     PrettyPrinter pretty_printer;
     DummyChecker checker;
     auto scheduler = MakeScheduler(checker, opts, *strategy, pretty_printer);
-    std::cout << "\n\n";
-    std::cout.flush();
     TrapRun(std::move(scheduler), pretty_printer);
   };
   return RunStrategyRounds(opts, *strategy, run_once);

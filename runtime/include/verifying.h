@@ -222,24 +222,27 @@ int TrapRun(std::unique_ptr<BasicScheduler<Event>> &&scheduler,
   ClearTestFailure();
   scheduler->Run();
   const auto &report = attempt_session->report;
-  const size_t threads = scheduler->GetStrategyThreadsCount();
   // Checked deadlocks remain in the report for parent-driven exploration.
   int result = report.result;
-  if (result == 4 && scheduler->GetDeadlockPolicy() != DeadlockPolicy::Fail) {
-    result = 0;
+  if (result == Deadlock &&
+      scheduler->GetDeadlockPolicy() != DeadlockPolicy::Fail) {
+    result = Success;
   }
+  if (attempt_session->request.kind != AttemptKind::Generate) return result;
+
+  const size_t threads = scheduler->GetStrategyThreadsCount();
   switch (result) {
-    case 0:
+    case Success:
       std::cout << "success!\n";
       break;
-    case 1:
+    case AssertionFailure:
       std::cout << ltest::GetTestFailureMessage() << "\n";
       break;
-    case 3:
+    case NonLinearizable:
       std::cout << "non linearized:\n";
       pretty_printer.PrettyPrint(report, threads, std::cout);
       break;
-    case 4:
+    case Deadlock:
       std::cout << "deadlock detected:\n";
       pretty_printer.PrettyPrint(report, threads, std::cout);
       break;
@@ -300,8 +303,6 @@ int Run(int argc, char *argv[], std::vector<CustomRound> custom_rounds = {}) {
     lchecker_t checker{Spec::linear_spec_t::GetMethods(),
                        typename Spec::linear_spec_t{}};
     auto scheduler = MakeScheduler(checker, opts, *strategy, pretty_printer);
-    std::cout << "\n\n";
-    std::cout.flush();
     TrapRun(std::move(scheduler), pretty_printer);
   };
   return RunStrategyRounds(opts, *strategy, run_once, custom_rounds);
@@ -343,8 +344,6 @@ int RunDual(int argc, char *argv[]) {
                            typename SpecDual::linear_spec_t{}};
     auto scheduler =
         MakeDualScheduler(checker, opts, *strategy, pretty_printer);
-    std::cout << "\n\n";
-    std::cout.flush();
     TrapRunDual(std::move(scheduler), pretty_printer);
   };
   return RunStrategyRounds(opts, *strategy, run_once);

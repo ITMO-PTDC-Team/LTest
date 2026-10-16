@@ -27,7 +27,7 @@ struct RoundMinimizor {
   static ResultT ReplayRound(CandidateRunner& sched,
                              const AttemptRequest& request) {
     auto report = sched(request);
-    if (report && report->result == 2)
+    if (report && report->result == InfrastructureFailure)
       throw std::runtime_error("forked replay failed");
     if (report && MeaningfulFailure(*report)) return report;
     return std::nullopt;
@@ -38,7 +38,7 @@ struct RoundMinimizor {
     for (int run = 0; run < runs; ++run) {
       auto report = sched(request);
       if (!report) break;
-      if (report->result == 2)
+      if (report->result == InfrastructureFailure)
         throw std::runtime_error("forked exploration failed");
       if (MeaningfulFailure(*report)) return report;
     }

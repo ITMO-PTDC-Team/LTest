@@ -233,7 +233,6 @@ int TrapRun(std::unique_ptr<BasicScheduler<Event>> &&scheduler,
   const size_t threads = scheduler->GetStrategyThreadsCount();
   switch (result) {
     case Success:
-      std::cout << "success!\n";
       break;
     case AssertionFailure:
       std::cout << ltest::GetTestFailureMessage() << "\n";

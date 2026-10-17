@@ -719,7 +719,8 @@ struct StrategyScheduler : public Scheduler {
             report.result = Success;
             return;
           }
-          deadlock_detected = GetUnfinishedAndRunnable(strategy).first;
+          auto [unfinished, runnable] = GetUnfinishedAndRunnable(strategy);
+          deadlock_detected = unfinished && !runnable;
         } else if (*f == DEADLOCK)
           deadlock_detected = true;
         break;
@@ -853,7 +854,8 @@ struct DualStrategyScheduler : public DualScheduler {
             report.result = Success;
             return;
           }
-          deadlock_detected = GetUnfinishedAndRunnable(strategy).first;
+          auto [unfinished, runnable] = GetUnfinishedAndRunnable(strategy);
+          deadlock_detected = unfinished && !runnable;
         } else if (*f == DEADLOCK)
           deadlock_detected = true;
         break;

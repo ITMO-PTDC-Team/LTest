@@ -23,9 +23,161 @@ struct PrettyPrinter {
   explicit PrettyPrinter() = default;
 
   template <typename Out_t>
+  void PrettyPrint(const std::vector<std::variant<Invoke, Response>>& result,
+                   int threads_num, Out_t& out) {
+    auto get_thread_num = [](const std::variant<Invoke, Response>& v) {
+      if (v.index() == 0) {
+        return get<0>(v).thread_id;
+      }
+      return get<1>(v).thread_id;
+    };
+
+    int cell_width = 50;
+
+    auto print_separator = [threads_num, &out, cell_width]() {
+      out << "*";
+      for (int i = 0; i < threads_num; ++i) {
+        for (int j = 0; j < cell_width; ++j) {
+          out << "-";
+        }
+        out << "*";
+      }
+      out << "\n";
+    };
+
+    auto print_spaces = [&out](int count) {
+      for (int i = 0; i < count; ++i) {
+        out << " ";
+      }
+    };
+
+    print_separator();
+    out << "|";
+    for (int i = 0; i < threads_num; ++i) {
+      int rest = cell_width - 1 - to_string(i).size();
+      print_spaces(rest / 2);
+      out << "T" << i;
+      print_spaces(rest - rest / 2);
+      out << "|";
+    }
+    out << "\n";
+    print_separator();
+
+    auto print_empty_cell = [&]() {
+      print_spaces(cell_width);
+      out << "|";
+    };
+
+    for (const auto& i : result) {
+      int num = get_thread_num(i);
+      out << "|";
+      for (int j = 0; j < num; ++j) {
+        print_empty_cell();
+      }
+
+      FitPrinter fp{out, cell_width};
+      fp.Out(" ");
+      if (i.index() == 0) {
+        auto inv = get<0>(i);
+        auto& task = inv.GetTask();
+        fp.Out("[" + std::to_string(task->GetId()) + "] ");
+        fp.Out(std::string{task->GetName()});
+        fp.Out("(");
+        const auto& args = task->GetStrArgs();
+        for (int j = 0; j < static_cast<int>(args.size()); ++j) {
+          if (j > 0) {
+            fp.Out(", ");
+          }
+          fp.Out(args[j]);
+        }
+        fp.Out(")");
+      } else {
+        auto resp = get<1>(i);
+        fp.Out("<-- " + to_string(resp.result));
+      }
+      print_spaces(std::max(fp.rest, 0));
+      out << "|";
+
+      for (int j = 0; j < threads_num - num - 1; ++j) {
+        print_empty_cell();
+      }
+      out << "\n";
+    }
+
+    print_separator();
+  }
+
+  template <typename Out_t>
+  void PrettyPrint(const std::vector<DualHistoryEvent>& result, int threads_num,
+                   Out_t& out) {
+    auto get_thread_num = [](const DualHistoryEvent& v) -> int {
+      return std::visit([](auto const& ev) { return ev.thread_id; }, v);
+    };
+
+    int cell_width = 50;
+
+    auto print_separator = [threads_num, &out, cell_width]() {
+      out << "*";
+      for (int i = 0; i < threads_num; ++i) {
+        for (int j = 0; j < cell_width; ++j) {
+          out << "-";
+        }
+        out << "*";
+      }
+      out << "\n";
+    };
+
+    auto print_spaces = [&out](int count) {
+      for (int i = 0; i < count; ++i) {
+        out << " ";
+      }
+    };
+
+    print_separator();
+    out << "|";
+    for (int i = 0; i < threads_num; ++i) {
+      int rest = cell_width - 1 - to_string(i).size();
+      print_spaces(rest / 2);
+      out << "T" << i;
+      print_spaces(rest - rest / 2);
+      out << "|";
+    }
+    out << "\n";
+    print_separator();
+
+    auto print_empty_cell = [&]() {
+      print_spaces(cell_width);
+      out << "|";
+    };
+
+    for (const auto& ev : result) {
+      int num = get_thread_num(ev);
+      out << "|";
+      for (int j = 0; j < num; ++j) {
+        print_empty_cell();
+      }
+
+      FitPrinter fp{out, cell_width};
+      fp.Out(FormatEvent(ev));
+
+      print_spaces(std::max(fp.rest, 0));
+      out << "|";
+
+      for (int j = 0; j < threads_num - num - 1; ++j) {
+        print_empty_cell();
+      }
+      out << "\n";
+    }
+
+    print_separator();
+  }
+
+  template <typename Out_t>
   void PrettyPrint(const AttemptReport& result, int threads_num, Out_t& out) {
     std::map<int, size_t> threads;
-    for (const auto& op : result.operations) threads[op.id] = op.thread;
+    for (const auto& op : result.operations) {
+      threads[op.id] = op.thread;
+    }
 
     int cell_width = 50;
 

@@ -1,6 +1,5 @@
 #include "include/fork_round.h"
 
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -14,6 +13,7 @@
 #include <type_traits>
 
 #include "include/coro_ctx_guard.h"
+#include "include/shared_buffer.h"
 #include "include/wmm/wmm.h"
 
 namespace ltest {
@@ -123,41 +123,16 @@ AttemptReport DecodeReport(const std::vector<std::uint8_t>& bytes) {
   return q;
 }
 
-struct Buffer {
-  int fd = -1;
-  void* mapping = MAP_FAILED;
-  size_t capacity = 0;
+void WriteReport(Buffer& buffer, const AttemptReport& report) {
+  auto bytes = EncodeReport(report);
+  buffer.Reserve(bytes.size());
+  std::memcpy(buffer.mapping, bytes.data(), bytes.size());
+}
 
-  Buffer() {
-    fd = memfd_create("ltest-attempt", MFD_CLOEXEC);
-    if (fd < 0) throw std::runtime_error("memfd creation failed");
-  }
-
-  ~Buffer() {
-    if (mapping != MAP_FAILED) munmap(mapping, capacity);
-    if (fd >= 0) close(fd);
-  }
-
-  void Map(size_t size) {
-    capacity = size;
-    mapping = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (mapping == MAP_FAILED) throw std::runtime_error("memfd mapping failed");
-  }
-
-  void WriteReport(const AttemptReport& report) {
-    auto bytes = EncodeReport(report);
-    if (ftruncate(fd, bytes.size()))
-      throw std::runtime_error("memfd resize failed");
-    Map(bytes.size());
-    std::memcpy(mapping, bytes.data(), bytes.size());
-  }
-
-  AttemptReport ReadReport() {
-    auto* begin = static_cast<std::uint8_t*>(mapping);
-    auto* end = static_cast<std::uint8_t*>(mapping) + capacity;
-    return DecodeReport({begin, end});
-  }
-};
+AttemptReport ReadReport(const Buffer& buffer) {
+  auto* begin = static_cast<std::uint8_t*>(buffer.mapping);
+  return DecodeReport({begin, begin + buffer.capacity});
+}
 
 AttemptReport Fail(const std::string& message) {
   AttemptReport report;
@@ -190,7 +165,7 @@ AttemptReport RunForkAttempt(const AttemptRequest& request,
           wmm::ExecutionGraph::GetInstance().Seed(c_rand_seed);
         run();
 
-        buffer.WriteReport(report);
+        WriteReport(buffer, report);
         std::exit(report.result);
       } catch (const std::exception& error) {
         std::exit(Fail(error.what()).result);
@@ -217,7 +192,7 @@ AttemptReport RunForkAttempt(const AttemptRequest& request,
     AttemptReport report;
     if (info.st_size > 0) {
       buffer.Map(info.st_size);
-      report = buffer.ReadReport();
+      report = ReadReport(buffer);
     } else if (result != Success) {
       return Fail("child exited without a report");
     }

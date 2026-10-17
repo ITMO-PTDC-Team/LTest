@@ -1,11 +1,11 @@
 #pragma once
 
-#include <sys/mman.h>
-
 #include <cstddef>
 #include <memory>
 #include <new>
 #include <random>
+
+#include "shared_buffer.h"
 
 namespace ltest {
 
@@ -35,27 +35,17 @@ struct StrategySharedState : BaseStrategySharedState {
   }
 };
 
-using SharedStrategyStatePtr =
-    std::unique_ptr<BaseStrategySharedState,
-                    void (*)(BaseStrategySharedState*)>;
-
 template <typename State>
-SharedStrategyStatePtr MapStrategySharedState() {
-  auto destroy = +[](BaseStrategySharedState* base) {
-    auto* state = static_cast<State*>(base);
-    state->~State();
-    munmap(state, sizeof(State));
-  };
+struct MappedStrategyState {
+  MappedStrategyState() { new (buffer.fixed) State{}; }
+  MappedStrategyState(const MappedStrategyState&) = delete;
+  MappedStrategyState& operator=(const MappedStrategyState&) = delete;
 
-  void* memory = mmap(nullptr, sizeof(State), PROT_READ | PROT_WRITE,
-                      MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-  if (memory == MAP_FAILED) throw std::bad_alloc();
-  try {
-    return {new (memory) State{}, destroy};
-  } catch (...) {
-    munmap(memory, sizeof(State));
-    throw;
-  }
-}
+  ~MappedStrategyState() { std::destroy_at(static_cast<State*>(buffer.fixed)); }
+
+  State& operator*() const { return *static_cast<State*>(buffer.fixed); }
+
+  Buffer buffer{sizeof(State)};
+};
 
 }  // namespace ltest

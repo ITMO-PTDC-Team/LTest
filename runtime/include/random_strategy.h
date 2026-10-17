@@ -13,8 +13,7 @@ namespace ltest {
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
  private:
-  SharedStrategyStatePtr shared_state =
-      MapStrategySharedState<BaseStrategySharedState>();
+  MappedStrategyState<BaseStrategySharedState> shared_state;
 
  public:
   using TargetFactory =

@@ -1,4 +1,8 @@
 #pragma once
+
+#include <cstdlib>
+#include <cstring>
+
 #include "scheduler.h"
 
 namespace ltest {
@@ -8,41 +12,49 @@ struct TLAStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   using TargetFactory =
       typename BaseStrategyWithThreads<TargetObj, Verifier>::TargetFactory;
   TLAStrategy(size_t threads_count, std::vector<TaskBuilder> ctrs,
-              TargetFactory target_factory, size_t seed = 0)
+              TargetFactory target_factory)
       : BaseStrategyWithThreads<TargetObj, Verifier>(
-            threads_count, std::move(ctrs), std::move(target_factory), seed) {}
+            threads_count, std::move(ctrs), std::move(target_factory)) {}
   // use of this method doesn't make any sense, use Next() directly
   std::optional<size_t> NextThreadId() override {
     throw std::runtime_error("use Next() directly for TLA scheduler");
   }
   StrategyNextResult NextSchedule() override {
-    if (frame_counter >= frames.size()) {
-      return DEADLOCK;
-    }
+    if (auto task = this->GetReplayTask()) return *task;
 
-    const auto& frame = frames[frame_counter++];
-    auto& tasks = this->threads[frame.thread_id];
-    if (frame.task_index >= tasks.size()) {
-      return DEADLOCK;
+    std::vector<size_t> choices;
+    for (size_t tid = 0; tid < this->threads.size(); ++tid) {
+      int index = this->GetNextTaskInThread(tid);
+      if (index < static_cast<int>(this->threads[tid].size()) &&
+          this->CanThreadContinue(tid) &&
+          !this->threads[tid][index]->IsBlocked())
+        choices.push_back(tid);
     }
+    if (choices.empty()) return DEADLOCK;
 
-    return TaskWithMetaData{tasks[frame.task_index], frame.is_new,
-                            frame.thread_id};
+    auto tid = choices[std::uniform_int_distribution<size_t>(
+        0, choices.size() - 1)(this->GetSharedState().rng)];
+    int index = this->GetNextTaskInThread(tid);
+    this->round_schedule[tid] = index;
+    return TaskWithMetaData{this->threads[tid][index], tid};
   }
 
-  bool IsExhausted() override { return is_exhausted; }
+  bool IsExhausted() override { return GetSharedState().is_exhausted; }
 
   StrategyNextResult Next() override {
-    if (frame_counter < frames.size()) {
-      auto frame = frames[frame_counter];
+    if (!exploring) return NextSchedule();
+    auto& state = GetSharedState();
+    if (frame_counter < state.frames_size) {
+      auto frame = ReadFrame(frame_counter);
       frame_counter++;
       auto& tasks = this->threads[frame.thread_id];
       [[maybe_unused]] bool os_status = this->CanThreadContinue(frame.thread_id);
       assert(os_status && "couldn't verify os task in replay phase");
 
       if (frame.is_new) {
-        tasks.emplace_back(this->constructors[frame.constr_id].Build(
-            this->state.get(), frame.thread_id, this->new_task_id++));
+        tasks.emplace_back(this->BuildTask(frame.constr_id, frame.thread_id,
+                                           this->new_task_id++));
+        this->OnVerifierTaskStart(tasks.back(), frame.thread_id);
       }
       assert(frame.task_index < tasks.size() &&
              "couldn't find task in replay phase");
@@ -50,16 +62,14 @@ struct TLAStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
           std::string{tasks[frame.task_index]->GetName()}, frame.thread_id,
           frame.is_new);
       assert(verify_status && "couldn't verify task in replay phase");
-      return TaskWithMetaData{tasks[frame.task_index], frame.is_new,
-                              frame.thread_id};
+      return TaskWithMetaData{tasks[frame.task_index], frame.thread_id};
     }
     for (size_t i = start_thread_id; i < this->threads.size(); ++i) {
       auto& tasks = this->threads[i];
       if (!this->CanThreadContinue(i)) {
         continue;
       }
-      if (!tasks.empty() && !tasks.back()->IsReturned() &&
-          (!at_task_creation || !this->AllowNewTasks())) {
+      if (!tasks.empty() && !tasks.back()->IsReturned()) {
         if (tasks.back()->IsBlocked()) {
           continue;
         }
@@ -68,14 +78,13 @@ struct TLAStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
           continue;
         }
         // Task exists.
-        frames.emplace_back(i, 0, tasks.size() - 1, false);
+        AppendFrame({i, 0, tasks.size() - 1, false});
         start_constr_id = 0;
         start_thread_id = 0;
-        at_task_creation = false;
         frame_counter++;
-        return TaskWithMetaData{tasks.back(), false, i};
+        return TaskWithMetaData{tasks.back(), i};
       }
-      if (!this->AllowNewTasks()) {
+      if (!this->AllowNewTasks() || !this->NewTaskAreEnabled(i)) {
         continue;
       }
       for (size_t constr_id = start_constr_id;
@@ -85,52 +94,49 @@ struct TLAStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
           continue;
         }
         const size_t task_index = tasks.size();
-        tasks.emplace_back(
-            cons.Build(this->state.get(), i, this->new_task_id++));
-        frames.emplace_back(i, constr_id, task_index, true);
+        tasks.emplace_back(this->BuildTask(constr_id, i, this->new_task_id++));
+        this->OnVerifierTaskStart(tasks.back(), i);
+        AppendFrame({i, constr_id, task_index, true});
         start_constr_id = 0;
         start_thread_id = 0;
-        at_task_creation = false;
         frame_counter++;
-        return TaskWithMetaData{tasks.back(), true, i};
+        return TaskWithMetaData{tasks.back(), i};
       }
-      at_task_creation = false;
       start_thread_id = i + 1;
       start_constr_id = 0;
     }
-    if (frames.empty()) {
-      is_exhausted = true;
-      return EXHAUSTED_INTERLEAVINGS;
+    if (!state.frames_size) {
+      state.is_exhausted = true;
     }
     return NEED_REPLAY;
   }
-  void StartNextRound() override {
-    BaseStrategyWithThreads<TargetObj, Verifier>::StartNextRound();
-    frame_counter = 0;
-    if (frames.empty()) {
-      is_exhausted = true;
-      return;
+  void StartNextRound(const CustomRound* custom_round = nullptr) override {
+    exploring =
+        !custom_round && attempt_session->request.kind == AttemptKind::Generate;
+    auto& state = GetSharedState();
+    if (exploring && !state.seed) state.seed = state.rng();
+    // Keep the input seed fixed while traversing this execution tree.
+    if (!custom_round && state.seed) {
+      std::srand(*state.seed);
+      if (wmm::wmm_enabled)
+        wmm::ExecutionGraph::GetInstance().Seed(*state.seed);
     }
-    auto frame = frames.back();
+    BaseStrategyWithThreads<TargetObj, Verifier>::StartNextRound(custom_round);
+    frame_counter = 0;
+    if (!exploring) return;
+    if (!state.frames_size) return;
+    frames.Map(state.frames_size * sizeof(Frame));
+    auto frame = ReadFrame(--state.frames_size);
     if (!frame.is_new) {
-      at_task_creation = true;
-      start_thread_id = frame.thread_id;
-      start_constr_id = 0;
-    } else if (start_constr_id + 1 == this->constructors.size()) {
       start_thread_id = frame.thread_id + 1;
       start_constr_id = 0;
-      at_task_creation = false;
+    } else if (frame.constr_id + 1 == this->constructors.size()) {
+      start_thread_id = frame.thread_id + 1;
+      start_constr_id = 0;
     } else {
-      at_task_creation = true;
       start_thread_id = frame.thread_id;
       start_constr_id = frame.constr_id + 1;
     }
-    frames.pop_back();
-  }
-
-  void ResetExplorationState() override {
-    BaseStrategyWithThreads<TargetObj, Verifier>::ResetExplorationState();
-    frame_counter = 0;
   }
 
  private:
@@ -155,13 +161,39 @@ struct TLAStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     // Is true if the task was created at this step.
     bool is_new{};
   };
+
+  Frame ReadFrame(size_t index) const {
+    Frame frame;
+    const auto* data = static_cast<const std::byte*>(frames.mapping);
+    std::memcpy(&frame, data + index * sizeof(Frame), sizeof(Frame));
+    return frame;
+  }
+
+  void AppendFrame(const Frame& frame) {
+    auto& count = GetSharedState().frames_size;
+    frames.Reserve((count + 1) * sizeof(Frame));
+    std::memcpy(static_cast<std::byte*>(frames.mapping) + count * sizeof(Frame),
+                &frame, sizeof(Frame));
+    ++count;
+  }
+
+  struct SharedState : StrategySharedState<SharedState> {
+    std::optional<unsigned> seed;
+    bool is_exhausted = false;
+    size_t frames_size = 0;
+  };
+
+ public:
+  SharedState& GetSharedState() override { return *shared_state; }
+
+ private:
+  MappedStrategyState<SharedState> shared_state;
+  // Fixed fields and DFS frames use the same buffer. Its mappings stay local.
+  Buffer& frames = shared_state.buffer;
   size_t frame_counter = 0;
-  bool at_task_creation = false;
-  bool frame_added = false;
   size_t start_thread_id = 0;
   size_t start_constr_id = 0;
-  StableVector<Frame> frames;
-  bool is_exhausted = false;
+  bool exploring = false;
 };
 
 }  // namespace ltest

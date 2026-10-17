@@ -13,8 +13,7 @@ struct RoundRobinSharedState : StrategySharedState<RoundRobinSharedState> {
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 struct RoundRobinStrategy : PickStrategy<TargetObj, Verifier> {
  private:
-  SharedStrategyStatePtr shared_state =
-      MapStrategySharedState<RoundRobinSharedState>();
+  MappedStrategyState<RoundRobinSharedState> shared_state;
 
  public:
   using TargetFactory =
@@ -27,9 +26,7 @@ struct RoundRobinStrategy : PickStrategy<TargetObj, Verifier> {
                                           std::move(constructors),
                                           std::move(target_factory)} {}
 
-  RoundRobinSharedState& GetSharedState() override {
-    return static_cast<RoundRobinSharedState&>(*shared_state);
-  }
+  RoundRobinSharedState& GetSharedState() override { return *shared_state; }
 
   std::optional<size_t> Pick() override {
     auto& threads = this->threads;

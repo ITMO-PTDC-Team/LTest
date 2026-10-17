@@ -21,8 +21,7 @@ struct PctSharedState : StrategySharedState<PctSharedState> {
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
  private:
-  SharedStrategyStatePtr shared_state =
-      MapStrategySharedState<PctSharedState>();
+  MappedStrategyState<PctSharedState> shared_state;
 
  public:
   using Base = BaseStrategyWithThreads<TargetObj, Verifier>;
@@ -35,9 +34,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         last_chosen(0),
         fair_start(0) {}
 
-  PctSharedState& GetSharedState() override {
-    return static_cast<PctSharedState&>(*shared_state);
-  }
+  PctSharedState& GetSharedState() override { return *shared_state; }
 
   void StartNextRound(const CustomRound* custom_round = nullptr) override {
     current_depth =

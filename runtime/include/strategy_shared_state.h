@@ -15,7 +15,7 @@ struct BaseStrategySharedState {
 
   virtual ~BaseStrategySharedState() = default;
 
-  virtual std::unique_ptr<BaseStrategySharedState> Snapshot() const {
+  [[nodiscard]] virtual std::unique_ptr<BaseStrategySharedState> Snapshot() const {
     return std::make_unique<BaseStrategySharedState>(*this);
   }
 
@@ -26,7 +26,7 @@ struct BaseStrategySharedState {
 
 template <typename Derived>
 struct StrategySharedState : BaseStrategySharedState {
-  std::unique_ptr<BaseStrategySharedState> Snapshot() const override {
+  [[nodiscard]] std::unique_ptr<BaseStrategySharedState> Snapshot() const override {
     return std::make_unique<Derived>(static_cast<const Derived&>(*this));
   }
 

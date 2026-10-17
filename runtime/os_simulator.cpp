@@ -51,8 +51,8 @@ void OSSimulator::UpdateOSState(size_t thread) {
                              nullptr, std::make_shared<std::tuple<>>(),
                              &PrintThreadArgs, info.name, id));
 
-                         report.Append(Invoke(threads.back().back(),
-                                              current_max_thread_id));
+                         report.events.emplace_back(
+                             id, DualHistoryEventKind::OrdinaryInvoke);
                        },
                        [this, thread](JoinThreadInfo& info) {
                          join_pairs[thread] = {info.thread_id, info.retval};

@@ -111,14 +111,14 @@ struct Reader {
 
 std::vector<std::uint8_t> EncodeReport(const AttemptReport& q) {
   Writer w;
-  w.Fields(q.operations, q.ordering, q.events, q.search_alternatives);
+  w.Fields(q.operations, q.ordering, q.events);
   return std::move(w.bytes);
 }
 
 AttemptReport DecodeReport(const std::vector<std::uint8_t>& bytes) {
   Reader r{bytes};
   AttemptReport q;
-  r.Fields(q.operations, q.ordering, q.events, q.search_alternatives);
+  r.Fields(q.operations, q.ordering, q.events);
   r.Finish();
   return q;
 }

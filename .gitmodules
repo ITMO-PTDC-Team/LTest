@@ -1,0 +1,6 @@
+[submodule "verifying/libvsync"]
+	path = verifying/libvsync
+	url = https://github.com/open-s4c/libvsync.git
+[submodule "third_party/boost_context"]
+	path = third_party/boost_context
+	url = https://github.com/Nikkirche/boostorg-context.git

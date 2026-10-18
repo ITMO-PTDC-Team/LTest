@@ -6,6 +6,7 @@ venv
 .cache/**
 third_party/**
 !third_party/CMakeLists.txt
+!third_party/boost_context/
 gidist
 dist
 .idea

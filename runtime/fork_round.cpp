@@ -14,6 +14,7 @@
 
 #include "include/coro_ctx_guard.h"
 #include "include/shared_buffer.h"
+#include "include/thread_tls.h"
 #include "include/wmm/wmm.h"
 
 namespace ltest {
@@ -158,6 +159,7 @@ AttemptReport RunForkAttempt(const AttemptRequest& request,
       std::srand(c_rand_seed);
 
       try {
+        ThreadTlsSession tls_session;
         AttemptReport report;
         AttemptSession session{request, report};
         attempt_session = &session;

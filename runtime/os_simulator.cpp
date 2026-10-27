@@ -1,5 +1,7 @@
 #include "os_simulator.h"
 
+#include "thread_tls.h"
+
 namespace ltest {
 
 std::optional<std::variant<CreatedThreadInfo, JoinThreadInfo>> thread_info;
@@ -44,7 +46,9 @@ void OSSimulator::UpdateOSState(size_t thread) {
                          threads.emplace_back();
                          threads.back().emplace_back(Coro<void*>::New(
                              [info](void* v) {
-                               return ValueWrapper(info.function(v),
+                               void* result = info.function(v);
+                               FinishLogicalThreadTls();
+                               return ValueWrapper(result,
                                                    GetDefaultCompator<void*>(),
                                                    &GetThreadResultToString);
                              },

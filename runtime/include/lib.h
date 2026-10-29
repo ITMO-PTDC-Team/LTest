@@ -1,5 +1,6 @@
 #pragma once
 #include <boost/context/fiber.hpp>
+#include <boost/context/protected_fixedsize_stack.hpp>
 #include <cassert>
 #include <cstdint>
 #include <exception>
@@ -12,6 +13,7 @@
 
 #include "block_manager.h"
 #include "coro_ctx_guard.h"
+#include "io_wait.h"
 #include "value_wrapper.h"
 
 #define panic() assert(false)
@@ -31,6 +33,9 @@ extern int this_thread_id;
 
 // Scheduler context
 extern boost::context::fiber sched_ctx;
+
+// Use the same guarded stack for target tasks and logical-TLS callbacks.
+boost::context::protected_fixedsize_stack MakeFiberStack();
 
 struct TestFailure : public std::exception {
   explicit TestFailure(std::string message) : msg(std::move(message)) {}
@@ -84,6 +89,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   BlockState GetBlockState() { return fstate; }
 
   bool IsBlocked() {
+    if (IsWaitingForIo(this)) return true;
     if (!block_manager.IsBlocked(fstate, this)) {
       return false;
     }
@@ -169,24 +175,25 @@ struct Coro final : public CoroBase {
     // The fiber only needs non-owning access to the object while it is alive.
     Coro* self = c.get();
 
-    c->ctx = boost::context::fiber([self](boost::context::fiber&& ctx) {
-      sched_ctx = std::move(ctx);
-      auto real_args = static_cast<std::tuple<Args...>*>(self->args.get());
-      auto this_arg = std::tuple<Target*>{static_cast<Target*>(self->this_ptr)};
-      try {
-        self->ret =
-            std::apply(self->func, std::tuple_cat(this_arg, *real_args));
-      } catch (const TestFailure& ex) {
-        SchedCtxGuard guard;
-        SetTestFailure(ex.what());
-        self->ret = void_v;
-      } catch (...) {
-        throw;
-      }
-      self->returned = true;
-      ltest_coro_ctx = false;
-      return std::move(sched_ctx);
-    });
+    c->ctx = boost::context::fiber(
+        std::allocator_arg, MakeFiberStack(),
+        [self](boost::context::fiber&& ctx) {
+          sched_ctx = std::move(ctx);
+          auto real_args = static_cast<std::tuple<Args...>*>(self->args.get());
+          auto this_arg =
+              std::tuple<Target*>{static_cast<Target*>(self->this_ptr)};
+          try {
+            self->ret =
+                std::apply(self->func, std::tuple_cat(this_arg, *real_args));
+          } catch (const TestFailure& ex) {
+            SchedCtxGuard guard;
+            SetTestFailure(ex.what());
+            self->ret = void_v;
+          }
+          self->returned = true;
+          ltest_coro_ctx = false;
+          return std::move(sched_ctx);
+        });
 
     return c;
   }

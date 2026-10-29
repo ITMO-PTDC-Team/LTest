@@ -1,5 +1,5 @@
 add_library(preload SHARED hook.cpp pthread.cpp)
-add_library(preload_with_main SHARED hook.cpp pthread.cpp main.cpp)
+add_library(preload_with_main SHARED hook.cpp pthread.cpp main.cpp exit.cpp)
 
 
 set(PRELOAD_LIBS preload preload_with_main)

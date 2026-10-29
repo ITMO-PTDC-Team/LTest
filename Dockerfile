@@ -1,5 +1,7 @@
 FROM silkeh/clang:19 AS ltest
 
+ENV GLIBC_TUNABLES=glibc.pthread.rseq=0
+
 RUN apt update && apt install -y git ninja-build valgrind libgflags-dev libstdc++-11-dev libclang-19-dev
 RUN mv /usr/lib/gcc/x86_64-linux-gnu/12 /usr/lib/gcc/x86_64-linux-gnu/_12
 

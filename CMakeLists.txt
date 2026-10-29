@@ -35,7 +35,9 @@ add_subdirectory(runtime)
 
 if(LTEST_BUILD_TESTS)
     add_subdirectory(test)
+    add_subdirectory(verifying)
 endif()
-add_subdirectory(verifying)
 
 add_subdirectory(syscall_intercept)
+
+include(cmake/InstallLTest.cmake)

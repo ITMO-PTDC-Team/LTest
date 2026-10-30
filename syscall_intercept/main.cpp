@@ -1,7 +1,10 @@
 #include <map>
 
+#include "exit.h"
 #include "runtime/include/value_wrapper.h"
 #include "runtime/include/verifying.h"
+DEFINE_bool(discover, false,
+            "Invoke target main once without schedule exploration");
 using namespace ltest;
 namespace spec {
 
@@ -33,10 +36,12 @@ class Test {
  public:
   int Main(int argc, char *argv[]) {
     const int result = test_main(argc, argv);
+    RunTargetExitHandlers();
     if (result != 0) {
       SchedCtxGuard guard;
       SetTestFailure("target main returned " + std::to_string(result));
     }
+    attempt_session->target_process_finished = true;
     return result;
   }
 };
@@ -48,8 +53,11 @@ class DummyChecker : public ModelChecker {
   bool Check(const std::vector<HistoryEvent> &) override { return true; }
 };
 extern "C" int ltest_main(int argc, char *argv[]) {
-  ltest_initialized = true;
   SetOpts(spec::FireAndForgetOptionsOverride::GetOptions());
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  if (FLAGS_discover) return test_main(argc, argv);
+  SetFiberStackSize(8 * 1024 * 1024);
+  ltest_initialized = true;
   spec::test_argc = argc;
   spec::test_argv = argv;
   Opts opts = ParseOpts();

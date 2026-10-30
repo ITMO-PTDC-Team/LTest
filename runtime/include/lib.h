@@ -35,6 +35,7 @@ extern int this_thread_id;
 extern boost::context::fiber sched_ctx;
 
 // Use the same guarded stack for target tasks and logical-TLS callbacks.
+void SetFiberStackSize(size_t bytes);
 boost::context::protected_fixedsize_stack MakeFiberStack();
 
 struct TestFailure : public std::exception {

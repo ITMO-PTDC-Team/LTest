@@ -10,6 +10,7 @@
 
 #include "runtime/include/block_manager.h"
 #include "runtime/include/coro_ctx_guard.h"
+#include "runtime/include/io_wait.h"
 #include "runtime/include/lib.h"
 #include "runtime/include/logger.h"
 #include "runtime/include/verifying_macro.h"
@@ -36,8 +37,7 @@ static int ltest_futex(long arg0, long arg1, long arg2, long *result) {
       CoroYield();
       *result = 0;
     } else {
-      errno = EAGAIN;
-      *result = -1;
+      *result = -EAGAIN;
     }
   } else if (arg1 == FUTEX_WAKE || arg1 == FUTEX_WAKE_BITSET) {
     debug(stderr, "caught wake\n");
@@ -55,6 +55,8 @@ static int hook(long syscall_number, long arg0, long arg1, long arg2, long arg3,
   }
   // to avoid allocation mismatches
   ltest::SchedCtxGuard guard;
+  const long args[] = {arg0, arg1, arg2, arg3, arg4, arg5};
+  if (ltest::InterceptIoSyscall(syscall_number, args, result)) return 0;
   int res;
   switch (syscall_number) {
     case SYS_sched_yield:

@@ -8,8 +8,8 @@
 
 namespace ltest {
 
-bool ltest_coro_ctx = false;
-bool ltest_target_construction = false;
+thread_local bool ltest_coro_ctx = false;
+thread_local bool ltest_target_construction = false;
 
 CoroCtxGuard::CoroCtxGuard() : previous(ltest_coro_ctx) {
   ltest_coro_ctx = true;

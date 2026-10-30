@@ -2,8 +2,9 @@
 
 namespace ltest {
 
-extern bool ltest_coro_ctx;
-extern bool ltest_target_construction;
+// These flags follow the logical TLS when a fiber switches contexts.
+extern thread_local bool ltest_coro_ctx;
+extern thread_local bool ltest_target_construction;
 
 struct CoroCtxGuard {
   bool previous;

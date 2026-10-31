@@ -71,6 +71,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   int GetId() const;
 
   virtual ValueWrapper GetRetVal() const;
+  void SetRetVal(const ValueWrapper& value) { ret = value; }
   virtual void TerminateWith(const ValueWrapper& value);
   virtual std::string_view GetName() const;
 
@@ -180,19 +181,22 @@ struct Coro final : public CoroBase {
         std::allocator_arg, MakeFiberStack(),
         [self](boost::context::fiber&& ctx) {
           sched_ctx = std::move(ctx);
-          auto real_args = static_cast<std::tuple<Args...>*>(self->args.get());
-          auto this_arg =
-              std::tuple<Target*>{static_cast<Target*>(self->this_ptr)};
-          try {
-            self->ret =
-                std::apply(self->func, std::tuple_cat(this_arg, *real_args));
-          } catch (const TestFailure& ex) {
-            SchedCtxGuard guard;
-            SetTestFailure(ex.what());
-            self->ret = void_v;
+          {
+            CoroCtxGuard guard;
+            auto real_args =
+                static_cast<std::tuple<Args...>*>(self->args.get());
+            auto this_arg =
+                std::tuple<Target*>{static_cast<Target*>(self->this_ptr)};
+            try {
+              self->ret =
+                  std::apply(self->func, std::tuple_cat(this_arg, *real_args));
+            } catch (const TestFailure& ex) {
+              SchedCtxGuard scheduler;
+              SetTestFailure(ex.what());
+              self->ret = void_v;
+            }
           }
           self->returned = true;
-          ltest_coro_ctx = false;
           return std::move(sched_ctx);
         });
 

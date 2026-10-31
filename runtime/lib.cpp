@@ -8,8 +8,10 @@
 #include <utility>
 #include <vector>
 
+#include "context/donor_tls.h"
 #include "coro_ctx_guard.h"
 #include "logger.h"
+#include "thread_tls.h"
 #include "value_wrapper.h"
 
 namespace ltest {
@@ -22,8 +24,15 @@ boost::context::fiber sched_ctx;
 bool ltest_initialized = false;
 
 namespace {
+size_t fiber_stack_size = boost::context::stack_traits::default_size();
 std::atomic<std::uint64_t> g_dual_event_seqno{0};
 }  // namespace
+
+void SetFiberStackSize(size_t bytes) { fiber_stack_size = bytes; }
+
+boost::context::protected_fixedsize_stack MakeFiberStack() {
+  return boost::context::protected_fixedsize_stack(fiber_stack_size);
+}
 
 std::vector<TaskBuilder> task_builders{};
 
@@ -63,12 +72,20 @@ std::vector<CoroBase::DualEvent> CoroBase::DrainDualEvents() {
 }
 
 void CoroBase::Resume(size_t resumed_thread_id) {
+  SchedCtxGuard guard;
   this_coro = this->GetPtr();
   this_thread_id = resumed_thread_id;
-  assert(!this_coro->IsReturned() && this_coro->ctx);
-  {
-    CoroCtxGuard guard;
+  assert(!returned);
+  auto& tls = GetLogicalThreadTls(resumed_thread_id);
+  if (ctx) {
+    ctx.set_tls_base(tls.ThreadPointer());
     ctx = std::move(ctx).resume();
+    // pthread_exit leaves a suspended stack. Keep it until _exit without
+    // unwinding it after its TLS is retired.
+    if (returned && ctx) (void)new boost::context::fiber(std::move(ctx));
+  }
+  if (!ctx) {
+    returned = tls.ResumeCleanup();
   }
   this_coro.reset();
   this_thread_id = -1;
@@ -115,6 +132,7 @@ extern "C" void CoroYield() {
   if (!ltest::ltest_coro_ctx || ltest::ltest_target_construction) [[unlikely]] {
     return;
   }
+  if (ltest::DonorTls::YieldCleanup()) return;
   assert(ltest::this_coro && ltest::sched_ctx);
   ltest::ltest_coro_ctx = false;
   ltest::sched_ctx = std::move(ltest::sched_ctx).resume();
@@ -126,7 +144,6 @@ extern "C" void CoroutineStatusChange(char*, bool) { CoroYield(); }
 namespace ltest {
 
 void CoroBase::Terminate() {
-  // Keep a suspended fiber owned by this task until the worker exits.
   returned = true;
   fstate = {};
   clearWakeupCondition();

@@ -27,6 +27,7 @@
 #include "scheduler_fwd.h"
 #include "stable_vector.h"
 #include "strategy_shared_state.h"
+#include "thread_tls.h"
 #include "wmm/wmm.h"
 #include "workload_policy.h"
 
@@ -139,6 +140,7 @@ struct Strategy {
   virtual int GetThreadsCount() const = 0;
 
   virtual void UpdateSimulatorState(size_t thread_id) = 0;
+  virtual bool CanThreadContinue(size_t thread_id) = 0;
   // Called when the finished task must be reported to the verifier
   // (Strategy is a pure interface, the templated subclass
   // BaseStrategyWithThreads knows about the Verifier and will delegate to that)
@@ -227,7 +229,11 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
     Task* task = BuildReplayOperation(id);
     if (!task) return NEED_REPLAY;
     auto info = GetTask(id);
-    return TaskWithMetaData{*task, static_cast<size_t>(std::get<1>(*info))};
+    const auto thread_id = static_cast<size_t>(std::get<1>(*info));
+    // Completing a pending join also copies the worker's return value.
+    if (!(*task)->IsReturned() && !CanThreadContinue(thread_id))
+      return NEED_REPLAY;
+    return TaskWithMetaData{*task, thread_id};
   }
 
   Task* BuildReplayOperation(int id) {
@@ -268,6 +274,10 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
   }
 
  public:
+  bool CanThreadContinue(size_t thread_id) override {
+    return OSSimulator::CanThreadContinue(thread_id);
+  }
+
   std::optional<std::tuple<Task&, int>> GetTask(int task_id) override {
     // TODO: can this be optimized?
     int thread_id = 0;
@@ -487,9 +497,10 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
 
  private:
   void ConstructTarget() {
-    CoroCtxGuard guard;
-    TargetConstructionGuard target_construction_guard;
-    state = target_factory();
+    RunWithLogicalThreadTls(0, [&] {
+      TargetConstructionGuard target_construction_guard;
+      state = target_factory();
+    });
   }
 };
 
@@ -501,7 +512,7 @@ static bool HasPendingReplayTasks(Strategy& strategy,
 }
 
 static inline std::pair<bool, bool> GetUnfinishedAndRunnable(
-    const Strategy& strategy) {
+    Strategy& strategy) {
   bool has_unfinished = false;
   bool has_runnable = false;
 
@@ -513,7 +524,7 @@ static inline std::pair<bool, bool> GetUnfinishedAndRunnable(
       if (t->IsReturned()) continue;
 
       has_unfinished = true;
-      if (!t->IsBlocked()) {
+      if (!t->IsBlocked() && strategy.CanThreadContinue(tid)) {
         has_runnable = true;
         return {has_unfinished, has_runnable};
       }
@@ -714,18 +725,23 @@ struct StrategyScheduler : public Scheduler {
       }
       auto t = generate ? strategy.Next() : strategy.NextSchedule();
       if (auto f = std::get_if<StrategyNextScheduleFailure>(&t)) {
+        if (*f == DEADLOCK && WaitForPendingIo()) continue;
         if (*f == NEED_REPLAY) {
           if (replay) {
             report.result = Success;
             return;
           }
           auto [unfinished, runnable] = GetUnfinishedAndRunnable(strategy);
-          deadlock_detected = unfinished && !runnable;
+          deadlock_detected = unfinished && !runnable && !HasPendingExternalIo();
         } else if (*f == DEADLOCK)
-          deadlock_detected = true;
+          deadlock_detected = GetUnfinishedAndRunnable(strategy).first;
         break;
       }
       auto [next_task, thread_id] = std::get<TaskWithMetaData>(t);
+      // A fixed replay can select an I/O waiter before its kernel event arrives.
+      while (IsWaitingForIo(next_task.get())) {
+        if (!WaitForPendingIo(next_task.get())) return;
+      }
       const int id = next_task->GetId();
       const bool is_new = !started.contains(id);
       if (fixed && next_task->IsReturned()) {
@@ -776,7 +792,7 @@ struct StrategyScheduler : public Scheduler {
     }
     if (fixed) {
       auto [unfinished, runnable] = GetUnfinishedAndRunnable(strategy);
-      deadlock_detected = unfinished && !runnable;
+      deadlock_detected = unfinished && !runnable && !HasPendingExternalIo();
     }
     for (auto& op : report.operations) {
       auto task = strategy.GetTask(op.id);
@@ -849,18 +865,22 @@ struct DualStrategyScheduler : public DualScheduler {
       }
       auto t = replay ? strategy.NextSchedule() : strategy.Next();
       if (auto f = std::get_if<StrategyNextScheduleFailure>(&t)) {
+        if (*f == DEADLOCK && WaitForPendingIo()) continue;
         if (*f == NEED_REPLAY) {
           if (replay) {
             report.result = Success;
             return;
           }
           auto [unfinished, runnable] = GetUnfinishedAndRunnable(strategy);
-          deadlock_detected = unfinished && !runnable;
+          deadlock_detected = unfinished && !runnable && !HasPendingExternalIo();
         } else if (*f == DEADLOCK)
-          deadlock_detected = true;
+          deadlock_detected = GetUnfinishedAndRunnable(strategy).first;
         break;
       }
       auto [task, thread_id] = std::get<TaskWithMetaData>(t);
+      while (IsWaitingForIo(task.get())) {
+        if (!WaitForPendingIo(task.get())) return;
+      }
       const int id = task->GetId();
       const bool is_new = !started.contains(id);
       if (fixed && task->IsReturned()) {
@@ -893,6 +913,13 @@ struct DualStrategyScheduler : public DualScheduler {
       task->clearWakeupCondition();
       report.ordering.push_back(id);
       task->Resume(thread_id);
+      {
+        const size_t previous_events = report.events.size();
+        strategy.UpdateSimulatorState(thread_id);
+        for (size_t i = previous_events; i < report.events.size(); ++i)
+          if (report.events[i].IsStart())
+            started.insert(report.events[i].operation);
+      }
       AppendDrainedDualEvents(report, strategy);
       if (task->IsReturned()) {
         strategy.OnVerifierTaskFinish(task, thread_id);
@@ -905,7 +932,7 @@ struct DualStrategyScheduler : public DualScheduler {
     }
     if (fixed) {
       auto [unfinished, runnable] = GetUnfinishedAndRunnable(strategy);
-      deadlock_detected = unfinished && !runnable;
+      deadlock_detected = unfinished && !runnable && !HasPendingExternalIo();
     }
     for (auto& op : report.operations) {
       auto task = strategy.GetTask(op.id);

@@ -90,8 +90,6 @@ void RemoveOperations(AttemptRequest&, const std::unordered_set<int>& removed);
 struct AttemptSession {
   const AttemptRequest& request;
   AttemptReport& report;
-  // External programs finish after main and its exit handlers return.
-  bool target_process_finished = false;
 
   [[nodiscard]] const OperationDescription* Source(int id) const {
     for (auto& op : request.operations)

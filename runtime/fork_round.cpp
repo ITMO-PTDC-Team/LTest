@@ -142,6 +142,17 @@ AttemptReport Fail(const std::string& message) {
   return report;
 }
 
+void FlushOutput() {
+  std::cout.flush();
+  std::cerr.flush();
+  std::fflush(nullptr);
+}
+
+[[noreturn]] void ExitWorker(int result) {
+  FlushOutput();
+  _exit(result);
+}
+
 }  // namespace
 
 AttemptReport RunForkAttempt(const AttemptRequest& request,
@@ -150,7 +161,7 @@ AttemptReport RunForkAttempt(const AttemptRequest& request,
   SchedCtxGuard guard;
   try {
     Buffer buffer;
-    std::fflush(nullptr);
+    FlushOutput();
 
     const pid_t child = fork();
     if (child < 0) return Fail("fork failed");
@@ -168,9 +179,9 @@ AttemptReport RunForkAttempt(const AttemptRequest& request,
         run();
 
         WriteReport(buffer, report);
-        std::exit(report.result);
+        ExitWorker(report.result);
       } catch (const std::exception& error) {
-        std::exit(Fail(error.what()).result);
+        ExitWorker(Fail(error.what()).result);
       }
     }
 

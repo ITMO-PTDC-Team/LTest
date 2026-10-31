@@ -1,6 +1,7 @@
+#include <pthread.h>
+
 #include <map>
 
-#include "exit.h"
 #include "runtime/include/value_wrapper.h"
 #include "runtime/include/verifying.h"
 DEFINE_bool(discover, false,
@@ -36,13 +37,11 @@ class Test {
  public:
   int Main(int argc, char *argv[]) {
     const int result = test_main(argc, argv);
-    RunTargetExitHandlers();
     if (result != 0) {
       SchedCtxGuard guard;
       SetTestFailure("target main returned " + std::to_string(result));
     }
-    attempt_session->target_process_finished = true;
-    return result;
+    pthread_exit(nullptr);
   }
 };
 

@@ -1,6 +1,6 @@
 #include "os_simulator.h"
 
-#include "thread_tls.h"
+#include <pthread.h>
 
 namespace ltest {
 
@@ -45,12 +45,8 @@ void OSSimulator::UpdateOSState(size_t thread) {
                              threads[thread].back()->GetId());
                          threads.emplace_back();
                          threads.back().emplace_back(Coro<void*>::New(
-                             [info](void* v) {
-                               void* result = info.function(v);
-                               FinishLogicalThreadTls();
-                               return ValueWrapper(result,
-                                                   GetDefaultCompator<void*>(),
-                                                   &GetThreadResultToString);
+                             [info](void* v) -> ValueWrapper {
+                               pthread_exit(info.function(v));
                              },
                              nullptr, std::make_shared<std::tuple<>>(),
                              &PrintThreadArgs, info.name, id));

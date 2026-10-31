@@ -1,29 +1,72 @@
 
-#include <pthread.h>
-
-#include <cassert>
 #include <dlfcn.h>
+#include <libsyscall_intercept_hook_point.h>
+#include <pthread.h>
+#include <sched.h>
+#include <sys/prctl.h>
+#include <sys/syscall.h>
+
+#include <array>
+#include <cassert>
+#include <cerrno>
+#include <cstring>
+#include <unordered_map>
 #include <utility>
 
+#include "runtime/context/donor_tls.h"
 #include "runtime/include/blocking_primitives.h"
 #include "runtime/include/coro_ctx_guard.h"
 #include "runtime/include/os_simulator.h"
+#include "runtime/include/thread_tls.h"
 using namespace ltest;
 
 [[nodiscard]] bool ShouldUseMock() {
   return ltest_initialized && ltest_coro_ctx;
 }
 
-#define PTHREAD_MOCK_INIT_ROUTINE(name, ...)                              \
-  if (!ShouldUseMock()) {                                                 \
-    static decltype(&name) real_fn = nullptr;                             \
-    if (!real_fn) {                                                       \
-      reinterpret_cast<void*&>(real_fn) = dlsym(RTLD_NEXT, #name);        \
-      assert(real_fn);                                                    \
-    }                                                                     \
-    return real_fn(__VA_ARGS__);                                          \
-  }                                                                       \
+#define PTHREAD_MOCK_INIT_ROUTINE(name, ...)                        \
+  if (!ShouldUseMock()) {                                           \
+    static auto real_fn =                                           \
+        reinterpret_cast<decltype(&name)>(dlsym(RTLD_NEXT, #name)); \
+    assert(real_fn);                                                \
+    return real_fn(__VA_ARGS__);                                    \
+  }                                                                 \
   ltest::SchedCtxGuard guard;
+
+namespace {
+
+constexpr size_t kThreadNameSize = 16;
+using ThreadName = std::array<char, kThreadNameSize>;
+
+pthread_t ThreadHandle(uint64_t index) {
+  // libstdc++ reserves a zero pthread handle for a default std::thread::id.
+  return static_cast<pthread_t>(index + 1);
+}
+
+bool IsValidThreadHandle(pthread_t thread) {
+  return thread != 0 && thread - 1 <= current_max_thread_id;
+}
+
+const ThreadName &InitialThreadName() {
+  static const ThreadName initial_name = [] {
+    ThreadName name{};
+    const int result = prctl(PR_GET_NAME, name.data(), 0, 0, 0);
+    assert(result == 0);
+    return name;
+  }();
+  return initial_name;
+}
+
+// Only target execution changes this child-local registry. Names belong
+// to logical threads, independently of their parked TLS donors.
+std::unordered_map<pthread_t, ThreadName> thread_names;
+
+ThreadName *FindThreadName(pthread_t thread) {
+  if (!IsValidThreadHandle(thread)) return nullptr;
+  return &thread_names.try_emplace(thread, InitialThreadName()).first->second;
+}
+
+}  // namespace
 
 extern int pthread_create(pthread_t *__restrict __newthread,
                           const pthread_attr_t *__restrict __attr,
@@ -32,14 +75,14 @@ extern int pthread_create(pthread_t *__restrict __newthread,
   PTHREAD_MOCK_INIT_ROUTINE(pthread_create, __newthread, __attr,
                             __start_routine, __arg)
   assert(!thread_info.has_value());
+  const auto inherited = *FindThreadName(ThreadHandle(this_thread_id));
   std::string name = "NewThread";
   thread_info.emplace(CreatedThreadInfo(
-      [__start_routine, __arg](void *) {
-        return __start_routine(__arg);
-      },
+      [__start_routine, __arg](void *) { return __start_routine(__arg); },
       name));
   current_max_thread_id++;
-  *__newthread = current_max_thread_id;
+  *__newthread = ThreadHandle(current_max_thread_id);
+  thread_names.emplace(*__newthread, inherited);
   {
     ltest::CoroCtxGuard coro_guard;
     CoroYield();
@@ -49,8 +92,11 @@ extern int pthread_create(pthread_t *__restrict __newthread,
 
 int pthread_join(pthread_t __th, void **__thread_return) {
   PTHREAD_MOCK_INIT_ROUTINE(pthread_join, __th, __thread_return)
+  if (!IsValidThreadHandle(__th)) return ESRCH;
+  const uint64_t index = __th - 1;
+  if (index == static_cast<uint64_t>(this_thread_id)) return EDEADLK;
   assert(!thread_info.has_value());
-  thread_info.emplace(JoinThreadInfo(__th, __thread_return));
+  thread_info.emplace(JoinThreadInfo(index, __thread_return));
   {
     ltest::CoroCtxGuard coro_guard;
     CoroYield();
@@ -59,33 +105,80 @@ int pthread_join(pthread_t __th, void **__thread_return) {
 }
 
 extern void pthread_exit(void *__retval) __attribute__((__noreturn__)) {
-  PTHREAD_MOCK_INIT_ROUTINE(pthread_exit, __retval)
-  this_coro->TerminateWith(ValueWrapper(__retval, GetDefaultCompator<void *>(),
+  static auto native = reinterpret_cast<decltype(&pthread_exit)>(
+      dlsym(RTLD_NEXT, "pthread_exit"));
+  assert(native);
+  if (ShouldUseMock()) {
+    {
+      SchedCtxGuard guard;
+      this_coro->SetRetVal(ValueWrapper(__retval, GetDefaultCompator<void *>(),
                                         &GetThreadResultToString));
-  {
-    ltest::CoroCtxGuard coro_guard;
-    CoroYield();
+      if (!DonorTls::IsCleaningUp()) {
+        assert(this_thread_id >= 0);
+        GetLogicalThreadTls(this_thread_id).RequestCleanup();
+        this_coro->Terminate();
+      }
+    }
+    if (!DonorTls::IsCleaningUp()) {
+      // Skip remaining stack destructors and pthread cleanup handlers.
+      // The fiber stays suspended until _exit; TLS/key cleanup is scheduled.
+      for (;;) CoroYield();
+    }
   }
-  throw std::runtime_error(
-      "code after CoroYield() here should never be executed, exception is "
-      "thrown only to match "
-      "noreturn attribute");
+  native(__retval);
+  __builtin_unreachable();
 }
 
-extern "C" int __cxa_thread_atexit(void (*)(void *), void *, void *) noexcept {
-  // LTest deliberately has no thread-local lifetime model.
+pthread_t pthread_self() noexcept {
+  PTHREAD_MOCK_INIT_ROUTINE(pthread_self)
+  return ThreadHandle(this_thread_id);
+}
+
+int pthread_getschedparam(pthread_t thread, int *policy,
+                          struct sched_param *parameter) noexcept {
+  PTHREAD_MOCK_INIT_ROUTINE(pthread_getschedparam, thread, policy, parameter)
+  if (!IsValidThreadHandle(thread)) return ESRCH;
+  // Logical threads currently use the default policy. Native priorities must
+  // not replace the exploration strategy that schedules these threads.
+  *policy = SCHED_OTHER;
+  std::memset(parameter, 0, sizeof(*parameter));
   return 0;
 }
 
-extern "C" int __cxa_thread_atexit_impl(void (*)(void *), void *,
-                                        void *) noexcept {
-  // LTest deliberately has no thread-local lifetime model.
+int pthread_getaffinity_np(pthread_t thread, size_t size,
+                           cpu_set_t *cpuset) noexcept {
+  PTHREAD_MOCK_INIT_ROUTINE(pthread_getaffinity_np, thread, size, cpuset)
+  if (!IsValidThreadHandle(thread)) return ESRCH;
+  const long bytes =
+      syscall_no_intercept(SYS_sched_getaffinity, 0, size, cpuset);
+  if (bytes < 0) return -bytes;
+  std::memset(reinterpret_cast<char *>(cpuset) + bytes, 0, size - bytes);
   return 0;
 }
 
-extern "C" int __cxa_atexit(void (*)(void *), void *, void *) noexcept {
-  // LTest abandons target and runtime objects instead of running process-exit
-  // destructors against state that crossed simulated rounds.
+int pthread_setaffinity_np(pthread_t thread, size_t size,
+                           const cpu_set_t *cpuset) noexcept {
+  PTHREAD_MOCK_INIT_ROUTINE(pthread_setaffinity_np, thread, size, cpuset)
+  // Ignore CPU pinning for logical threads.
+  return IsValidThreadHandle(thread) ? 0 : ESRCH;
+}
+
+int pthread_setname_np(pthread_t thread, const char *name) noexcept {
+  PTHREAD_MOCK_INIT_ROUTINE(pthread_setname_np, thread, name)
+  const size_t length = strnlen(name, kThreadNameSize);
+  if (length == kThreadNameSize) return ERANGE;
+  auto *thread_name = FindThreadName(thread);
+  if (!thread_name) return ESRCH;
+  std::memcpy(thread_name->data(), name, length + 1);
+  return 0;
+}
+
+int pthread_getname_np(pthread_t thread, char *name, size_t size) noexcept {
+  PTHREAD_MOCK_INIT_ROUTINE(pthread_getname_np, thread, name, size)
+  if (size < kThreadNameSize) return ERANGE;
+  const auto *thread_name = FindThreadName(thread);
+  if (!thread_name) return ESRCH;
+  std::strcpy(name, thread_name->data());
   return 0;
 }
 
@@ -136,12 +229,8 @@ extern int pthread_mutex_init(pthread_mutex_t *__mutex,
 
 /* Destroy a mutex.  */
 extern int pthread_mutex_destroy(pthread_mutex_t *__mutex) __THROW {
-  auto it = mutexes.find(__mutex);
-  if (it != mutexes.end()) {
-    mutexes.erase(it);
-    return 0;
-  }
   PTHREAD_MOCK_INIT_ROUTINE(pthread_mutex_destroy, __mutex)
+  mutexes.erase(__mutex);
   return 0;
 }
 
@@ -201,12 +290,8 @@ extern int pthread_cond_init(
 
 /* Destroy condition variable COND.  */
 extern int pthread_cond_destroy(pthread_cond_t *__cond) __THROW {
-  auto it = cond_variables.find(__cond);
-  if (it != cond_variables.end()) {
-    cond_variables.erase(it);
-    return 0;
-  }
   PTHREAD_MOCK_INIT_ROUTINE(pthread_cond_destroy, __cond)
+  cond_variables.erase(__cond);
   return 0;
 }
 
@@ -251,12 +336,8 @@ extern int pthread_rwlock_init(
 
 /* Destroy read-write lock RWLOCK.  */
 extern int pthread_rwlock_destroy(pthread_rwlock_t *__rwlock) __THROW {
-  auto it = shared_mutexes.find(__rwlock);
-  if (it != shared_mutexes.end()) {
-    shared_mutexes.erase(it);
-    return 0;
-  }
   PTHREAD_MOCK_INIT_ROUTINE(pthread_rwlock_destroy, __rwlock)
+  shared_mutexes.erase(__rwlock);
   return 0;
 }
 

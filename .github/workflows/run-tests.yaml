@@ -26,7 +26,9 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
       - name: Initialize Boost.Context
-        run: git submodule update --init -- third_party/boost_context
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init -- third_party/boost_context
       - name: Build
         run: |
           cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=RelWithAssert
@@ -52,7 +54,9 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
       - name: Initialize Boost.Context
-        run: git submodule update --init -- third_party/boost_context
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init -- third_party/boost_context
       - name: Build
         run: |
           cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=RelWithAssert
@@ -82,7 +86,9 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
       - name: Initialize Boost.Context
-        run: git submodule update --init -- third_party/boost_context
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init -- third_party/boost_context
       - name: Install libcoro
         run: git clone --depth=1 https://github.com/jbaldwin/libcoro.git /tmp/libcoro
       - name: Build libcoro dual tests
@@ -116,7 +122,9 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
       - name: Initialize Boost.Context
-        run: git submodule update --init -- third_party/boost_context
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init -- third_party/boost_context
       - name: Build folly ltest dependencies
         run: |
           cmake -G Ninja -B "${LTEST_BUILD_PATH}" -DCMAKE_BUILD_TYPE=Release
@@ -156,7 +164,9 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
       - name: Initialize Boost.Context
-        run: git submodule update --init -- third_party/boost_context
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init -- third_party/boost_context
       - name: Build
         run: |
           cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=RelWithAssert
@@ -188,7 +198,9 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
       - name: Initialize Boost.Context
-        run: git submodule update --init -- third_party/boost_context
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init -- third_party/boost_context
       - name: Build folly ltest dependencies
         run: |
           cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release

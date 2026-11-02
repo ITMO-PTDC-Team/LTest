@@ -52,16 +52,25 @@ struct TLAStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       assert(os_status && "couldn't verify os task in replay phase");
 
       if (frame.is_new) {
+        const auto& cons = this->constructors[frame.constr_id];
+        if (!verifier_hooks::VerifyStart(this->sched_checker, cons.GetName(),
+                                         frame.thread_id,
+                                         this->GetStartContext()) ||
+            !this->sched_checker.Verify(cons.GetName(), frame.thread_id,
+                                        true)) {
+          return NEED_REPLAY;
+        }
         tasks.emplace_back(this->BuildTask(frame.constr_id, frame.thread_id,
                                            this->new_task_id++));
         this->OnVerifierTaskStart(tasks.back(), frame.thread_id);
       }
       assert(frame.task_index < tasks.size() &&
              "couldn't find task in replay phase");
-      bool verify_status = this->sched_checker.Verify(
-          std::string{tasks[frame.task_index]->GetName()}, frame.thread_id,
-          frame.is_new);
-      assert(verify_status && "couldn't verify task in replay phase");
+      if (!frame.is_new && !this->sched_checker.Verify(
+                               std::string{tasks[frame.task_index]->GetName()},
+                               frame.thread_id, false)) {
+        return NEED_REPLAY;
+      }
       return TaskWithMetaData{tasks[frame.task_index], frame.thread_id};
     }
     for (size_t i = start_thread_id; i < this->threads.size(); ++i) {
@@ -87,10 +96,13 @@ struct TLAStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       if (!this->AllowNewTasks() || !this->NewTaskAreEnabled(i)) {
         continue;
       }
+      const auto ctx = this->GetStartContext();
       for (size_t constr_id = start_constr_id;
            constr_id < this->constructors.size(); ++constr_id) {
-        auto cons = this->constructors[constr_id];
-        if (!this->sched_checker.Verify(cons.GetName(), i, true)) {
+        const auto& cons = this->constructors[constr_id];
+        if (!verifier_hooks::VerifyStart(this->sched_checker, cons.GetName(), i,
+                                         ctx) ||
+            !this->sched_checker.Verify(cons.GetName(), i, true)) {
           continue;
         }
         const size_t task_index = tasks.size();

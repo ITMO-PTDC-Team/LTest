@@ -243,6 +243,8 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
     auto& thread = threads[op->thread];
     if (op->builder >= constructors.size() + replay_builders.size())
       return nullptr;
+    // TODO: Preserve generated argument values and logical dependencies for
+    // child-local reconstruction instead of rerunning the argument generator.
     thread.emplace_back(BuildTask(op->builder, op->thread, op->id));
     return &thread.back();
   }
@@ -376,30 +378,7 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
     bool is_new = threads[thread_index].empty() ||
                   threads[thread_index].back()->IsReturned();
     if (is_new) {
-      // Build start context (Blocked-trigger).
-      ltest::StartContext ctx{};
-      ctx.threads = this->threads.size();
-
-      for (size_t tid = 0; tid < this->threads.size(); ++tid) {
-        bool is_free = this->threads[tid].empty() ||
-                       this->threads[tid].back()->IsReturned();
-        if (is_free) {
-          ctx.free_threads++;
-          continue;
-        }
-
-        // Active task exists and is not returned.
-        auto& active = this->threads[tid].back();
-        std::string name = std::string(active->GetName());
-
-        // NEW: count in-flight operations by method name
-        ctx.active_by_method[name]++;
-
-        // Keep blocked too (might be useful later)
-        if (active->IsBlocked()) {
-          ctx.blocked_by_method[name]++;
-        }
-      }
+      const auto ctx = GetStartContext();
 
       // Choose constructor subject to verifier policy.
       std::shuffle(constructor_order.begin(), constructor_order.end(),
@@ -436,6 +415,22 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
   }
 
  protected:
+  StartContext GetStartContext() const {
+    StartContext ctx{};
+    ctx.threads = threads.size();
+    for (const auto& thread : threads) {
+      if (thread.empty() || thread.back()->IsReturned()) {
+        ++ctx.free_threads;
+        continue;
+      }
+      const auto& active = thread.back();
+      const std::string name(active->GetName());
+      ++ctx.active_by_method[name];
+      if (active->IsBlocked()) ++ctx.blocked_by_method[name];
+    }
+    return ctx;
+  }
+
   Task BuildTask(size_t builder, size_t thread_id, int task_id) {
     auto& report = attempt_session->report;
     OperationDescription op(task_id, builder, thread_id,

@@ -732,7 +732,8 @@ struct StrategyScheduler : public Scheduler {
             return;
           }
           auto [unfinished, runnable] = GetUnfinishedAndRunnable(strategy);
-          deadlock_detected = unfinished && !runnable && !HasPendingExternalIo();
+          if (unfinished && !runnable && WaitForPendingIo()) continue;
+          deadlock_detected = unfinished && !runnable;
         } else if (*f == DEADLOCK)
           deadlock_detected = GetUnfinishedAndRunnable(strategy).first;
         break;
@@ -872,7 +873,8 @@ struct DualStrategyScheduler : public DualScheduler {
             return;
           }
           auto [unfinished, runnable] = GetUnfinishedAndRunnable(strategy);
-          deadlock_detected = unfinished && !runnable && !HasPendingExternalIo();
+          if (unfinished && !runnable && WaitForPendingIo()) continue;
+          deadlock_detected = unfinished && !runnable;
         } else if (*f == DEADLOCK)
           deadlock_detected = GetUnfinishedAndRunnable(strategy).first;
         break;

@@ -336,8 +336,7 @@ cmake --build build-folly --target folly_coro_mutex
   --deadlock_policy=explore
 ```
 
-Если dynamic linker не находит runtime или gflags, выставить `LD_LIBRARY_PATH`
-как в matrix-скриптах:
+Если dynamic linker не находит runtime или gflags, выставить `LD_LIBRARY_PATH`:
 
 ```bash
 export LD_LIBRARY_PATH="$PWD/build/runtime:$PWD/build/codegen:$PWD/build/third_party/gflags/lib:$PWD/build/runtime/third_party/gflags/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -345,52 +344,38 @@ export LD_LIBRARY_PATH="$PWD/build/runtime:$PWD/build/codegen:$PWD/build/third_p
 
 Для другого build-dir заменить `build` на нужный каталог.
 
-## Matrix-скрипты
+## Matrix через CTest
 
-Скрипты запускают несколько стратегий и параметров для группы targets, пишут
-логи в `/tmp` и поддерживают переменные окружения.
+Кейсы для `libcoro` и `folly` зарегистрированы как CMake/CTest integration
+tests. Для запуска достаточно сконфигурировать build-dir, собрать нужный custom
+target и запустить `ctest` по CTest label.
 
 libcoro:
 
 ```bash
-BUILD_DIR="$PWD/build-libcoro" \
-LOG_DIR=/tmp/ltest_libcoro_matrix/manual \
-DEADLOCK_POLICY=explore \
-./scripts/run_dual_libcoro_matrix.sh
+cmake -S . -B build-libcoro -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-libcoro --target verify-dual-libcoro
+ctest --test-dir build-libcoro -L dual-libcoro --parallel 4 -V --output-on-failure
 ```
 
 Folly:
 
 ```bash
-BUILD_DIR="$PWD/build-folly" \
-LOG_DIR=/tmp/ltest_folly_matrix/manual \
-DEADLOCK_POLICY=explore \
-./scripts/run_dual_folly_matrix.sh
+cmake -S . -B build-folly -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-folly --target verify-dual-folly
+ctest --test-dir build-folly -L dual-folly --parallel 4 -V --output-on-failure
 ```
 
-VK:
+Дополнительные аргументы CTest передаются напрямую:
 
 ```bash
-BUILD_DIR="$PWD/build-vk" \
-LOG_DIR=/tmp/ltest_vk_matrix/manual \
-DEADLOCK_POLICY=explore \
-./scripts/run_dual_vk_matrix.sh
+ctest --test-dir build-folly -L dual-folly -V --timeout 180
 ```
 
-Общие полезные переменные:
+Полезные параметры:
 
-- `BUILD_DIR` - где искать собранные бинарники;
-- `LOG_DIR` - куда писать логи;
-- `TIMEOUT` - timeout одного кейса, например `180s`;
-- `RUN_TLA=0` - отключить TLA-варианты;
-- `RUN_MINIMIZE=0` - отключить варианты с `--minimize=true`;
-- `DEADLOCK_POLICY=explore|rollback|checker|fail`;
-- `CONTINUE_ON_FAIL=1` - не останавливать матрицу на первом падении.
-
-Для `libcoro` и `folly` матрицы дополнительно принимают:
-
-- `ALLOW_KNOWN_FAILURES`;
-- `INCLUDE_KNOWN_FAILURES` для libcoro.
+- `CTEST_PARALLEL_LEVEL` - параллелизм `ctest`;
+- `LTEST_DUAL_TEST_TIMEOUT` - CMake cache value для timeout одного теста.
 
 ## Основные флаги verifier-а
 

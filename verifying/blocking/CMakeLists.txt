@@ -110,6 +110,9 @@ if(FOLLY_BLOCKING_LIBRARY AND NOT EXISTS "${FOLLY_BLOCKING_LIBRARY}")
     find_library(FOLLY_BLOCKING_LIBRARY NAMES folly)
 endif()
 
+# Keep Folly's native fcontext symbols separate from LTest's renamed fork.
+find_library(FOLLY_BLOCKING_BOOST_CONTEXT_LIBRARY NAMES boost_context)
+
 find_path(GLOG_BLOCKING_INCLUDE_DIR NAMES glog/logging.h)
 find_path(DOUBLE_CONVERSION_BLOCKING_INCLUDE_DIR
         NAMES double-conversion/double-conversion.h)
@@ -117,13 +120,14 @@ find_library(GLOG_BLOCKING_LIBRARY NAMES glog)
 find_library(DOUBLE_CONVERSION_BLOCKING_LIBRARY NAMES double-conversion)
 
 if(NOT FOLLY_BLOCKING_INCLUDE_DIR OR NOT FOLLY_BLOCKING_LIBRARY OR
+        NOT FOLLY_BLOCKING_BOOST_CONTEXT_LIBRARY OR
         NOT GLOG_BLOCKING_INCLUDE_DIR OR
         NOT DOUBLE_CONVERSION_BLOCKING_INCLUDE_DIR OR
         NOT GLOG_BLOCKING_LIBRARY OR
         NOT DOUBLE_CONVERSION_BLOCKING_LIBRARY)
     message(STATUS
             "Skipping blocking folly targets: expected folly headers/lib "
-            "plus glog and double-conversion.")
+            "plus native Boost.Context, glog and double-conversion.")
 else()
     foreach(source_name ${FOLLY_SOURCE_TARGET_LIST})
         get_filename_component(target ${source_name} NAME_WE)
@@ -142,6 +146,7 @@ else()
         target_link_libraries(${target} PRIVATE
                 ${GLOG_BLOCKING_LIBRARY}
                 ${FOLLY_BLOCKING_LIBRARY}
+                ${FOLLY_BLOCKING_BOOST_CONTEXT_LIBRARY}
                 ${DOUBLE_CONVERSION_BLOCKING_LIBRARY}
         )
         add_dependencies(${target} preload)

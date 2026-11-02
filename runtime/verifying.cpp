@@ -82,6 +82,9 @@ DEFINE_int32(
     "number of generated rounds to run after all custom ones. This can be "
     "set to zero in case if you want to run only custom rounds");
 DEFINE_bool(minimize, false, "Minimize nonlinear scenario");
+DEFINE_bool(expect_failure, false,
+            "Succeed only on a meaningful target failure; reject infrastructure "
+            "errors and executions without a failure");
 DEFINE_int32(exploration_runs, 15,
              "Number of attempts to find nonlinearized round during each "
              "minimization step");
@@ -238,10 +241,15 @@ int RunStrategyRounds(const Opts& opts, Strategy& strategy,
       }
       std::cerr << "LTest verified target failure: " << report.result << '\n';
       if (!opts.minimize && explore_deadlock) print_history(report);
+      if (opts.expect_failure && MeaningfulFailure(report)) return Success;
       return report.result;
     }
 
     if (strategy.IsExhausted()) break;
+  }
+  if (opts.expect_failure) {
+    std::cerr << "Expected target failure was not found\n";
+    return ExpectedFailureNotFound;
   }
   std::cout << "success!\n";
   return Success;
@@ -259,6 +267,7 @@ void SetOpts(const DefaultOptions& def) {
   FLAGS_exploration_runs = def.exploration_runs;
   FLAGS_minimization_runs = def.minimization_runs;
   FLAGS_wmm_enabled = def.wmm_enabled;
+  FLAGS_expect_failure = def.expect_failure;
   FLAGS_seed = def.seed;
   FLAGS_deadlock_policy =
       (def.deadlock_policy != nullptr && def.deadlock_policy[0] != '\0')
@@ -276,6 +285,7 @@ Opts ParseOpts() {
   opts.deadlock_policy = DeadlockPolicyFromLiteral(FLAGS_deadlock_policy);
   opts.seed = static_cast<size_t>(FLAGS_seed);
   opts.minimize = FLAGS_minimize;
+  opts.expect_failure = FLAGS_expect_failure;
   opts.exploration_runs = FLAGS_exploration_runs;
   opts.minimization_runs = FLAGS_minimization_runs;
   opts.wmm_enabled = wmm_enabled = FLAGS_wmm_enabled;

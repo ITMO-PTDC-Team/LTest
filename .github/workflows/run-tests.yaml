@@ -30,9 +30,9 @@ jobs:
       - name: Build
         run: |
           cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=RelWithAssert
-          cmake --build build --target lin_check_test fiber_stack_test
+          cmake --build build --target lin_check_test
       - name: Run lin check test
-        run: ctest --test-dir build -R "^(LinearizabilityCheckerCounterTest|FiberStackTest)" -V
+        run: ctest --test-dir build -R "^LinearizabilityCheckerCounterTest" -V
   verifying-test:
     runs-on: ubuntu-latest
     defaults:

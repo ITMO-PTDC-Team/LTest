@@ -187,20 +187,10 @@ struct Overloads : Ts... {
   using Ts::operator()...;
 };
 
-// we need to call this mutex method in almost each mutex function, because
-// mutex can be initialized by macros
-static decltype(mutexes)::mapped_type &InsertMutex(
-    pthread_mutex_t *__mutex,
-    const pthread_mutexattr_t *__mutexattr = nullptr) {
+static decltype(mutexes)::mapped_type &InsertMutex(pthread_mutex_t *__mutex,
+                                                   int type) {
   auto it = mutexes.find(__mutex);
   if (it == mutexes.end()) {
-    int type = PTHREAD_MUTEX_NORMAL;
-    if (__mutexattr != nullptr) {
-      const int result = pthread_mutexattr_gettype(__mutexattr, &type);
-      assert(result == 0);
-    } else {
-      type = __mutex->__data.__kind;
-    }
     const bool is_recursive = type == PTHREAD_MUTEX_RECURSIVE_NP;
     if (is_recursive) {
       it = mutexes.emplace(__mutex, recursive_mutex()).first;
@@ -209,6 +199,14 @@ static decltype(mutexes)::mapped_type &InsertMutex(
     }
   }
   return it->second;
+}
+
+static decltype(mutexes)::mapped_type &FindOrInsertMutex(
+    pthread_mutex_t *__mutex) {
+  auto it = mutexes.find(__mutex);
+  if (it != mutexes.end()) return it->second;
+  // Only lazy discovery may inspect storage for a static initializer.
+  return InsertMutex(__mutex, __mutex->__data.__kind);
 }
 
 static decltype(mutexes)::mapped_type &FindMutex(pthread_mutex_t *__mutex,
@@ -223,7 +221,12 @@ static decltype(mutexes)::mapped_type &FindMutex(pthread_mutex_t *__mutex,
 extern int pthread_mutex_init(pthread_mutex_t *__mutex,
                               const pthread_mutexattr_t *__mutexattr) __THROW {
   PTHREAD_MOCK_INIT_ROUTINE(pthread_mutex_init, __mutex, __mutexattr)
-  InsertMutex(__mutex, __mutexattr);
+  int type = PTHREAD_MUTEX_DEFAULT;
+  if (__mutexattr != nullptr) {
+    const int result = pthread_mutexattr_gettype(__mutexattr, &type);
+    assert(result == 0);
+  }
+  InsertMutex(__mutex, type);
   return 0;
 }
 
@@ -237,7 +240,7 @@ extern int pthread_mutex_destroy(pthread_mutex_t *__mutex) __THROW {
 /* Try locking a mutex.  */
 extern int pthread_mutex_trylock(pthread_mutex_t *__mutex) __THROWNL {
   PTHREAD_MOCK_INIT_ROUTINE(pthread_mutex_trylock, __mutex)
-  auto &it = InsertMutex(__mutex);
+  auto &it = FindOrInsertMutex(__mutex);
   return std::visit(Overloads{[](auto &a) {
                       bool res = a.try_lock();
                       if (res) {
@@ -251,7 +254,7 @@ extern int pthread_mutex_trylock(pthread_mutex_t *__mutex) __THROWNL {
 /* Lock a mutex.  */
 extern int pthread_mutex_lock(pthread_mutex_t *__mutex) __THROWNL {
   PTHREAD_MOCK_INIT_ROUTINE(pthread_mutex_lock, __mutex)
-  auto &it = InsertMutex(__mutex);
+  auto &it = FindOrInsertMutex(__mutex);
   return std::visit(Overloads{[](auto &a) {
                       a.lock();
                       return 0;
@@ -312,7 +315,7 @@ extern int pthread_cond_broadcast(pthread_cond_t *__cond) __THROWNL {
 extern int pthread_cond_wait(pthread_cond_t *__restrict __cond,
                              pthread_mutex_t *__restrict __mutex) {
   PTHREAD_MOCK_INIT_ROUTINE(pthread_cond_wait, __cond, __mutex)
-  auto &m = InsertMutex(__mutex);
+  auto &m = FindOrInsertMutex(__mutex);
   auto &c = InsertCond(__cond);
   std::visit([&c](auto &mutex) { c.wait(mutex); }, m);
   return 0;

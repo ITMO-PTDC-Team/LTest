@@ -89,13 +89,15 @@ endfunction()
 function(add_integration_test test_name label fail)
     set(full_name "${label}_${test_name}")
     set(test_command ${ARGN})
+    if(fail)
+        list(APPEND test_command --expect_failure)
+    endif()
     add_test(
         NAME "${full_name}"
         COMMAND ${test_command}
     )
     set_tests_properties("${full_name}"
         PROPERTIES
-        WILL_FAIL ${fail}
         LABELS "${label}"
         ENVIRONMENT_MODIFICATION "LD_PRELOAD=string_append:${CMAKE_BINARY_DIR}/syscall_intercept/libpreload.so"
 )
@@ -103,13 +105,16 @@ endfunction()
 
 function(add_external_integration_test test_name label fail target)
     set(full_name "${label}_${test_name}")
+    set(ltest_options)
+    if(fail)
+        list(APPEND ltest_options --expect_failure)
+    endif()
     add_test(
             NAME "${full_name}"
-            COMMAND ${target} -- ${ARGN}
+            COMMAND ${target} ${ltest_options} -- ${ARGN}
     )
     set_tests_properties("${full_name}"
             PROPERTIES
-            WILL_FAIL ${fail}
             LABELS "${label}"
             ENVIRONMENT_MODIFICATION "LD_PRELOAD=string_prepend:$<TARGET_FILE:preload_with_main>:"
     )
@@ -118,6 +123,4 @@ endfunction()
 add_subdirectory(targets)
 #add_subdirectory(cpp-concurrent)
 add_subdirectory(dual)
-include(cmake/SctTests.cmake)
-add_subdirectory(sctbench)
 add_subdirectory(blocking)

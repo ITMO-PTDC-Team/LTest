@@ -149,6 +149,9 @@ void FlushOutput() {
 
 [[noreturn]] void ExitWorker(int result) {
   FlushOutput();
+  // Deliberately skip atexit handlers and static destructors: an attempt may
+  // leave suspended target fibers and parked TLS donors. Reclaim that state
+  // with the child process instead of running process-wide teardown here.
   _exit(result);
 }
 

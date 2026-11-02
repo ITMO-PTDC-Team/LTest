@@ -20,6 +20,7 @@ enum ExitCode {
   InfrastructureFailure = 2,
   NonLinearizable = 3,
   Deadlock = 4,
+  ExpectedFailureNotFound = 5,
 };
 
 struct OperationDescription {

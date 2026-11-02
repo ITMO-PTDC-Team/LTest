@@ -141,6 +141,7 @@ struct Opts {
   std::vector<int> thread_weights;
   DeadlockPolicy deadlock_policy;
   size_t seed;
+  bool expect_failure = false;
 };
 
 struct DefaultOptions {
@@ -158,6 +159,7 @@ struct DefaultOptions {
   bool wmm_enabled;
   size_t seed = 0;
   const char *deadlock_policy = GetLiteral(DeadlockPolicy::Fail);
+  bool expect_failure = false;
 };
 
 void SetOpts(const DefaultOptions &def);

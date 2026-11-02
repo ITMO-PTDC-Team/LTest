@@ -10,7 +10,7 @@ static std::vector<size_t> done(limit, false);
 
 struct CoUniqueArgsTest {
   CoUniqueArgsTest() { Reset(); }
-  ValueWrapper Get(size_t i) {
+  ltest::ValueWrapper Get(size_t i) {
     assert(!used[i]);
     used[i] = true;
     CoroYield();
@@ -22,7 +22,7 @@ struct CoUniqueArgsTest {
     return {std::count(done.begin(), done.end(), false) == 0
                 ? l()
                 : std::optional<int>(),
-            GetDefaultCompator<std::optional<int>>(), Print};
+            ltest::GetDefaultCompator<std::optional<int>>(), Print};
   }
   void Reset() {
     std::fill(used.begin(), used.end(), false);
@@ -45,4 +45,4 @@ using SpecT =
     ltest::Spec<CoUniqueArgsTest, spec::UniqueArgsRef, spec::UniqueArgsHash,
                 spec::UniqueArgsEquals, spec::UniqueArgsOptionsOverride>;
 
-LTEST_ENTRYPOINT(SpecT);
+LTEST_ENTRYPOINT_CONSTRAINT(SpecT, spec::UniqueArgsVerifier);

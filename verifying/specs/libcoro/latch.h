@@ -31,7 +31,7 @@ struct LibcoroLatch {
     return p;
   }
 
-  ValueWrapper CountDown(void* args) {
+  ltest::ValueWrapper CountDown(void* args) {
     auto* tup = reinterpret_cast<std::tuple<std::int64_t>*>(args);
     remaining -= std::get<0>(*tup);
     if (remaining <= 0) {
@@ -40,15 +40,15 @@ struct LibcoroLatch {
       }
       waiting.clear();
     }
-    return void_v;
+    return ltest::void_v;
   }
 
-  ValueWrapper Remaining(void* /*args*/) {
-    return ValueWrapper(static_cast<std::size_t>(remaining));
+  ltest::ValueWrapper Remaining(void* /*args*/) {
+    return ltest::ValueWrapper(static_cast<std::size_t>(remaining));
   }
 
-  ValueWrapper IsReady(void* /*args*/) {
-    return ValueWrapper(remaining <= 0);
+  ltest::ValueWrapper IsReady(void* /*args*/) {
+    return ltest::ValueWrapper(remaining <= 0);
   }
 
   void RequestWait(int op_id) {
@@ -59,37 +59,37 @@ struct LibcoroLatch {
     }
   }
 
-  std::optional<ValueWrapper> FollowUpWait(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpWait(int op_id) {
     if (!ready.contains(op_id)) {
       return std::nullopt;
     }
     ready.erase(op_id);
-    return void_v;
+    return ltest::void_v;
   }
 
   static auto GetDualMethods() {
     using S = LibcoroLatch;
-    DualMethodMap<S> m;
+    ltest::DualMethodMap<S> m;
 
-    m.emplace("count_down", DualNonBlockingMethod<S>{
+    m.emplace("count_down", ltest::DualNonBlockingMethod<S>{
                                 [](S* s, void* args) {
                                   return s->CountDown(args);
                                 }});
-    m.emplace("remaining", DualNonBlockingMethod<S>{
+    m.emplace("remaining", ltest::DualNonBlockingMethod<S>{
                                [](S* s, void* args) {
                                  return s->Remaining(args);
                                }});
-    m.emplace("is_ready", DualNonBlockingMethod<S>{
+    m.emplace("is_ready", ltest::DualNonBlockingMethod<S>{
                               [](S* s, void* args) {
                                 return s->IsReady(args);
                               }});
 
-    DualRequestMethod<S> wait_req =
+    ltest::DualRequestMethod<S> wait_req =
         [](S* s, void* /*args*/, int op_id) { s->RequestWait(op_id); };
-    DualFollowUpMethod<S> wait_fol =
+    ltest::DualFollowUpMethod<S> wait_fol =
         [](S* s, void* /*args*/, int op_id) { return s->FollowUpWait(op_id); };
 
-    m.emplace("wait", DualBlockingMethod<S>{wait_req, wait_fol});
+    m.emplace("wait", ltest::DualBlockingMethod<S>{wait_req, wait_fol});
     return m;
   }
 };

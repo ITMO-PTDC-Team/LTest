@@ -38,22 +38,22 @@ struct FollyCoroBaton {
     return p;
   }
 
-  ValueWrapper Post(void* /*args*/) {
+  ltest::ValueWrapper Post(void* /*args*/) {
     posted = true;
     while (!waiting.empty()) {
       ready_waits.insert(waiting.front());
       waiting.pop_front();
     }
-    return void_v;
+    return ltest::void_v;
   }
 
-  ValueWrapper Reset(void* /*args*/) {
+  ltest::ValueWrapper Reset(void* /*args*/) {
     posted = false;
-    return void_v;
+    return ltest::void_v;
   }
 
-  ValueWrapper Ready(void* /*args*/) {
-    return ValueWrapper(posted);
+  ltest::ValueWrapper Ready(void* /*args*/) {
+    return ltest::ValueWrapper(posted);
   }
 
   void RequestWait(int op_id) {
@@ -64,30 +64,30 @@ struct FollyCoroBaton {
     }
   }
 
-  std::optional<ValueWrapper> FollowUpWait(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpWait(int op_id) {
     if (!ready_waits.contains(op_id)) {
       return std::nullopt;
     }
     ready_waits.erase(op_id);
-    return void_v;
+    return ltest::void_v;
   }
 
   static auto GetDualMethods() {
     using S = FollyCoroBaton;
-    DualMethodMap<S> m;
+    ltest::DualMethodMap<S> m;
 
-    m.emplace("post", DualNonBlockingMethod<S>{
+    m.emplace("post", ltest::DualNonBlockingMethod<S>{
                           [](S* s, void* args) { return s->Post(args); }});
-    m.emplace("reset", DualNonBlockingMethod<S>{
+    m.emplace("reset", ltest::DualNonBlockingMethod<S>{
                            [](S* s, void* args) { return s->Reset(args); }});
-    m.emplace("ready", DualNonBlockingMethod<S>{
+    m.emplace("ready", ltest::DualNonBlockingMethod<S>{
                            [](S* s, void* args) { return s->Ready(args); }});
 
-    DualRequestMethod<S> wait_req =
+    ltest::DualRequestMethod<S> wait_req =
         [](S* s, void* /*args*/, int op_id) { s->RequestWait(op_id); };
-    DualFollowUpMethod<S> wait_fol =
+    ltest::DualFollowUpMethod<S> wait_fol =
         [](S* s, void* /*args*/, int op_id) { return s->FollowUpWait(op_id); };
-    m.emplace("wait", DualBlockingMethod<S>{wait_req, wait_fol});
+    m.emplace("wait", ltest::DualBlockingMethod<S>{wait_req, wait_fol});
 
     return m;
   }

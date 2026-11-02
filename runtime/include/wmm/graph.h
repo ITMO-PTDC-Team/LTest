@@ -17,6 +17,7 @@ namespace ltest::wmm {
 class Graph {
  public:
   Graph() {}
+  void Seed(unsigned seed) { gen.seed(seed); }
   ~Graph() { Clean(); }
 
   void Reset(int nThreads) {

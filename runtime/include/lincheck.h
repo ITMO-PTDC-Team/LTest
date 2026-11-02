@@ -9,6 +9,8 @@
 #include "lib.h"
 #include "value_wrapper.h"
 
+namespace ltest {
+
 struct Response {
   Response(const Task& task, ValueWrapper result, int thread_id);
 
@@ -46,9 +48,6 @@ using MethodName = std::string;
 // response_index)
 
 std::map<size_t, size_t> get_inv_res_mapping(
-    const std::vector<HistoryEvent>& history);
-
-std::map<size_t, size_t> get_inv_res_full_mapping(
     const std::vector<HistoryEvent>& history);
 
 template <class LinearSpecificationObject,
@@ -238,3 +237,5 @@ bool LinearizabilityChecker<
 
   return true;
 }
+
+}  // namespace ltest

@@ -11,6 +11,8 @@
 #include "scheduler.h"
 #include "workload_policy.h"
 
+namespace ltest {
+
 // ----------------------------
 // Default verifier: allows everything
 // ----------------------------
@@ -27,21 +29,11 @@ struct DefaultStrategyTaskVerifier {
     return true;
   }
 
-  inline bool Verify(const std::string& /*name*/, std::size_t /*thread_id*/) {
+  inline bool Verify(const std::string& /*name*/, std::size_t /*thread_id*/, bool is_new) {
     return true;
   }
 
-  inline bool VerifyExisting(Task& task, std::size_t thread_id) {
-    return Verify(std::string(task->GetName()), thread_id);
-  }
-
   inline void OnFinished(Task& /*task*/, std::size_t /*thread_id*/) {}
-
-  inline std::optional<std::string> ReleaseTask(std::size_t /*thread_id*/) {
-    return std::nullopt;
-  }
-
-  inline void Reset() {}
 
   inline std::vector<std::string> GetDeadlockProgressMethods(
       const std::string& /*method*/) const {
@@ -180,35 +172,12 @@ struct ReservePolicyVerifier {
     return true;
   }
 
-  inline bool Verify(const std::string& name, std::size_t thread_id) {
-    return base_.Verify(name, thread_id);
-  }
-
-  inline bool VerifyExisting(Task& task, std::size_t thread_id) {
-    if constexpr (requires(BaseVerifier& base, Task& existing_task,
-                           std::size_t existing_thread_id) {
-                    base.VerifyExisting(existing_task, existing_thread_id);
-                  }) {
-      return base_.VerifyExisting(task, thread_id);
-    } else {
-      return base_.Verify(std::string(task->GetName()), thread_id);
-    }
+  inline bool Verify(const std::string& name, std::size_t thread_id, bool is_new) {
+    return base_.Verify(name, thread_id, is_new);
   }
 
   inline void OnFinished(Task& task, std::size_t thread_id) {
     base_.OnFinished(task, thread_id);
-  }
-
-  inline std::optional<std::string> ReleaseTask(std::size_t thread_id) {
-    return base_.ReleaseTask(thread_id);
-  }
-
-  inline void Reset() {
-    started_by_method_.clear();
-    started_task_ids_.clear();
-    if constexpr (requires(BaseVerifier& base) { base.Reset(); }) {
-      base_.Reset();
-    }
   }
 
   inline std::vector<std::string> GetDeadlockProgressMethods(
@@ -254,3 +223,5 @@ struct ReservePolicyVerifier {
   std::unordered_set<int> started_task_ids_;
   std::size_t threads_{0};
 };
+
+}  // namespace ltest

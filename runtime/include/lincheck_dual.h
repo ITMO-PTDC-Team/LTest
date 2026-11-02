@@ -18,6 +18,8 @@
 #include "linearization_search.h"
 #include "value_wrapper.h"  // ValueWrapper
 
+namespace ltest {
+
 // -----------------------------
 // Dual history events
 // -----------------------------
@@ -130,38 +132,6 @@ using DualMethod = std::variant<DualNonBlockingMethod<SpecState>,
 
 template <class SpecState>
 using DualMethodMap = std::map<std::string, DualMethod<SpecState>, std::less<>>;
-
-// -----------------------------
-// Helpers: event classification + mapping invoke->response
-// -----------------------------
-inline bool IsDualResponseEvent(const DualHistoryEvent& e) {
-  return std::holds_alternative<Response>(e) ||
-         std::holds_alternative<RequestResponse>(e) ||
-         std::holds_alternative<FollowUpResponse>(e);
-}
-
-inline bool IsDualInvokeEvent(const DualHistoryEvent& e) {
-  return std::holds_alternative<Invoke>(e) ||
-         std::holds_alternative<RequestInvoke>(e) ||
-         std::holds_alternative<FollowUpInvoke>(e);
-}
-
-inline const Task& GetTaskOfEvent(const DualHistoryEvent& e) {
-  return std::visit([](auto const& ev) -> const Task& { return ev.GetTask(); },
-                    e);
-}
-
-inline std::string GetNameOfEvent(const DualHistoryEvent& e) {
-  return std::string(GetTaskOfEvent(e)->GetName());
-}
-
-inline void* GetArgsOfEvent(const DualHistoryEvent& e) {
-  return GetTaskOfEvent(e)->GetArgs();
-}
-
-inline int GetOpIdOfEvent(const DualHistoryEvent& e) {
-  return GetTaskOfEvent(e)->GetId();
-}
 
 enum class DualHistoryEventKind : std::uint8_t {
   OrdinaryInvoke,
@@ -494,3 +464,5 @@ struct LinearizabilityDualCheckerRecursive final : DualLinearizabilityChecker {
   MethodMap methods;
   SpecState init_state;
 };
+
+}  // namespace ltest

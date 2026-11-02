@@ -64,30 +64,30 @@ struct FollyCoroBoundedQueue {
     return p;
   }
 
-  ValueWrapper TryEnqueue(void* args) {
+  ltest::ValueWrapper TryEnqueue(void* args) {
     auto* tup = reinterpret_cast<std::tuple<int>*>(args);
     int v = std::get<0>(*tup);
 
     if (available_capacity == 0) {
-      return ValueWrapper(false);
+      return ltest::ValueWrapper(false);
     }
 
     --available_capacity;
     MakeValueVisible(v);
     PromoteWaitingEnqueues();
-    return ValueWrapper(true);
+    return ltest::ValueWrapper(true);
   }
 
-  ValueWrapper TryDequeue(void* /*args*/) {
+  ltest::ValueWrapper TryDequeue(void* /*args*/) {
     if (elems.empty()) {
-      return ValueWrapper(kEmptyTryDequeue);
+      return ltest::ValueWrapper(kEmptyTryDequeue);
     }
 
     int v = elems.front();
     elems.pop_front();
     ++available_capacity;
     PromoteWaitingEnqueues();
-    return ValueWrapper(v);
+    return ltest::ValueWrapper(v);
   }
 
   void RequestEnqueue(int op_id, int value) {
@@ -102,14 +102,14 @@ struct FollyCoroBoundedQueue {
     PromoteWaitingEnqueues();
   }
 
-  std::optional<ValueWrapper> FollowUpEnqueue(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpEnqueue(int op_id) {
     auto it = completed_enqueues.find(op_id);
     if (it == completed_enqueues.end()) {
       return std::nullopt;
     }
 
     completed_enqueues.erase(it);
-    return void_v;
+    return ltest::void_v;
   }
 
   void RequestDequeue(int op_id) {
@@ -124,7 +124,7 @@ struct FollyCoroBoundedQueue {
     }
   }
 
-  std::optional<ValueWrapper> FollowUpDequeue(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpDequeue(int op_id) {
     auto it = ready_dequeues.find(op_id);
     if (it == ready_dequeues.end()) {
       return std::nullopt;
@@ -132,38 +132,38 @@ struct FollyCoroBoundedQueue {
 
     int v = it->second;
     ready_dequeues.erase(it);
-    return ValueWrapper(v);
+    return ltest::ValueWrapper(v);
   }
 
   static auto GetDualMethods() {
     using S = FollyCoroBoundedQueue;
-    DualMethodMap<S> m;
+    ltest::DualMethodMap<S> m;
 
     m.emplace("try_enqueue",
-              DualNonBlockingMethod<S>{
+              ltest::DualNonBlockingMethod<S>{
                   [](S* s, void* args) { return s->TryEnqueue(args); }});
     m.emplace("try_dequeue",
-              DualNonBlockingMethod<S>{
+              ltest::DualNonBlockingMethod<S>{
                   [](S* s, void* args) { return s->TryDequeue(args); }});
 
-    DualRequestMethod<S> enqueue_req =
+    ltest::DualRequestMethod<S> enqueue_req =
         [](S* s, void* args, int op_id) {
           auto* tup = reinterpret_cast<std::tuple<int>*>(args);
           s->RequestEnqueue(op_id, std::get<0>(*tup));
         };
-    DualFollowUpMethod<S> enqueue_fol =
+    ltest::DualFollowUpMethod<S> enqueue_fol =
         [](S* s, void* /*args*/, int op_id) {
           return s->FollowUpEnqueue(op_id);
         };
-    m.emplace("enqueue", DualBlockingMethod<S>{enqueue_req, enqueue_fol});
+    m.emplace("enqueue", ltest::DualBlockingMethod<S>{enqueue_req, enqueue_fol});
 
-    DualRequestMethod<S> dequeue_req =
+    ltest::DualRequestMethod<S> dequeue_req =
         [](S* s, void* /*args*/, int op_id) { s->RequestDequeue(op_id); };
-    DualFollowUpMethod<S> dequeue_fol =
+    ltest::DualFollowUpMethod<S> dequeue_fol =
         [](S* s, void* /*args*/, int op_id) {
           return s->FollowUpDequeue(op_id);
         };
-    m.emplace("dequeue", DualBlockingMethod<S>{dequeue_req, dequeue_fol});
+    m.emplace("dequeue", ltest::DualBlockingMethod<S>{dequeue_req, dequeue_fol});
 
     return m;
   }

@@ -65,6 +65,8 @@ inline std::vector<RecursiveHistoryEventInfo> BuildRecursiveHistoryEventInfo(
 
 }  // namespace ltest::detail
 
+namespace ltest {
+
 // Recursive checker adapter over the shared backtracking search.
 template <class LinearSpecificationObject,
           class SpecificationObjectHash = std::hash<LinearSpecificationObject>,
@@ -152,3 +154,5 @@ bool LinearizabilityCheckerRecursive<
       SpecificationObjectHash, SpecificationObjectEqual>(
       history.size(), first_state, Adapter{event_info, method_by_event});
 }
+
+}  // namespace ltest

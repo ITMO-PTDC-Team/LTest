@@ -3,7 +3,7 @@
 #include "runtime/include/scheduler.h"
 
 struct MutexVerifier {
-  bool Verify(const std::string& task_name, size_t thread_id) {
+  bool Verify(const std::string& task_name, size_t thread_id, bool) {
     debug(stderr, "validating method %s, thread_id: %zu\n", task_name.data(),
           thread_id);
     if (status.count(thread_id) == 0) {
@@ -18,7 +18,7 @@ struct MutexVerifier {
     }
   }
 
-  void OnFinished(Task& task, size_t thread_id) {
+  void OnFinished(ltest::Task& task, size_t thread_id) {
     auto task_name = task->GetName();
     debug(stderr, "On finished method %s, thread_id: %zu\n", task_name.data(),
           thread_id);
@@ -27,13 +27,6 @@ struct MutexVerifier {
     } else if (task_name == "Unlock") {
       status[thread_id] = 0;
     }
-  }
-
-  std::optional<std::string> ReleaseTask(size_t thread_id) {
-    if (status[thread_id] == 1) {
-      return {"Unlock"};
-    }
-    return std::nullopt;
   }
 
   void Reset() { status.clear(); }

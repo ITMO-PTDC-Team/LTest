@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cassert>
 #include <random>
 #include <set>
@@ -8,14 +7,14 @@
 #include <unordered_set>
 #include <vector>
 
+#include "logger.h"
 #include "minimization.h"
-#include "pretty_print.h"
-#include "scheduler_fwd.h"
+
+namespace ltest {
 
 /**
- * `SmartMinimizorT<Event>` uses a genetic algorithm to minimize the number of
- * tasks in a non-linearizable history. Event is HistoryEvent for ordinary
- * histories and DualHistoryEvent for dual histories.
+ * `SmartMinimizor` uses a genetic algorithm to minimize the number of
+ * tasks in a non-linearizable history.
  *
  * It tries to generate new `Solution` objects which contain non-linearizable
  * histories of the round with some tasks removed. Each `Solution` object has a
@@ -30,36 +29,29 @@
  *
  * When the minimization budget is exhausted, the best solution is used.
  */
-template <class Event>
-struct SmartMinimizorT : public RoundMinimizorT<Event> {
-  using Base = RoundMinimizorT<Event>;
-  using SchedulerT = typename Base::SchedulerT;
-  using NonLinearizableHistoryT = typename Base::NonLinearizableHistoryT;
+struct SmartMinimizor : public RoundMinimizor {
+  SmartMinimizor() = delete;
 
-  SmartMinimizorT() = delete;
-
-  explicit SmartMinimizorT(int exploration_runs, int minimization_runs,
-                           PrettyPrinter& pretty_printer,
-                           int max_offsprings_per_generation = 5,
-                           int offsprings_generation_attemps = 10,
-                           int initial_mutations_count = 10)
+  explicit SmartMinimizor(int exploration_runs, int minimization_runs,
+                          int max_offsprings_per_generation = 5,
+                          int offsprings_generation_attemps = 10,
+                          int initial_mutations_count = 10)
       : exploration_runs(exploration_runs),
         minimization_runs(minimization_runs),
         max_offsprings_per_generation(max_offsprings_per_generation),
         offsprings_generation_attemps(offsprings_generation_attemps),
-        mutations_count(initial_mutations_count),
-        pretty_printer(pretty_printer) {
+        mutations_count(initial_mutations_count) {
     std::random_device dev;
     rng = std::mt19937(dev());
   }
 
-  void Minimize(SchedulerT& sched,
-                NonLinearizableHistoryT& nonlinear_histories) const override {
+  void Minimize(CandidateRunner& sched,
+                AttemptReport& nonlinear_histories) const override {
     // Reset minimizer state for this round.
-    Strategy& strategy = sched.GetStrategy();
-    total_tasks = strategy.GetTotalTasksCount();
     population.clear();
-    population.insert(Solution(strategy, nonlinear_histories, total_tasks));
+    exhausted_candidates.clear();
+    population.insert(
+        Solution(nonlinear_histories, nonlinear_histories.operations.size()));
 
     for (int r = 0; r < minimization_runs; ++r) {
       const Solution& p1 = *population.begin();
@@ -67,7 +59,8 @@ struct SmartMinimizorT : public RoundMinimizorT<Event> {
           *(population.size() < 2 ? population.begin()
                                   : std::next(population.begin()));
 
-      std::vector<Solution> offsprings = GenerateOffsprings(sched, p1, p2);
+      std::vector<Solution> offsprings =
+          GenerateOffsprings(sched, p1, p2, nonlinear_histories);
       for (auto& s : offsprings) {
         population.insert(s);
       }
@@ -80,34 +73,12 @@ struct SmartMinimizorT : public RoundMinimizorT<Event> {
     assert(!population.empty());
     const Solution& best_solution = *population.begin();
 
-    RemoveInvalidTasks(strategy, best_solution.tasks);
-
-    auto ordering =
-        Base::GetTasksOrdering(best_solution.nonlinear_histories.full,
-                               std::unordered_set<int>{});
-
-    // Any meaningful bug is acceptable. First try the mode matching the
-    // original reason, then the opposite mode. This keeps deadlock minimization
-    // from forcing permanently waiting operations to complete, while still
-    // allowing non-deadlock bugs to be replayed in a returned state.
-    std::array<ReplayMode, 2> modes = {
-        best_solution.nonlinear_histories.reason ==
-                NonLinearizableHistoryT::Reason::DEADLOCK
-            ? ReplayMode::NoForceComplete
-            : ReplayMode::CompleteOnLast,
-        best_solution.nonlinear_histories.reason ==
-                NonLinearizableHistoryT::Reason::DEADLOCK
-            ? ReplayMode::CompleteOnLast
-            : ReplayMode::NoForceComplete,
-    };
-
-    for (ReplayMode mode : modes) {
-      auto replayed = sched.ReplayRound(ordering, mode);
-      if (replayed.has_value() &&
-          Base::IsMeaningfulBadResult(replayed.value())) {
-        nonlinear_histories = replayed.value();
-        return;
-      }
+    auto request = AttemptRequest(best_solution.nonlinear_histories,
+                                  AttemptKind::FixedReplay);
+    auto replayed = ReplayRound(sched, request);
+    if (replayed.has_value()) {
+      nonlinear_histories = replayed.value();
+      return;
     }
 
     log() << "[minimizer] final replay did not reproduce a meaningful bug; "
@@ -116,22 +87,16 @@ struct SmartMinimizorT : public RoundMinimizorT<Event> {
 
  private:
   struct Solution {
-    explicit Solution(const Strategy& strategy,
-                      const NonLinearizableHistoryT& histories,
-                      int total_tasks)
+    explicit Solution(const AttemptReport& histories, int total_tasks)
         : nonlinear_histories(histories) {
-      const int total_threads = strategy.GetThreadsCount();
+      size_t total_threads = 0;
+      int valid_tasks = 0;
 
       // Save valid task ids per thread.
-      const auto& threads = strategy.GetTasks();
-      for (int i = 0; i < static_cast<int>(threads.size()); ++i) {
-        for (int j = 0; j < static_cast<int>(threads[i].size()); ++j) {
-          const auto& task = threads[i][j].get();
-          if (!strategy.IsTaskRemoved(task->GetId())) {
-            valid_tasks++;
-            tasks[i].insert(task->GetId());
-          }
-        }
+      for (const auto& operation : histories.operations) {
+        total_threads = std::max(total_threads, operation.thread + 1);
+        valid_tasks++;
+        tasks[operation.thread].insert(operation.id);
       }
 
       // Cache the fitness value. The fewer tasks and threads are left, the
@@ -148,16 +113,14 @@ struct SmartMinimizorT : public RoundMinimizorT<Event> {
     }
 
     float GetFitness() const { return fitness; }
-    int GetValidTasks() const { return valid_tasks; }
 
     // ThreadId -> {ValidTaskId1, ValidTaskId2, ...}
     std::unordered_map<int, std::unordered_set<int>> tasks;
-    NonLinearizableHistoryT nonlinear_histories;
+    AttemptReport nonlinear_histories;
 
    private:
     float eps = 0.0001f;
     float fitness = 0.0f;
-    int valid_tasks = 0;
   };
 
   struct SolutionSorter {
@@ -190,18 +153,17 @@ struct SmartMinimizorT : public RoundMinimizorT<Event> {
 
   // Generates offsprings by crossing and mutating the set of removed tasks in
   // the parents `p1` and `p2`.
-  std::vector<Solution> GenerateOffsprings(SchedulerT& sched,
-                                           const Solution& p1,
-                                           const Solution& p2) const {
+  std::vector<Solution> GenerateOffsprings(
+      CandidateRunner& sched, const Solution& p1, const Solution& p2,
+      const AttemptReport& original_histories) const {
     assert(offsprings_generation_attemps > 0);
-    Strategy& strategy = sched.GetStrategy();
     std::vector<Solution> offsprings;
 
     for (int offspring = 1; offspring <= max_offsprings_per_generation;
          ++offspring) {
       int left_attempts = offsprings_generation_attemps;
       while (left_attempts--) {
-        auto new_threads = CrossProduct(strategy, &p1, &p2);
+        auto new_threads = CrossProduct(&p1, &p2);
 
         for (int m = 1; m <= mutations_count; ++m) {
           if (mutations_count > 1 || dist(rng) < 0.95) {
@@ -209,15 +171,24 @@ struct SmartMinimizorT : public RoundMinimizorT<Event> {
           }
         }
 
-        RemoveInvalidTasks(strategy, new_threads);
+        auto request =
+            AttemptRequest(original_histories, AttemptKind::Reschedule);
+        RemoveInvalidTasks(request, new_threads);
 
-        auto histories = sched.ExploreRound(exploration_runs);
+        std::vector<int> candidate_ids;
+        for (const auto& operation : request.operations)
+          candidate_ids.push_back(operation.id);
+        if (exhausted_candidates.contains(candidate_ids)) continue;
 
-        if (histories.has_value() &&
-            Base::IsMeaningfulBadResult(histories.value())) {
-          offsprings.emplace_back(strategy, histories.value(), total_tasks);
+        auto histories = ExploreRound(sched, request, exploration_runs);
+
+        if (histories.has_value()) {
+          offsprings.emplace_back(histories.value(),
+                                  original_histories.operations.size());
           break;
         }
+        // Spend the exploration budget once per unsuccessful operation set.
+        exhausted_candidates.insert(std::move(candidate_ids));
       }
     }
 
@@ -231,24 +202,19 @@ struct SmartMinimizorT : public RoundMinimizorT<Event> {
     return offsprings;
   }
 
-  // Marks tasks as removed if they do not appear in `valid_threads`.
+  // Removes operations that do not appear in `valid_threads` from a candidate.
   void RemoveInvalidTasks(
-      Strategy& strategy,
-      const std::unordered_map<int, std::unordered_set<int>>& valid_threads) const {
-    const auto& tasks = strategy.GetTasks();
-    for (int thread_id = 0; thread_id < static_cast<int>(tasks.size()); ++thread_id) {
-      const auto& thread = tasks[thread_id];
-      bool thread_exists = valid_threads.contains(thread_id);
-
-      for (int i = 0; i < static_cast<int>(thread.size()); ++i) {
-        int id = thread[i]->GetId();
-        if (thread_exists && valid_threads.at(thread_id).contains(id)) {
-          strategy.SetTaskRemoved(id, false);
-        } else {
-          strategy.SetTaskRemoved(id, true);
-        }
-      }
+      AttemptRequest& request,
+      const std::unordered_map<int, std::unordered_set<int>>& valid_threads)
+      const {
+    std::unordered_set<int> removed;
+    for (const auto& operation : request.operations) {
+      auto thread = valid_threads.find(operation.thread);
+      if (thread == valid_threads.end() ||
+          !thread->second.contains(operation.id))
+        removed.insert(operation.id);
     }
+    RemoveOperations(request, removed);
   }
 
   /**
@@ -261,7 +227,7 @@ struct SmartMinimizorT : public RoundMinimizorT<Event> {
    * `min(p1.thread_count, p2.thread_count)`.
    */
   std::unordered_map<int, std::unordered_set<int>> CrossProduct(
-      const Strategy& /*strategy*/, const Solution* p1, const Solution* p2) const {
+      const Solution* p1, const Solution* p2) const {
     if (p1->tasks.size() >= p2->tasks.size()) {
       std::swap(p1, p2);
     }
@@ -291,14 +257,10 @@ struct SmartMinimizorT : public RoundMinimizorT<Event> {
   const int max_population_size = 2;
 
   mutable int mutations_count;
-  mutable int total_tasks{0};
   mutable std::multiset<Solution, SolutionSorter> population;
+  mutable std::set<std::vector<int>> exhausted_candidates;
   mutable std::mt19937 rng;
   mutable std::uniform_real_distribution<double> dist{0.0, 1.0};
-
-  PrettyPrinter& pretty_printer;
 };
 
-// Backward-compatible aliases:
-using SmartMinimizor = SmartMinimizorT<HistoryEvent>;
-using DualSmartMinimizor = SmartMinimizorT<DualHistoryEvent>;
+}  // namespace ltest

@@ -44,9 +44,6 @@ struct FollyCoroMutexTarget {
   }
 
   non_atomic bool try_lock() {
-    if (ltest_round_terminating) {
-      return false;
-    }
     bool ok = m.try_lock();
     if (ok) {
       harness_locked = true;
@@ -55,9 +52,6 @@ struct FollyCoroMutexTarget {
   }
 
   non_atomic void unlock() {
-    if (ltest_round_terminating) {
-      return;
-    }
     // Cleanup may replay an owner release after the wrapped Folly mutex has
     // already become free. Folly treats that as UB, so keep the harness guard
     // outside the mutex itself.

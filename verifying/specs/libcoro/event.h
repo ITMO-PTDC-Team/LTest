@@ -26,22 +26,22 @@ struct LibcoroEvent {
     return p;
   }
 
-  ValueWrapper Set(void* /*args*/) {
+  ltest::ValueWrapper Set(void* /*args*/) {
     is_set = true;
     for (int op_id : waiting) {
       ready.insert(op_id);
     }
     waiting.clear();
-    return void_v;
+    return ltest::void_v;
   }
 
-  ValueWrapper Reset(void* /*args*/) {
+  ltest::ValueWrapper Reset(void* /*args*/) {
     is_set = false;
-    return void_v;
+    return ltest::void_v;
   }
 
-  ValueWrapper IsSet(void* /*args*/) {
-    return ValueWrapper(is_set);
+  ltest::ValueWrapper IsSet(void* /*args*/) {
+    return ltest::ValueWrapper(is_set);
   }
 
   void RequestWait(int op_id) {
@@ -52,31 +52,31 @@ struct LibcoroEvent {
     }
   }
 
-  std::optional<ValueWrapper> FollowUpWait(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpWait(int op_id) {
     if (!ready.contains(op_id)) {
       return std::nullopt;
     }
     ready.erase(op_id);
-    return void_v;
+    return ltest::void_v;
   }
 
   static auto GetDualMethods() {
     using S = LibcoroEvent;
-    DualMethodMap<S> m;
+    ltest::DualMethodMap<S> m;
 
-    m.emplace("set", DualNonBlockingMethod<S>{
+    m.emplace("set", ltest::DualNonBlockingMethod<S>{
                          [](S* s, void* args) { return s->Set(args); }});
-    m.emplace("reset", DualNonBlockingMethod<S>{
+    m.emplace("reset", ltest::DualNonBlockingMethod<S>{
                            [](S* s, void* args) { return s->Reset(args); }});
-    m.emplace("is_set", DualNonBlockingMethod<S>{
+    m.emplace("is_set", ltest::DualNonBlockingMethod<S>{
                             [](S* s, void* args) { return s->IsSet(args); }});
 
-    DualRequestMethod<S> wait_req =
+    ltest::DualRequestMethod<S> wait_req =
         [](S* s, void* /*args*/, int op_id) { s->RequestWait(op_id); };
-    DualFollowUpMethod<S> wait_fol =
+    ltest::DualFollowUpMethod<S> wait_fol =
         [](S* s, void* /*args*/, int op_id) { return s->FollowUpWait(op_id); };
 
-    m.emplace("wait", DualBlockingMethod<S>{wait_req, wait_fol});
+    m.emplace("wait", ltest::DualBlockingMethod<S>{wait_req, wait_fol});
     return m;
   }
 };

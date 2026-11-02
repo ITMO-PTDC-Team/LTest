@@ -21,16 +21,16 @@ struct MutexDeadlock {
 
   int x1{0}, x2{0};
 
-  using method_t = std::function<ValueWrapper(MutexDeadlock *l, void *args)>;
+  using method_t = std::function<ltest::ValueWrapper(MutexDeadlock *l, void *args)>;
   static auto GetMethods() {
-    method_t fs_func = [](MutexDeadlock *l, void *args) -> ValueWrapper {
+    method_t fs_func = [](MutexDeadlock *l, void *args) -> ltest::ValueWrapper {
       l->LockFirstSecond();
-      return void_v;
+      return ltest::void_v;
     };
 
-    method_t sf_func = [](MutexDeadlock *l, void *args) -> ValueWrapper {
+    method_t sf_func = [](MutexDeadlock *l, void *args) -> ltest::ValueWrapper {
       l->LockSecondFirst();
-      return void_v;
+      return ltest::void_v;
     };
 
     return std::map<std::string, method_t>{

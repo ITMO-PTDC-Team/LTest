@@ -6,6 +6,8 @@
 
 #include "scheduler.h"
 
+namespace ltest {
+
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   virtual std::optional<size_t> Pick() = 0;
@@ -17,32 +19,26 @@ struct PickStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
   explicit PickStrategy(size_t threads_count,
                         std::vector<TaskBuilder> constructors,
-                        TargetFactory target_factory,
-                        size_t seed = 0)
-      : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count,
-                                                     std::move(constructors),
-                                                     std::move(target_factory),
-                                                     seed) {}
+                        TargetFactory target_factory)
+      : BaseStrategyWithThreads<TargetObj, Verifier>(
+            threads_count, std::move(constructors), std::move(target_factory)) {
+  }
 
   std::optional<size_t> NextThreadId() override { return Pick(); }
 
-  std::optional<TaskWithMetaData> NextSchedule() override {
+  StrategyNextResult NextSchedule() override {
+    if (auto task = this->GetReplayTask()) return *task;
     auto& round_schedule = this->round_schedule;
     auto current_thread_opt = PickSchedule();
     if (!current_thread_opt.has_value()) {
-      return std::nullopt;
+      return DEADLOCK;
     }
     size_t current_thread = current_thread_opt.value();
     int next_task_index = this->GetNextTaskInThread(current_thread);
-    bool is_new = round_schedule[current_thread] != next_task_index;
-
     round_schedule[current_thread] = next_task_index;
     return TaskWithMetaData{this->threads[current_thread][next_task_index],
-                            is_new, current_thread};
+                            current_thread};
   }
-
-  ~PickStrategy() { this->TerminateTasks(); }
-
- protected:
-  size_t next_task = 0;
 };
+
+}  // namespace ltest

@@ -12,6 +12,10 @@ if(FOLLY_LIBRARY AND NOT EXISTS "${FOLLY_LIBRARY}")
     find_library(FOLLY_LIBRARY NAMES folly)
 endif()
 
+# Boost::context is LTest's private fork with renamed symbols. Prebuilt Folly
+# fibers need the native library's unprefixed fcontext symbols as well.
+find_library(FOLLY_BOOST_CONTEXT_LIBRARY NAMES boost_context)
+
 find_path(GLOG_INCLUDE_DIR NAMES glog/logging.h)
 find_path(EVENT_INCLUDE_DIR NAMES event2/event.h)
 find_path(DOUBLE_CONVERSION_INCLUDE_DIR
@@ -21,13 +25,14 @@ find_library(EVENT_LIBRARY NAMES event)
 find_library(DOUBLE_CONVERSION_LIBRARY NAMES double-conversion)
 
 if(NOT FOLLY_INCLUDE_DIR OR NOT FOLLY_LIBRARY OR
+        NOT FOLLY_BOOST_CONTEXT_LIBRARY OR
         NOT GLOG_INCLUDE_DIR OR NOT EVENT_INCLUDE_DIR OR
         NOT DOUBLE_CONVERSION_INCLUDE_DIR OR NOT GLOG_LIBRARY OR
         NOT EVENT_LIBRARY OR NOT DOUBLE_CONVERSION_LIBRARY OR
         NOT fmt_FOUND)
     message(STATUS
             "Skipping folly dual targets: expected folly headers/lib plus "
-            "glog, libevent, double-conversion and fmt.")
+            "native Boost.Context, glog, libevent, double-conversion and fmt.")
     add_custom_target(verify-dual-folly)
     return()
 endif()
@@ -66,6 +71,7 @@ foreach(source_name ${FOLLY_SOURCE_TARGET_LIST})
     target_link_libraries(${target} PRIVATE
             ${GLOG_LIBRARY}
             ${FOLLY_LIBRARY}
+            ${FOLLY_BOOST_CONTEXT_LIBRARY}
             ${DOUBLE_CONVERSION_LIBRARY}
             fmt::fmt
             ${EVENT_LIBRARY}

@@ -28,12 +28,14 @@ static inline std::string EnumToStr(E e) {
 }  // namespace detail
 
 // ---- ValueWrapper support ----
+namespace ltest {
+
 // Print/compare enums robustly (don’t depend on enumerator names)
 template <>
 inline ToStringFunc GetDefaultToString<coro::ring_buffer_result::produce>() {
   return [](const ValueWrapper& a) -> std::string {
     return "ring_buffer_produce(" +
-           detail::EnumToStr(a.GetValue<coro::ring_buffer_result::produce>()) + ")";
+           ::detail::EnumToStr(a.GetValue<coro::ring_buffer_result::produce>()) + ")";
   };
 }
 template <>
@@ -48,7 +50,7 @@ template <>
 inline ToStringFunc GetDefaultToString<coro::ring_buffer_result::consume>() {
   return [](const ValueWrapper& a) -> std::string {
     return "ring_buffer_consume(" +
-           detail::EnumToStr(a.GetValue<coro::ring_buffer_result::consume>()) + ")";
+           ::detail::EnumToStr(a.GetValue<coro::ring_buffer_result::consume>()) + ")";
   };
 }
 template <>
@@ -67,7 +69,7 @@ GetDefaultToString<tl::expected<int, coro::ring_buffer_result::consume>>() {
     if (e.has_value()) {
       return "ok(" + std::to_string(e.value()) + ")";
     }
-    return "err(" + detail::EnumToStr(e.error()) + ")";
+    return "err(" + ::detail::EnumToStr(e.error()) + ")";
   };
 }
 
@@ -83,6 +85,8 @@ GetDefaultCompator<tl::expected<int, coro::ring_buffer_result::consume>>() {
     return ea.error() == eb.error();
   };
 }
+
+}  // namespace ltest
 
 namespace spec {
 
@@ -105,6 +109,8 @@ struct LibcoroRingBufferInternalSnapshot {
 };
 
 }  // namespace spec
+
+namespace ltest {
 
 template <>
 inline ToStringFunc GetDefaultToString<spec::LibcoroRingBufferSnapshot>() {
@@ -143,6 +149,8 @@ inline CompFunc GetDefaultCompator<spec::LibcoroRingBufferInternalSnapshot>() {
            b.GetValue<spec::LibcoroRingBufferInternalSnapshot>();
   };
 }
+
+}  // namespace ltest
 
 namespace spec {
 
@@ -264,13 +272,13 @@ struct LibcoroRingBuffer {
   }
 
   // ----- follow-up phases -----
-  std::optional<ValueWrapper> FollowUpProduce(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpProduce(int op_id) {
     if (!ready_produce.contains(op_id)) return std::nullopt;
     ready_produce.erase(op_id);
-    return ValueWrapper(coro::ring_buffer_result::produce::produced);
+    return ltest::ValueWrapper(coro::ring_buffer_result::produce::produced);
   }
 
-  std::optional<ValueWrapper> FollowUpConsume(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpConsume(int op_id) {
     auto it = ready_consume.find(op_id);
     if (it == ready_consume.end()) return std::nullopt;
 
@@ -278,32 +286,32 @@ struct LibcoroRingBuffer {
     ready_consume.erase(it);
 
     tl::expected<int, coro::ring_buffer_result::consume> e{v};
-    return ValueWrapper(e);
+    return ltest::ValueWrapper(e);
   }
 
-  ValueWrapper Size(void* /*args*/) {
-    return ValueWrapper(static_cast<std::size_t>(elems.size()));
+  ltest::ValueWrapper Size(void* /*args*/) {
+    return ltest::ValueWrapper(static_cast<std::size_t>(elems.size()));
   }
 
-  ValueWrapper Empty(void* /*args*/) {
-    return ValueWrapper(elems.empty());
+  ltest::ValueWrapper Empty(void* /*args*/) {
+    return ltest::ValueWrapper(elems.empty());
   }
 
-  ValueWrapper Full(void* /*args*/) {
-    return ValueWrapper(elems.size() == kCap);
+  ltest::ValueWrapper Full(void* /*args*/) {
+    return ltest::ValueWrapper(elems.size() == kCap);
   }
 
-  ValueWrapper Snapshot(void* /*args*/) {
-    return ValueWrapper(LibcoroRingBufferSnapshot{
+  ltest::ValueWrapper Snapshot(void* /*args*/) {
+    return ltest::ValueWrapper(LibcoroRingBufferSnapshot{
         .size = elems.size(),
         .empty = elems.empty(),
         .full = elems.size() == kCap,
     });
   }
 
-  ValueWrapper InternalSnapshot(void* /*args*/) {
+  ltest::ValueWrapper InternalSnapshot(void* /*args*/) {
     const bool slot_full = !elems.empty();
-    return ValueWrapper(LibcoroRingBufferInternalSnapshot{
+    return ltest::ValueWrapper(LibcoroRingBufferInternalSnapshot{
         .front = front_cursor,
         .back = back_cursor,
         .used = elems.size(),
@@ -314,41 +322,41 @@ struct LibcoroRingBuffer {
 
   static auto GetDualMethods() {
     using S = LibcoroRingBuffer;
-    DualMethodMap<S> m;
+    ltest::DualMethodMap<S> m;
 
-    DualRequestMethod<S> prod_req = [](S* s, void* args, int op_id) {
+    ltest::DualRequestMethod<S> prod_req = [](S* s, void* args, int op_id) {
       s->RequestProduce(args, op_id);
     };
-    DualFollowUpMethod<S> prod_fol = [](S* s, void*, int op_id) {
+    ltest::DualFollowUpMethod<S> prod_fol = [](S* s, void*, int op_id) {
       return s->FollowUpProduce(op_id);
     };
 
-    DualRequestMethod<S> cons_req = [](S* s, void*, int op_id) {
+    ltest::DualRequestMethod<S> cons_req = [](S* s, void*, int op_id) {
       s->RequestConsume(op_id);
     };
-    DualFollowUpMethod<S> cons_fol = [](S* s, void*, int op_id) {
+    ltest::DualFollowUpMethod<S> cons_fol = [](S* s, void*, int op_id) {
       return s->FollowUpConsume(op_id);
     };
 
-    m.emplace("produce", DualBlockingMethod<S>{prod_req, prod_fol});
-    m.emplace("consume", DualBlockingMethod<S>{cons_req, cons_fol});
-    m.emplace("size", DualNonBlockingMethod<S>{
+    m.emplace("produce", ltest::DualBlockingMethod<S>{prod_req, prod_fol});
+    m.emplace("consume", ltest::DualBlockingMethod<S>{cons_req, cons_fol});
+    m.emplace("size", ltest::DualNonBlockingMethod<S>{
                           [](S* s, void* args) {
                             return s->Size(args);
                           }});
-    m.emplace("empty", DualNonBlockingMethod<S>{
+    m.emplace("empty", ltest::DualNonBlockingMethod<S>{
                            [](S* s, void* args) {
                              return s->Empty(args);
                            }});
-    m.emplace("full", DualNonBlockingMethod<S>{
+    m.emplace("full", ltest::DualNonBlockingMethod<S>{
                           [](S* s, void* args) {
                             return s->Full(args);
                           }});
-    m.emplace("snapshot", DualNonBlockingMethod<S>{
+    m.emplace("snapshot", ltest::DualNonBlockingMethod<S>{
                               [](S* s, void* args) {
                                 return s->Snapshot(args);
                               }});
-    m.emplace("internal_snapshot", DualNonBlockingMethod<S>{
+    m.emplace("internal_snapshot", ltest::DualNonBlockingMethod<S>{
                                        [](S* s, void* args) {
                                          return s->InternalSnapshot(args);
                                        }});

@@ -5,6 +5,9 @@
 #include <unordered_map>
 
 #include "block_state.h"
+#include "coro_ctx_guard.h"
+
+namespace ltest {
 
 struct CoroBase;
 
@@ -14,20 +17,23 @@ struct BlockManager {
   // table & linked list
   std::unordered_map<std::uintptr_t, std::deque<CoroBase *>> queues;
 
-  inline void BlockOn(BlockState state, CoroBase *coro) {
+  void BlockOn(BlockState state, CoroBase *coro) {
+    SchedCtxGuard guard;
     if (!queues.contains(state.addr)) {
       queues[state.addr] = std::deque<CoroBase *>{};
     }
     queues[state.addr].push_back(coro);
   }
 
-  inline bool IsBlocked(const BlockState &state, CoroBase *coro) {
+  bool IsBlocked(const BlockState &state, CoroBase *coro) {
+    SchedCtxGuard guard;
     return state.addr &&
            std::find(queues[state.addr].begin(), queues[state.addr].end(),
                      coro) != queues[state.addr].end();
   }
 
-  inline std::size_t UnblockOn(std::intptr_t addr, std::size_t max_wakes) {
+  std::size_t UnblockOn(std::intptr_t addr, std::size_t max_wakes) {
+    SchedCtxGuard guard;
     if (!queues.contains(addr)) [[unlikely]] {
       return 0;
     }
@@ -39,13 +45,18 @@ struct BlockManager {
     return wakes;
   }
 
-  inline void UnblockAllOn(std::intptr_t addr) {
+  void UnblockAllOn(std::intptr_t addr) {
+    SchedCtxGuard guard;
     auto queue_it = queues.find(addr);
     if (queue_it == queues.end()) {
       return;
     }
     queue_it->second.clear();
   }
+
+  void UnblockAll() { queues.clear(); }
 };
 
 inline BlockManager block_manager;
+
+}  // namespace ltest

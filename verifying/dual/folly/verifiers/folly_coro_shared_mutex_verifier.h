@@ -16,8 +16,9 @@
 #include "runtime/include/strategy_verifier.h"
 #include "../../../specs/folly/coro_shared_mutex.h"
 
-struct FollyCoroSharedMutexVerifierBase : DefaultStrategyTaskVerifier {
-  bool Verify(const std::string& task_name, size_t thread_id) {
+struct FollyCoroSharedMutexVerifierBase
+    : ltest::DefaultStrategyTaskVerifier {
+  bool Verify(const std::string& task_name, size_t thread_id, bool) {
     EnsureThread(thread_id);
 
     if (task_name == "lock" || task_name == "try_lock") {
@@ -37,23 +38,23 @@ struct FollyCoroSharedMutexVerifierBase : DefaultStrategyTaskVerifier {
     return false;
   }
 
-  void OnTaskStarted(const std::string& /*method*/,
-                     std::size_t /*thread_id*/,
-                     int /*task_id*/) {}
-
-  void OnFinished(Task& task, size_t thread_id) {
+  void OnFinished(ltest::Task& task, size_t thread_id) {
     EnsureThread(thread_id);
     const std::string task_name = std::string(task->GetName());
+    const ltest::ValueWrapper result = task->GetRetVal();
+    if (!result.HasValue()) {
+      return;
+    }
 
     if (task_name == "lock") {
-      if (task->FinishedNormally()) {
+      if (task->IsReturned()) {
         exclusive_owner_ = thread_id;
       }
       return;
     }
 
     if (task_name == "try_lock") {
-      bool ok = task->GetRetVal().GetValue<bool>();
+      bool ok = result.GetValue<bool>();
       if (ok) {
         exclusive_owner_ = thread_id;
       }
@@ -61,14 +62,14 @@ struct FollyCoroSharedMutexVerifierBase : DefaultStrategyTaskVerifier {
     }
 
     if (task_name == "lock_shared") {
-      if (task->FinishedNormally()) {
+      if (task->IsReturned()) {
         ++shared_counts_[thread_id];
       }
       return;
     }
 
     if (task_name == "try_lock_shared") {
-      bool ok = task->GetRetVal().GetValue<bool>();
+      bool ok = result.GetValue<bool>();
       if (ok) {
         ++shared_counts_[thread_id];
       }
@@ -93,20 +94,9 @@ struct FollyCoroSharedMutexVerifierBase : DefaultStrategyTaskVerifier {
                     "FollyCoroSharedMutexVerifier");
   }
 
-  std::optional<std::string> ReleaseTask(size_t thread_id) {
-    EnsureThread(thread_id);
-    if (IsExclusiveOwner(thread_id)) {
-      return {"unlock"};
-    }
-    if (shared_counts_[thread_id] > 0) {
-      return {"unlock_shared"};
-    }
-    return std::nullopt;
-  }
-
-  void OnRoundStart(std::size_t threads) {
+  void Reset() {
     exclusive_owner_.reset();
-    shared_counts_.assign(threads, 0);
+    shared_counts_.clear();
   }
 
  private:
@@ -126,7 +116,7 @@ struct FollyCoroSharedMutexVerifierBase : DefaultStrategyTaskVerifier {
 };
 
 using FollyCoroSharedMutexVerifier =
-    ReservePolicyVerifier<spec::FollyCoroSharedMutex,
-                          FollyCoroSharedMutexVerifierBase>;
+    ltest::ReservePolicyVerifier<spec::FollyCoroSharedMutex,
+                                  FollyCoroSharedMutexVerifierBase>;
 
 #endif  // LTEST_FOLLY_CORO_SHARED_MUTEX_VERIFIER_H

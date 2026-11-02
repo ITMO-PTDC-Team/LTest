@@ -9,7 +9,8 @@ namespace spec {
 
 struct LinearMutex;
 
-using mutex_method_t = std::function<ValueWrapper(LinearMutex *l, void *)>;
+using mutex_method_t =
+    std::function<ltest::ValueWrapper(LinearMutex *l, void *)>;
 
 struct LinearMutex {
  private:
@@ -57,7 +58,7 @@ struct LinearMutexEquals {
 struct SharedLinearMutex;
 
 using shared_mutex_method_t =
-    std::function<ValueWrapper(SharedLinearMutex *l, void *)>;
+    std::function<ltest::ValueWrapper(SharedLinearMutex *l, void *)>;
 
 struct SharedLinearMutex {
  private:

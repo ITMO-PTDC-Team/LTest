@@ -95,14 +95,14 @@ struct DualStackSplit {
 
 
   using method_t =
-      std::function<ValueWrapper(DualStackSplit* l, void* args)>;
+      std::function<ltest::ValueWrapper(DualStackSplit* l, void* args)>;
 
   static auto GetMethods() {
     method_t push_func = [](DualStackSplit* l,
-                            void* args) -> ValueWrapper {
+                            void* args) -> ltest::ValueWrapper {
       auto real_args = reinterpret_cast<PushArgTuple*>(args);
       l->Push(std::get<ValueIndex>(*real_args));
-      return void_v;
+      return ltest::void_v;
     };
 
     method_t pop_req_func = [](DualStackSplit* l,

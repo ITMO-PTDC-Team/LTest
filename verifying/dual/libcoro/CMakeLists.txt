@@ -33,6 +33,9 @@ if(LTEST_LIBCORO_SOURCE_INCLUDE_DIR)
                 EXCLUDE_FROM_ALL)
     endif()
 
+    add_dependencies(libcoro plugin_pass)
+    target_compile_options(libcoro PRIVATE -fpass-plugin=${PASS_PATH})
+
     set(LTEST_LIBCORO_TARGET libcoro)
 else()
     find_path(LIBCORO_INCLUDE_DIR NAMES coro/task.hpp)

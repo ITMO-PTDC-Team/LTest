@@ -7,25 +7,46 @@
 
 #include "scheduler.h"
 
+namespace ltest {
+
+struct PctSharedState : StrategySharedState<PctSharedState> {
+  size_t completed_rounds = 0;
+  long double total_length = 0;
+};
+
 // https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/asplos277-pct.pdf
 // K represents the maximal number of potential switches in the program
 // Although it's impossible to predict the exact number of switches(since it's
 // equivalent to the halt problem), k should be good approximation
 template <typename TargetObj, StrategyTaskVerifier Verifier>
 struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
-  using TargetFactory =
-      typename BaseStrategyWithThreads<TargetObj, Verifier>::TargetFactory;
+ private:
+  MappedStrategyState<PctSharedState> shared_state;
+
+ public:
+  using Base = BaseStrategyWithThreads<TargetObj, Verifier>;
+  using TargetFactory = typename Base::TargetFactory;
 
   PctStrategy(size_t threads_count, std::vector<TaskBuilder> ctrs,
-              TargetFactory target_factory,
-              size_t seed = 0)
-      : BaseStrategyWithThreads<TargetObj, Verifier>(threads_count,
-                                                     std::move(ctrs),
-                                                     std::move(target_factory),
-                                                     seed),
-        current_depth(1),
-        current_schedule_length(0) {
-    PrepareForDepth(current_depth, 1);
+              TargetFactory target_factory)
+      : Base(threads_count, std::move(ctrs), std::move(target_factory)),
+        count_chosen_same(0),
+        last_chosen(0),
+        fair_start(0) {}
+
+  PctSharedState& GetSharedState() override { return *shared_state; }
+
+  void StartNextRound(const CustomRound* custom_round = nullptr) override {
+    current_depth =
+        std::min<size_t>(this->GetSharedState().completed_rounds + 1, 50);
+    current_schedule_length = 0;
+    Base::StartNextRound(custom_round);
+    if (!custom_round ||
+        attempt_session->request.kind != AttemptKind::Generate) {
+      PrepareForDepth(current_depth, MeanLength());
+    }
+    if (attempt_session->request.kind == AttemptKind::Generate)
+      ++this->GetSharedState().completed_rounds;
   }
 
   void AvoidLivelock(size_t& index, size_t& prior) {
@@ -42,7 +63,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
           continue;
         }
-        if (!is_free && !this->VerifyExistingTask(threads[i].back(), i)) {
+        if (!this->CanThreadContinue(i) || !this->NewTaskAreEnabled(i)) {
           continue;
         }
         index = i;
@@ -90,7 +111,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         // resume)
         continue;
       }
-      if (!is_free && !this->VerifyExistingTask(threads[i].back(), i)) {
+      if (!this->CanThreadContinue(i) || !this->NewTaskAreEnabled(i)) {
         continue;
       }
 
@@ -108,9 +129,11 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
     // Check whether the priority change is required
     current_schedule_length++;
+    if (attempt_session->request.kind == AttemptKind::Generate)
+      ++this->GetSharedState().total_length;
     for (size_t i = 0; i < priority_change_points.size(); ++i) {
       if (current_schedule_length == priority_change_points[i]) {
-        priorities[index_of_max] = current_depth - i;
+        priorities[index_of_max] = current_depth - i - 1;
       }
     }
 
@@ -122,7 +145,9 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
   // NOTE: `Next` version use heuristics for livelock avoiding, but not there
   // refactor later to avoid copy-paste
-  std::optional<TaskWithMetaData> NextSchedule() override {
+  StrategyNextResult NextSchedule() override {
+    if (auto task = this->GetReplayTask()) return *task;
+    while (priorities.size() < this->threads.size()) AddPriority();
     auto& round_schedule = this->round_schedule;
     auto& threads = this->threads;
     size_t max = std::numeric_limits<size_t>::min();
@@ -131,15 +156,12 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     for (size_t i = 0; i < threads.size(); ++i) {
       int task_index = this->GetNextTaskInThread(i);
       // Ignore waiting tasks
-      if (task_index == threads[i].size() ||
+      if (task_index == threads[i].size() || !this->CanThreadContinue(i) ||
           threads[i][task_index]->IsBlocked()) {
         // dual waiting if request finished, but follow up isn't
         // skip dual tasks that already have finished the request
         // section(follow-up will be executed in another task, so we can't
         // resume)
-        continue;
-      }
-      if (!this->VerifyExistingTask(threads[i][task_index], i)) {
         continue;
       }
 
@@ -153,9 +175,8 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       for (size_t attempt = 0; attempt < threads.size(); ++attempt) {
         auto i = (++last_chosen) % threads.size();
         int task_index = this->GetNextTaskInThread(i);
-        if (task_index == threads[i].size() ||
-            threads[i][task_index]->IsBlocked() ||
-            !this->VerifyExistingTask(threads[i][task_index], i)) {
+        if (task_index == threads[i].size() || !this->CanThreadContinue(i) ||
+            threads[i][task_index]->IsBlocked()) {
           continue;
         }
         index_of_max = i;
@@ -181,63 +202,39 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     }
 
     if (max == std::numeric_limits<size_t>::min()) {
-      return std::nullopt;
+      return DEADLOCK;
     }
 
     // Check whether the priority change is required
     current_schedule_length++;
+    if (attempt_session->request.kind == AttemptKind::Generate)
+      ++this->GetSharedState().total_length;
     for (size_t i = 0; i < priority_change_points.size(); ++i) {
       if (current_schedule_length == priority_change_points[i]) {
-        priorities[index_of_max] = current_depth - i;
+        priorities[index_of_max] = current_depth - i - 1;
       }
     }
 
     last_chosen = index_of_max;
     // Picked thread is `index_of_max`
     int next_task_index = this->GetNextTaskInThread(index_of_max);
-    bool is_new = round_schedule[index_of_max] != next_task_index;
     round_schedule[index_of_max] = next_task_index;
-    return TaskWithMetaData{threads[index_of_max][next_task_index], is_new,
+    return TaskWithMetaData{threads[index_of_max][next_task_index],
                             index_of_max};
   }
 
-  void StartNextRound() override {
-    BaseStrategyWithThreads<TargetObj, Verifier>::StartNextRound();
-    UpdateStatistics();
-
-    ltest::verifier_hooks::OnRoundStart(this->sched_checker,
-                                        this->threads_count);
+  void SetCustomRound(const CustomRound& custom_round) override {
+    Base::SetCustomRound(custom_round);
+    PrepareForDepth(current_depth, MeanLength());
   }
-
-  void ResetCurrentRound() override {
-    BaseStrategyWithThreads<TargetObj, Verifier>::ResetCurrentRound();
-    UpdateStatistics();
-  }
-
-  void SetCustomRound(CustomRound& custom_round) override {
-    BaseStrategyWithThreads<TargetObj, Verifier>::SetCustomRound(custom_round);
-    UpdateStatistics();
-  }
-
-  ~PctStrategy() { this->TerminateTasks(); }
 
  private:
-  void UpdateStatistics() {
-    // Update statistics
-    current_depth++;
-    if (current_depth >= 50) {
-      current_depth = 50;
-    }
-    k_statistics.push_back(current_schedule_length);
-    current_schedule_length = 0;
-    count_chosen_same = 0;
-    fair_stage = 0;
-
-    // current_depth have been increased
-    size_t new_k = std::reduce(k_statistics.begin(), k_statistics.end()) /
-                   k_statistics.size();
-    // log() << "k: " << new_k << "\n";
-    PrepareForDepth(current_depth, new_k);
+  size_t MeanLength() {
+    const auto& state = this->GetSharedState();
+    return state.completed_rounds
+               ? std::max<size_t>(1,
+                                  state.total_length / state.completed_rounds)
+               : 1;
   }
 
   void PrepareForDepth(size_t depth, size_t k) {
@@ -247,32 +244,51 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     // argument from the command string
     size_t threads_count = this->threads.size();
 
-    // Generates priorities
-    priorities = std::vector<int>(threads_count);
-    for (size_t i = 0; i < priorities.size(); ++i) {
-      priorities[i] = current_depth + i;
+    priorities.clear();
+    priorities.reserve(threads_count);
+    while (priorities.size() < threads_count) {
+      AddPriority();
     }
-    std::shuffle(priorities.begin(), priorities.end(), rng);
 
     // Generates priority_change_points
     auto k_distribution =
         std::uniform_int_distribution<std::mt19937::result_type>(1, k);
     priority_change_points = std::vector<size_t>(depth - 1);
     for (size_t i = 0; i < depth - 1; ++i) {
-      priority_change_points[i] = k_distribution(rng);
+      priority_change_points[i] = k_distribution(this->GetSharedState().rng);
     }
   }
 
-  std::vector<size_t> k_statistics;
-  size_t current_depth;
-  size_t current_schedule_length;
+  void UpdateSimulatorState(size_t thread_id) override {
+    Base::UpdateSimulatorState(thread_id);
+    if (this->threads.size() > this->priorities.size()) {
+      AddPriority();
+    }
+  }
+
+  void AddPriority() {
+    const size_t min_priority = current_depth;
+    auto priority_distribution = std::uniform_int_distribution(
+        min_priority, std::numeric_limits<size_t>::max());
+
+    size_t priority;
+    do {
+      priority = priority_distribution(this->GetSharedState().rng);
+    } while (std::find(priorities.begin(), priorities.end(), priority) !=
+             priorities.end());
+    priorities.push_back(priority);
+  }
+
+  size_t current_depth = 1;
+  size_t current_schedule_length = 0;
   // NOTE(kmitkin): added for livelock avoiding in spinlocks (read more in
   // original article)
   size_t count_chosen_same;
   size_t last_chosen;
   size_t fair_start;
   size_t fair_stage{0};
-  std::vector<int> priorities;
+  std::vector<size_t> priorities;
   std::vector<size_t> priority_change_points;
-  std::mt19937 rng;
 };
+
+}  // namespace ltest

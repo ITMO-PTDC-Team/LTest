@@ -1,0 +1,8 @@
+include("${CMAKE_CURRENT_LIST_DIR}/LTestTargets.cmake")
+foreach(target runtime preload_with_main instrumentation)
+    get_target_property(global LTest::${target} IMPORTED_GLOBAL)
+    if(NOT global)
+        set_property(TARGET LTest::${target} PROPERTY IMPORTED_GLOBAL TRUE)
+    endif()
+endforeach()
+include("${CMAKE_CURRENT_LIST_DIR}/LTest.cmake")

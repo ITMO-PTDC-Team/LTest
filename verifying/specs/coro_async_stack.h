@@ -45,7 +45,7 @@ struct CoroAsyncStack {
   std::unordered_map<int, int> ready_pop_value;
 
   // ----- Nonblocking: push(int) -----
-  ValueWrapper Push(void* args) {
+  ltest::ValueWrapper Push(void* args) {
     auto real_args = reinterpret_cast<std::tuple<int>*>(args);
     int v = std::get<0>(*real_args);
 
@@ -57,7 +57,7 @@ struct CoroAsyncStack {
     } else {
       values.push_back(v);
     }
-    return void_v;
+    return ltest::void_v;
   }
 
   static ltest::WorkloadPolicy GetWorkloadPolicy() {
@@ -96,36 +96,36 @@ struct CoroAsyncStack {
   }
 
   // ----- Dual: pop() follow-up phase -----
-  std::optional<ValueWrapper> FollowUpPop(int op_id) {
+  std::optional<ltest::ValueWrapper> FollowUpPop(int op_id) {
     auto it = ready_pop_value.find(op_id);
     if (it == ready_pop_value.end()) return std::nullopt;
     int v = it->second;
     ready_pop_value.erase(it);
-    return ValueWrapper(v);
+    return ltest::ValueWrapper(v);
   }
 
   // Methods table for Dual checker.
   static auto GetDualMethods() {
     using S = CoroAsyncStack;
-    DualMethodMap<S> m;
+    ltest::DualMethodMap<S> m;
 
     // push(int): ordinary Invoke/Response operation
-    DualNonBlockingMethod<S> push = [](S* s, void* args) -> ValueWrapper {
+    ltest::DualNonBlockingMethod<S> push = [](S* s, void* args) -> ltest::ValueWrapper {
       return s->Push(args);
     };
 
     // pop(): dual (request+followup)
-    DualRequestMethod<S> pop_req = [](S* s, void* /*args*/, int op_id) {
+    ltest::DualRequestMethod<S> pop_req = [](S* s, void* /*args*/, int op_id) {
       s->RequestPop(op_id);
     };
 
-    DualFollowUpMethod<S> pop_fol =
-        [](S* s, void* /*args*/, int op_id) -> std::optional<ValueWrapper> {
+    ltest::DualFollowUpMethod<S> pop_fol =
+        [](S* s, void* /*args*/, int op_id) -> std::optional<ltest::ValueWrapper> {
       return s->FollowUpPop(op_id);
     };
 
     m.emplace("push", push);
-    m.emplace("pop", DualBlockingMethod<S>{pop_req, pop_fol});
+    m.emplace("pop", ltest::DualBlockingMethod<S>{pop_req, pop_fol});
     return m;
   }
 };

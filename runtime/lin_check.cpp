@@ -3,6 +3,8 @@
 
 #include "include/lincheck.h"
 
+namespace ltest {
+
 // get_inv_res_mapping returns map (invoke_index -> corresponding
 // response_index)
 std::map<size_t, size_t> get_inv_res_mapping(
@@ -35,3 +37,5 @@ Response::Response(const Task &task, ValueWrapper result, int thread_id)
 const Task &Invoke::GetTask() const { return this->task; }
 
 const Task &Response::GetTask() const { return this->task; }
+
+}  // namespace ltest

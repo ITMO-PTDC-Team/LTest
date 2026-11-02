@@ -21,7 +21,7 @@ struct LibcoroSharedMutexVerifier {
     READER = 2,
   };
 
-  bool Verify(const std::string& task_name, size_t thread_id) {
+  bool Verify(const std::string& task_name, size_t thread_id, bool) {
     if (!status.contains(thread_id)) {
       status[thread_id] = FREE;
     }
@@ -40,18 +40,18 @@ struct LibcoroSharedMutexVerifier {
     return false;
   }
 
-  void OnFinished(Task& task, size_t thread_id) {
+  void OnFinished(ltest::Task& task, size_t thread_id) {
     const std::string task_name = std::string(task->GetName());
 
     if (task_name == "lock") {
-      if (task->FinishedNormally()) {
+      if (task->IsReturned()) {
         status[thread_id] = WRITER;
       }
       return;
     }
 
     if (task_name == "lock_shared") {
-      if (task->FinishedNormally()) {
+      if (task->IsReturned()) {
         status[thread_id] = READER;
       }
       return;
@@ -71,26 +71,6 @@ struct LibcoroSharedMutexVerifier {
     }
 
     assert(false && "unexpected finished method name in LibcoroSharedMutexVerifier");
-  }
-
-  std::optional<std::string> ReleaseTask(size_t thread_id) {
-    if (!status.contains(thread_id)) {
-      return std::nullopt;
-    }
-
-    if (status[thread_id] == WRITER) {
-      return {"unlock"};
-    }
-
-    if (status[thread_id] == READER) {
-      return {"unlock_shared"};
-    }
-
-    return std::nullopt;
-  }
-
-  void OnRoundStart(std::size_t /*threads*/) {
-    status.clear();
   }
 
   void Reset() { status.clear(); }

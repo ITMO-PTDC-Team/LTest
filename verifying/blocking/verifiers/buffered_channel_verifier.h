@@ -4,7 +4,7 @@
 
 namespace spec {
 struct BufferedChannelVerifier {
-  bool Verify(const std::string& task_name, size_t thread_id) {
+  bool Verify(const std::string& task_name, size_t thread_id, bool) {
     if (task_name == "Send") {
       if (senders_ == 0) {
         ++senders_;
@@ -26,7 +26,7 @@ struct BufferedChannelVerifier {
     }
   }
 
-  void OnFinished(Task& task, size_t thread_id) {
+  void OnFinished(ltest::Task& task, size_t thread_id) {
     auto task_name = task->GetName();
     if (task_name == "Send") {
       --senders_;
@@ -37,13 +37,6 @@ struct BufferedChannelVerifier {
     } else {
       assert(false);
     }
-  }
-
-  std::optional<std::string> ReleaseTask(size_t thread_id) {
-    if (senders_ > 0) {
-      return {"Recv"};
-    }
-    return std::nullopt;
   }
 
   void Reset() {

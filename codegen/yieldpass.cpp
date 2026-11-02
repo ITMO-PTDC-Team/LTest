@@ -1,7 +1,12 @@
+#include <set>
+
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
+#include "mainreplacerpass.h"
 
 using namespace llvm;
 
@@ -59,7 +64,12 @@ struct YieldInserter {
 
  private:
   bool IsNonAtomic(const StringRef fun_name, const FunIndex &index) {
+#if defined(LTEST_EXTERNAL_LAUNCH)
+    //TODO can we choose here something wiser?
+    return true;
+#else
     return HasAttribute(index, fun_name, nonatomic_attr);
+#endif
   }
 
   bool IsAtomic(const StringRef fun_name, const FunIndex &index) {
@@ -196,7 +206,6 @@ struct YieldInsertPass final : public PassInfoMixin<YieldInsertPass> {
 
     YieldInserter gen{M};
     gen.Run(fun_index);
-
     return PreservedAnalyses::none();
   };
 };
@@ -209,9 +218,22 @@ llvmGetPassPluginInfo() {
           .PluginName = "yield_insert",
           .PluginVersion = "v0.1",
           .RegisterPassBuilderCallbacks = [](PassBuilder &PB) {
+            // This parsing we need for testing with opt
+            PB.registerPipelineParsingCallback(
+                [](StringRef Name, ModulePassManager &mpm,
+                   ArrayRef<PassBuilder::PipelineElement>) {
+                  if (Name == "mainreplacer") {
+                    mpm.addPass(MainReplacerPass());
+                    return true;
+                  }
+                  return false;
+                });
             PB.registerPipelineStartEPCallback(
                 [](ModulePassManager &MPM, OptimizationLevel Level) {
                   MPM.addPass(YieldInsertPass());
+#if defined(LTEST_EXTERNAL_LAUNCH)
+                  MPM.addPass(MainReplacerPass());
+#endif
                 });
           }};
 }

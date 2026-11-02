@@ -1,46 +1,43 @@
 #pragma once
 #include <boost/context/fiber.hpp>
+#include <boost/context/protected_fixedsize_stack.hpp>
 #include <cassert>
-#include <coroutine>
 #include <cstdint>
-#include <deque>
 #include <exception>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "block_manager.h"
+#include "coro_ctx_guard.h"
+#include "io_wait.h"
 #include "value_wrapper.h"
 
 #define panic() assert(false)
 
+extern "C" void CoroYield();
+extern "C" void CoroutineStatusChange(char* coroutine, bool start);
+
+namespace ltest {
+
 struct CoroBase;
-struct CoroutineStatus;
+
+extern bool ltest_initialized;
 
 // Current executing coroutine.
 extern std::shared_ptr<CoroBase> this_coro;
 extern int this_thread_id;
 
 // Scheduler context
-extern boost::context::fiber_context sched_ctx;
+extern boost::context::fiber sched_ctx;
 
-// Set while a round is being stopped and the target state is being cleaned up.
-// Blocked dual awaiters use this as a cancellation signal: they leave the wait
-// loop, unregister from the target if needed, and do not emit follow-up events.
-extern bool ltest_round_terminating;
+// Use the same guarded stack for target tasks and logical-TLS callbacks.
+void SetFiberStackSize(size_t bytes);
+boost::context::protected_fixedsize_stack MakeFiberStack();
 
-extern std::optional<CoroutineStatus> coroutine_status;
-
-struct CoroutineStatus {
-  std::string_view name;
-  bool has_started;
-};
-
-namespace ltest {
 struct TestFailure : public std::exception {
   explicit TestFailure(std::string message) : msg(std::move(message)) {}
   const char* what() const noexcept override { return msg.c_str(); }
@@ -53,42 +50,17 @@ void SetTestFailure(std::string message);
 bool HasTestFailure();
 const std::string& GetTestFailureMessage();
 void ClearTestFailure();
-}  // namespace ltest
-
-extern "C" void CoroYield();
-extern "C" void CoroutineStatusChange(char* coroutine, bool start);
-
-namespace ltest {
-void EnqueueExternalResume(std::coroutine_handle<> h);
-void DrainExternalResumes();
-}  // namespace ltest
 
 struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   CoroBase(const CoroBase&) = delete;
   CoroBase(CoroBase&&) = delete;
   CoroBase& operator=(CoroBase&&) = delete;
 
-  virtual std::shared_ptr<CoroBase> Restart(void* this_ptr) = 0;
-
   // Resume the coroutine to the next yield.
-  void Resume(int resumed_thread_id);
+  void Resume(size_t resumed_thread_id);
 
   // Check if the coroutine is returned.
   bool IsReturned() const;
-
-  enum class FinishKind : std::uint8_t {
-    Running = 0,
-    ReturnedNormally = 1,
-    ReturnedDuringTermination = 2,
-  };
-
-  FinishKind GetFinishKind() const;
-  bool FinishedNormally() const;
-  bool FinishedDuringTermination() const;
-
-  void MarkFinishedNormally();
-  void MarkFinishedDuringTermination();
-  void MarkFinishedNormallyIfRunning();
 
   void setWakeupCondition(std::function<bool()> cond);
   void clearWakeupCondition();
@@ -99,6 +71,8 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   int GetId() const;
 
   virtual ValueWrapper GetRetVal() const;
+  void SetRetVal(const ValueWrapper& value) { ret = value; }
+  virtual void TerminateWith(const ValueWrapper& value);
   virtual std::string_view GetName() const;
 
   virtual std::vector<std::string> GetStrArgs() const = 0;
@@ -106,11 +80,8 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
 
   std::shared_ptr<CoroBase> GetPtr();
 
-  // Try to terminate the coroutine.
-  void TryTerminate(int running_thread_id);
-
   // Terminate the coroutine.
-  void Terminate(int running_thread_id);
+  void Terminate();
 
   void SetBlocked(const BlockState& state) {
     fstate = state;
@@ -120,6 +91,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   BlockState GetBlockState() { return fstate; }
 
   bool IsBlocked() {
+    if (IsWaitingForIo(this)) return true;
     if (!block_manager.IsBlocked(fstate, this)) {
       return false;
     }
@@ -129,18 +101,9 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
     return true;
   }
 
-  bool IsParked() const;
-
   // Dual metadata and task-local history buffer.
   void SetDual(bool v) { is_dual_task_ = v; }
   bool IsDual() const { return is_dual_task_; }
-
-  void SetCleanupBeforeTargetDestroy(bool v) {
-    cleanup_before_target_destroy_ = v;
-  }
-  bool CleanupBeforeTargetDestroy() const {
-    return cleanup_before_target_destroy_;
-  }
 
   enum class DualEventKind : std::uint8_t {
     RequestResponse = 0,
@@ -162,28 +125,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
   std::vector<DualEvent> DrainDualEvents();
   bool HasDualEvents() const { return !pending_dual_events_.empty(); }
 
-  // ---- lifetime management for dual termination safety ----
-  //
-  // KeepAlive: hold arbitrary heap state until end of round (e.g. awaitable
-  // object).
-  // DeferDestroy: postpone coroutine_handle<>::destroy() until end of round.
-  //
-  void KeepAlive(std::shared_ptr<void> p);
-
-  template <class T>
-  void KeepAlive(std::shared_ptr<T> p) {
-    KeepAlive(std::static_pointer_cast<void>(std::move(p)));
-  }
-
-  void DeferDestroy(std::coroutine_handle<> h);
-
-  // Must be called when no further target code can resume deferred handles.
-  // Safe to call multiple times.
-  void RunDeferredCleanup();
-
   virtual ~CoroBase();
-
-  boost::context::fiber_context& GetCtx() { return ctx; }
 
  protected:
   CoroBase() = default;
@@ -195,25 +137,18 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
 
   int id{};
   ValueWrapper ret{};
-  FinishKind finish_kind_{FinishKind::Running};
+  bool returned{false};
 
   // condition of wake up
   std::function<bool()> wakeup_condition_{nullptr};
 
   BlockState fstate{};
   std::string_view name;
-  boost::context::fiber_context ctx;
+  boost::context::fiber ctx;
 
  private:
   bool is_dual_task_{false};
-  bool cleanup_before_target_destroy_{false};
   std::vector<DualEvent> pending_dual_events_{};
-
-  // Keep heap objects alive until round end (awaitables, shared state, etc.)
-  std::vector<std::shared_ptr<void>> keepalive_{};
-
-  // Destroy coroutine handles at round end (waker handles passed to await_suspend()).
-  std::vector<std::coroutine_handle<>> deferred_destroy_{};
 };
 
 template <typename Target, typename... Args>
@@ -221,17 +156,6 @@ struct Coro final : public CoroBase {
   using CoroF = std::function<ValueWrapper(Target*, Args...)>;
   using ArgsToStringsF =
       std::function<std::vector<std::string>(std::shared_ptr<void>)>;
-
-  std::shared_ptr<CoroBase> Restart(void* this_ptr) override {
-    assert(IsReturned());
-    auto coro = New(func, this_ptr, args, args_to_strings, name, id);
-
-    // Preserve dual marker across round reset / replay.
-    // Otherwise dual tasks turn into non-dual after Restart(), breaking dual history.
-    coro->SetDual(this->IsDual());
-
-    return coro;
-  }
 
   static std::shared_ptr<CoroBase> New(CoroF func, void* this_ptr,
                                        std::shared_ptr<void> args,
@@ -253,23 +177,27 @@ struct Coro final : public CoroBase {
     // The fiber only needs non-owning access to the object while it is alive.
     Coro* self = c.get();
 
-    c->ctx =
-        boost::context::fiber_context([self](boost::context::fiber_context&& ctx) {
-          auto real_args =
-              reinterpret_cast<std::tuple<Args...>*>(self->args.get());
-          auto this_arg =
-              std::tuple<Target*>{reinterpret_cast<Target*>(self->this_ptr)};
-          try {
-            self->ret =
-                std::apply(self->func, std::tuple_cat(this_arg, *real_args));
-          } catch (const ltest::TestFailure& ex) {
-            ltest::SetTestFailure(ex.what());
-            self->ret = void_v;
-          } catch (...) {
-            throw;
+    c->ctx = boost::context::fiber(
+        std::allocator_arg, MakeFiberStack(),
+        [self](boost::context::fiber&& ctx) {
+          sched_ctx = std::move(ctx);
+          {
+            CoroCtxGuard guard;
+            auto real_args =
+                static_cast<std::tuple<Args...>*>(self->args.get());
+            auto this_arg =
+                std::tuple<Target*>{static_cast<Target*>(self->this_ptr)};
+            try {
+              self->ret =
+                  std::apply(self->func, std::tuple_cat(this_arg, *real_args));
+            } catch (const TestFailure& ex) {
+              SchedCtxGuard scheduler;
+              SetTestFailure(ex.what());
+              self->ret = void_v;
+            }
           }
-          self->MarkFinishedNormallyIfRunning();
-          return std::move(ctx);
+          self->returned = true;
+          return std::move(sched_ctx);
         });
 
     return c;
@@ -299,6 +227,7 @@ struct TaskBuilder {
   const std::string& GetName() const { return name; }
 
   Task Build(void* this_ptr, size_t thread_id, int task_id) const {
+    SchedCtxGuard guard;
     return builder_func(this_ptr, thread_id, task_id);
   }
 
@@ -306,3 +235,5 @@ struct TaskBuilder {
   std::string name;
   BuilderFunc builder_func;
 };
+
+}  // namespace ltest

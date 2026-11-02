@@ -22,6 +22,8 @@ class ExecutionGraph {
     return instance;
   }
 
+  void Seed(unsigned seed) { graph.Seed(seed); }
+
   // Empties graph events and sets new number of threads.
   void Reset(int nThreads) {
     log() << "Reset Graph: threads=" << nThreads << "\n";
@@ -36,6 +38,7 @@ class ExecutionGraph {
   // in order to generate corresponding initialization event.
   template <class T>
   int RegisterLocation(T value) {
+    SchedCtxGuard guard;
     int currentLocationId = nextLocationId++;
     log() << "Register location: loc-" << currentLocationId
           << ", init value=" << value << "\n";
@@ -48,6 +51,7 @@ class ExecutionGraph {
 
   template <class T>
   T Load(int location, int threadId, MemoryOrder order) {
+    SchedCtxGuard guard;
     // TODO: if we now only do real atomics, then they should be stored in
     // graph, I guess?
     log() << "Load: loc-" << location << ", thread=" << threadId
@@ -60,6 +64,7 @@ class ExecutionGraph {
 
   template <class T>
   void Store(int location, int threadId, MemoryOrder order, T value) {
+    SchedCtxGuard guard;
     log() << "Store: loc-" << location << ", thread=" << threadId
           << ", order=" << WmmUtils::OrderToString(order) << ", value=" << value
           << "\n";
@@ -72,6 +77,7 @@ class ExecutionGraph {
   std::pair<bool, T> ReadModifyWrite(int location, int threadId, T* expected,
                                      T desired, MemoryOrder success,
                                      MemoryOrder failure) {
+    SchedCtxGuard guard;
     log() << "RMW CAS: loc-" << location << ", thread=" << threadId
           << ", expected=" << *expected << ", desired=" << desired
           << ", success=" << WmmUtils::OrderToString(success)
@@ -88,6 +94,7 @@ class ExecutionGraph {
   template <class T>
   T UnconditionalReadModifyWrite(int location, int threadId, AtomicRmwOp op,
                                  T operand, MemoryOrder order) {
+    SchedCtxGuard guard;
     log() << "RMW " << WmmUtils::AtomicRmwOpToString(op) << ": loc-" << location
           << ", thread=" << threadId << ", operand=" << operand
           << ", order=" << WmmUtils::OrderToString(order) << "\n";

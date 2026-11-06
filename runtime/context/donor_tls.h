@@ -4,16 +4,19 @@
 
 #include <atomic>
 
+#include "debugger.h"
+
 namespace ltest {
 
 // Resume native cleanup only after switching away from this TLS. A cleanup
 // yield hands execution back to the scheduler until the next logical resume.
 class DonorTls {
  public:
-  DonorTls();
+  explicit DonorTls(std::size_t logical_id);
   DonorTls(const DonorTls&) = delete;
   DonorTls& operator=(const DonorTls&) = delete;
   [[nodiscard]] void* ThreadPointer() const;
+  DebugThread& DebugInfo() { return debug_; }
   void RequestCleanup();
   bool ResumeCleanup();
   static bool YieldCleanup();
@@ -30,6 +33,7 @@ class DonorTls {
   pthread_t handle_{};
   void* pointer_ = nullptr;
   bool cleanup_requested_ = false;
+  DebugThread debug_;
 };
 
 }  // namespace ltest

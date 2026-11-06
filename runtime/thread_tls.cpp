@@ -13,6 +13,10 @@
 
 namespace ltest {
 
+const unsigned debug_abi_version = 1;
+long debug_executor_tid = 0;
+DebugThread* debug_threads = nullptr;
+
 void* CurrentTlsBase() noexcept {
   void* pointer;
   asm volatile("rdfsbase %0" : "=r"(pointer));
@@ -37,14 +41,15 @@ DonorTls& GetLogicalThreadTls(std::size_t index) {
   if (!donor) {
     if (CurrentTlsBase() != state->native)
       throw std::runtime_error("TLS allocation requires scheduler TLS");
-    donor = std::make_unique<DonorTls>();
+    donor = std::make_unique<DonorTls>(index);
   }
   return *donor;
 }
 
 void RunWithLogicalThreadTls(std::size_t thread,
                              const std::function<void()>& function) {
-  void* pointer = GetLogicalThreadTls(thread).ThreadPointer();
+  auto& tls = GetLogicalThreadTls(thread);
+  void* pointer = tls.ThreadPointer();
   std::exception_ptr failure;
   boost::context::fiber call(std::allocator_arg, MakeFiberStack(),
                              [&](boost::context::fiber&& scheduler) {
@@ -60,7 +65,10 @@ void RunWithLogicalThreadTls(std::size_t thread,
                                return std::move(scheduler);
                              });
   call.set_tls_base(pointer);
-  call = std::move(call).resume();
+  {
+    DebugFiberScope debug(tls.DebugInfo(), call, "target construction");
+    call = std::move(call).resume();
+  }
   if (failure) std::rethrow_exception(failure);
 }
 

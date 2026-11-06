@@ -35,6 +35,7 @@ thread_local DonorTls* DonorTls::zombie_ = nullptr;
 void* DonorTls::Start(void* argument) {
   auto& donor = *static_cast<DonorTls*>(argument);
   donor.pointer_ = CurrentTlsBase();
+  donor.debug_.donor_tid = syscall_no_intercept(SYS_gettid);
   donor.SetState(Parked);
   donor.WaitWhile(Parked);
   zombie_ = &donor;
@@ -43,13 +44,18 @@ void* DonorTls::Start(void* argument) {
   return nullptr;
 }
 
-DonorTls::DonorTls() {
+DonorTls::DonorTls(std::size_t logical_id) {
   SchedCtxGuard scheduler;
+  debug_.logical_id = logical_id;
+  if (!debug_executor_tid)
+    debug_executor_tid = syscall_no_intercept(SYS_gettid);
   int error = pthread_create(&handle_, nullptr, Start, this);
   if (error)
     throw std::system_error(error, std::generic_category(),
                             "creating TLS donor pthread");
   WaitWhile(Starting);
+  debug_.next = debug_threads;
+  debug_threads = &debug_;
 }
 
 void* DonorTls::ThreadPointer() const {
@@ -71,6 +77,7 @@ bool DonorTls::ResumeCleanup() {
     const int error = pthread_tryjoin_np(handle_, nullptr);
     if (!error) {
       pointer_ = nullptr;
+      debug_.donor_tid = 0;
       return true;
     }
     if (error != EBUSY)

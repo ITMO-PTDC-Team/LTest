@@ -13,3 +13,5 @@ install(EXPORT LTestTargets NAMESPACE LTest::
 install(FILES "${CMAKE_CURRENT_LIST_DIR}/LTestConfig.cmake"
         "${CMAKE_CURRENT_LIST_DIR}/LTest.cmake"
         DESTINATION "${LTEST_CMAKE_DIR}" COMPONENT LTest)
+install(FILES "${PROJECT_SOURCE_DIR}/scripts/ltest_gdb.py"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/ltest" COMPONENT LTest)

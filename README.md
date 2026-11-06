@@ -35,3 +35,7 @@ cmake --build build --target verifying/blocking/nonlinear_mutex && LD_PRELOAD=bu
 ```
 
 Some blocking targets depends on boost and folly. For them you need to install boost and folly locally, and provide ./boost and ./folly symbolic links at the root of the project, then we can lincheck these targets.
+
+## GDB inspection
+
+See [GDB inspection](docs/gdb-inspection.md) for usage of ltest with gdb.

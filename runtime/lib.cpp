@@ -78,6 +78,7 @@ void CoroBase::Resume(size_t resumed_thread_id) {
   assert(!returned);
   auto& tls = GetLogicalThreadTls(resumed_thread_id);
   if (ctx) {
+    DebugFiberScope deb(tls.DebugInfo(), ctx, name);
     ctx.set_tls_base(tls.ThreadPointer());
     ctx = std::move(ctx).resume();
     // pthread_exit leaves a suspended stack. Keep it until _exit without

@@ -29,10 +29,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
 
   PctStrategy(size_t threads_count, std::vector<TaskBuilder> ctrs,
               TargetFactory target_factory)
-      : Base(threads_count, std::move(ctrs), std::move(target_factory)),
-        count_chosen_same(0),
-        last_chosen(0),
-        fair_start(0) {}
+      : Base(threads_count, std::move(ctrs), std::move(target_factory)) {}
 
   PctSharedState& GetSharedState() override { return *shared_state; }
 
@@ -50,53 +47,46 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   }
 
   void AvoidLivelock(size_t& index, size_t& prior) {
-    auto& threads = this->threads;
-    if (fair_stage > 0) [[unlikely]] {
-      for (size_t attempt = 0; attempt < threads.size(); ++attempt) {
-        auto i = (++last_chosen) % threads.size();
-
-        const bool is_free = threads[i].empty() || threads[i].back()->IsReturned();
-        if (!this->AllowNewTasks() && is_free) {
-          continue;
-        }
-
-        if (!threads[i].empty() && threads[i].back()->IsBlocked()) {
-          continue;
-        }
-        if (!this->CanThreadContinue(i) || !this->NewTaskAreEnabled(i)) {
-          continue;
-        }
-        index = i;
-        prior = priorities[i];
-        break;
+    if (runnable_threads.empty()) return;
+    const bool overdue = std::any_of(
+        runnable_threads.begin(), runnable_threads.end(), [&](size_t i) {
+          return i != index && missed_selections[i] >= kOverdueAfter;
+        });
+    auto& rng = this->GetSharedState().rng;
+    if (overdue && std::bernoulli_distribution(kReshuffleProbability)(rng)) {
+      // Shuffle runnable priorities in place; the resulting order persists.
+      // These extra changes do not inherit PCT's original probability bound.
+      for (size_t remaining = runnable_threads.size(); remaining > 1;
+           --remaining) {
+        const size_t other =
+            std::uniform_int_distribution<size_t>(0, remaining - 1)(rng);
+        std::swap(priorities[runnable_threads[remaining - 1]],
+                  priorities[runnable_threads[other]]);
       }
-      // debug(stderr, "round robin choose: %d\n", index_of_max);
-      if (fair_start == index) {
-        --fair_stage;
+      for (const size_t i : runnable_threads) {
+        if (priorities[index] <= priorities[i]) index = i;
       }
+      prior = priorities[index];
     }
 
-    // TODO: Choose wiser constant
-    if (count_chosen_same == 1000 && index == last_chosen) [[unlikely]] {
-      fair_stage = 5;
-      fair_start = index;
-    }
-
-    if (index == last_chosen) {
-      ++count_chosen_same;
-    } else {
-      count_chosen_same = 1;
+    // Blocked time does not count. Only a selection clears a thread's wait.
+    for (const size_t i : runnable_threads) {
+      missed_selections[i] =
+          i == index ? 0 : std::min(missed_selections[i] + 1, kOverdueAfter);
     }
   }
 
   std::optional<size_t> NextThreadId() override {
+    while (priorities.size() < this->threads.size()) AddPriority();
     auto& threads = this->threads;
+    runnable_threads.clear();
     size_t max = std::numeric_limits<size_t>::min();
     size_t index_of_max = 0;
     // Have to ignore waiting threads, so can't do it faster than O(n)
     for (size_t i = 0; i < threads.size(); ++i) {
       // ignore if forbid generate new task
-      const bool is_free = threads[i].empty() || threads[i].back()->IsReturned();
+      const bool is_free =
+          threads[i].empty() || threads[i].back()->IsReturned();
       if (!this->AllowNewTasks() && is_free) {
         continue;
       }
@@ -115,6 +105,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         continue;
       }
 
+      runnable_threads.push_back(i);
       if (max <= priorities[i]) {
         max = priorities[i];
         index_of_max = i;
@@ -137,19 +128,15 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
     }
 
-    // debug(stderr, "Chosen thread: %d, cnt_count: %d\n", index_of_max,
-    // count_chosen_same);
-    last_chosen = index_of_max;
     return index_of_max;
   }
 
-  // NOTE: `Next` version use heuristics for livelock avoiding, but not there
-  // refactor later to avoid copy-paste
   StrategyNextResult NextSchedule() override {
     if (auto task = this->GetReplayTask()) return *task;
     while (priorities.size() < this->threads.size()) AddPriority();
     auto& round_schedule = this->round_schedule;
     auto& threads = this->threads;
+    runnable_threads.clear();
     size_t max = std::numeric_limits<size_t>::min();
     size_t index_of_max = 0;
     // Have to ignore waiting threads, so can't do it faster than O(n)
@@ -165,41 +152,14 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         continue;
       }
 
+      runnable_threads.push_back(i);
       if (max <= priorities[i]) {
         max = priorities[i];
         index_of_max = i;
       }
     }
 
-    if (fair_stage > 0) [[unlikely]] {
-      for (size_t attempt = 0; attempt < threads.size(); ++attempt) {
-        auto i = (++last_chosen) % threads.size();
-        int task_index = this->GetNextTaskInThread(i);
-        if (task_index == threads[i].size() || !this->CanThreadContinue(i) ||
-            threads[i][task_index]->IsBlocked()) {
-          continue;
-        }
-        index_of_max = i;
-        max = priorities[i];
-        break;
-      }
-      // debug(stderr, "round robin choose: %d\n", index_of_max);
-      if (fair_start == index_of_max) {
-        --fair_stage;
-      }
-    }
-
-    // TODO: Choose wiser constant
-    if (count_chosen_same == 1000 && index_of_max == last_chosen) [[unlikely]] {
-      fair_stage = 5;
-      fair_start = index_of_max;
-    }
-
-    if (index_of_max == last_chosen) {
-      ++count_chosen_same;
-    } else {
-      count_chosen_same = 1;
-    }
+    AvoidLivelock(index_of_max, max);
 
     if (max == std::numeric_limits<size_t>::min()) {
       return DEADLOCK;
@@ -215,7 +175,6 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
       }
     }
 
-    last_chosen = index_of_max;
     // Picked thread is `index_of_max`
     int next_task_index = this->GetNextTaskInThread(index_of_max);
     round_schedule[index_of_max] = next_task_index;
@@ -238,6 +197,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   }
 
   void PrepareForDepth(size_t depth, size_t k) {
+    missed_selections.clear();
     // Because we have custom rounds, take the
     // threads count from the vector size and not
     // from the threads_count field, which shows the passed threads count
@@ -277,16 +237,15 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
     } while (std::find(priorities.begin(), priorities.end(), priority) !=
              priorities.end());
     priorities.push_back(priority);
+    missed_selections.push_back(0);
   }
 
   size_t current_depth = 1;
   size_t current_schedule_length = 0;
-  // NOTE(kmitkin): added for livelock avoiding in spinlocks (read more in
-  // original article)
-  size_t count_chosen_same;
-  size_t last_chosen;
-  size_t fair_start;
-  size_t fair_stage{0};
+  static constexpr size_t kOverdueAfter = 1000;
+  static constexpr double kReshuffleProbability = 0.01;
+  std::vector<size_t> missed_selections;
+  std::vector<size_t> runnable_threads;
   std::vector<size_t> priorities;
   std::vector<size_t> priority_change_points;
 };

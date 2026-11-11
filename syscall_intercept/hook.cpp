@@ -32,6 +32,13 @@ static int ltest_sched_yield(long *result) {
   return 0;
 }
 
+static int ltest_sleep(long *result) {
+  ltest::CoroCtxGuard guard;
+  CoroYield();
+  *result = 0;
+  return 0;
+}
+
 static int ltest_futex(long arg0, long arg1, long arg2, long *result) {
   debug(stderr, "caught futex(0x%lx, %ld), exp: %ld, cur: %d\n",
         (unsigned long)arg0, arg1, arg2, *((int *)arg0));
@@ -94,6 +101,9 @@ static int hook(long syscall_number, long arg0, long arg1, long arg2, long arg3,
   switch (syscall_number) {
     case SYS_sched_yield:
       return ltest_sched_yield(result);
+    case SYS_nanosleep:
+    case SYS_clock_nanosleep:
+      return ltest_sleep(result);
     case SYS_futex:
       return ltest_futex(arg0, arg1, arg2, result);
     case SYS_epoll_create:

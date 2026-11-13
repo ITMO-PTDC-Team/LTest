@@ -134,7 +134,7 @@ struct YieldInserter {
 
   void InsertYields(Function &F, const FunIndex &index) {
     auto name = F.getName();
-    if (visited.find(name) != visited.end() ||
+    if (F.isDeclaration() || visited.find(name) != visited.end() ||
         atomic.find(name) != atomic.end()) {
       return;
     }
@@ -228,7 +228,7 @@ llvmGetPassPluginInfo() {
                   }
                   return false;
                 });
-            PB.registerPipelineStartEPCallback(
+            PB.registerOptimizerLastEPCallback(
                 [](ModulePassManager &MPM, OptimizationLevel Level) {
                   MPM.addPass(YieldInsertPass());
 #if defined(LTEST_EXTERNAL_LAUNCH)

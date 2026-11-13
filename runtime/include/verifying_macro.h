@@ -42,8 +42,8 @@ inline std::string FormatTestFailure(const char* expr, const char* file,
 
 #define attr(attr) __attribute((__annotate__(#attr)))
 
-#define non_atomic attr(ltest_nonatomic)
-#define as_atomic attr(ltest_atomic)
+#define non_atomic attr(ltest_nonatomic) __attribute__((noinline))
+#define as_atomic attr(ltest_atomic) __attribute__((noinline))
 
 #define rassert(expr) \
   ((expr) ? (void)0 : ltest::LtestFail(#expr, __FILE__, __LINE__, __FUNCTION__))
@@ -260,7 +260,7 @@ as_atomic inline void dual_try_unregister(Awaiter& aw) {
 }
 
 template <typename Ret, typename Awaiter>
-inline ValueWrapper dual_finish_followup(Awaiter& aw) non_atomic {
+non_atomic inline ValueWrapper dual_finish_followup(Awaiter& aw) {
   if constexpr (std::is_same_v<Ret, void>) {
     (void)aw.await_resume();
     {

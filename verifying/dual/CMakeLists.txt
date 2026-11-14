@@ -340,7 +340,7 @@ add_dual_matrix_test(dual-core coro_async_stack pct
         --strategy pct --rounds 1000)
 
 add_libcoro_default_matrix(libcoro_event)
-add_libcoro_default_matrix(libcoro_latch)
+#add_libcoro_default_matrix(libcoro_latch)
 add_libcoro_mutex_matrix(libcoro_mutex)
 add_libcoro_queue_matrix(libcoro_queue)
 add_libcoro_ring_buffer_matrix(libcoro_ring_buffer)

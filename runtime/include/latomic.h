@@ -3,6 +3,7 @@
 #include <atomic>
 
 #include "lib.h"
+#include "verifying_macro.h"
 #include "wmm/wmm.h"
 
 namespace ltest {
@@ -18,7 +19,7 @@ class latomic {
   ExecutionGraph& wmmGraph = ExecutionGraph::GetInstance();
 
  private:
-  bool IsWmmEnabled() const noexcept {
+  as_atomic bool IsWmmEnabled() const noexcept {
     return wmm_enabled && this_coro && locationId >= 0 && this_thread_id >= 0;
   }
 

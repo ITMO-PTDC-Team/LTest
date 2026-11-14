@@ -26,9 +26,9 @@ struct BlockManager {
   }
 
   bool IsBlocked(const BlockState &state, CoroBase *coro) {
+    if (!state.addr) return false;
     SchedCtxGuard guard;
-    return state.addr &&
-           std::find(queues[state.addr].begin(), queues[state.addr].end(),
+    return std::find(queues[state.addr].begin(), queues[state.addr].end(),
                      coro) != queues[state.addr].end();
   }
 

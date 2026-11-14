@@ -214,6 +214,7 @@ int Park(const std::shared_ptr<File>& file, short events, uint64_t value) {
 }  // namespace io
 
 bool IsWaitingForIo(const CoroBase* task) {
+  if (io::waiters.empty()) return false;
   SchedCtxGuard guard;
   const auto waiter =
       std::find_if(io::waiters.begin(), io::waiters.end(),

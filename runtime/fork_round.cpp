@@ -49,6 +49,13 @@ struct Writer {
     for (const auto& value : values) Write(value);
   }
 
+  void Write(const std::vector<int>& values) {
+    Write(values.size());
+    if (values.empty()) return;
+    const auto* data = reinterpret_cast<const std::uint8_t*>(values.data());
+    bytes.insert(bytes.end(), data, data + values.size() * sizeof(int));
+  }
+
   template <class... T>
   void Fields(const T&... values) {
     (Write(values), ...);
@@ -96,6 +103,17 @@ struct Reader {
     Check(count);
     values.resize(count);
     for (auto& value : values) Read(value);
+  }
+
+  void Read(std::vector<int>& values) {
+    size_t count;
+    Read(count);
+    if (count > (bytes.size() - position) / sizeof(int))
+      throw std::runtime_error("truncated attempt metadata");
+    values.resize(count);
+    const size_t size = count * sizeof(int);
+    if (size) std::memcpy(values.data(), bytes.data() + position, size);
+    position += size;
   }
 
   template <class... T>

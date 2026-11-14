@@ -34,8 +34,7 @@ struct PctStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
   PctSharedState& GetSharedState() override { return *shared_state; }
 
   void StartNextRound(const CustomRound* custom_round = nullptr) override {
-    current_depth =
-        std::min<size_t>(this->GetSharedState().completed_rounds + 1, 50);
+    current_depth = this->GetSharedState().completed_rounds % 50 + 1;
     current_schedule_length = 0;
     Base::StartNextRound(custom_round);
     if (!custom_round ||

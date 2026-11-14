@@ -35,7 +35,7 @@ class OSSimulator {
  public:
   virtual ~OSSimulator() = default;
   bool CanThreadContinue(std::size_t number);
-  void UpdateOSState(size_t thread);
+  bool UpdateOSState(size_t thread);
 
  protected:
   std::vector<StableVector<Task>> threads;

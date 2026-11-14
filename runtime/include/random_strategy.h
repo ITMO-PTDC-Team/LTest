@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <random>
 #include <utility>
 #include <vector>
@@ -32,7 +33,7 @@ struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
 
   std::optional<size_t> Pick() override {
     weights.resize(this->threads.size(), 1);
-    pick_weights.clear();
+    pick_threads.clear();
     auto &threads = this->threads;
 
     auto eligible = [&](size_t i) {
@@ -46,64 +47,52 @@ struct RandomStrategy : PickStrategy<TargetObj, Verifier> {
     };
 
     for (size_t i = 0; i < threads.size(); ++i) {
+      if (weights[i] == 0) continue;
       if (!eligible(i)) continue;
-      pick_weights.push_back(weights[i]);
+      pick_threads.push_back(i);
     }
 
-    if (pick_weights.empty()) [[unlikely]] {
-      return std::nullopt;
-    }
-
-    auto thread_distribution =
-        std::discrete_distribution<>(pick_weights.begin(), pick_weights.end());
-    auto num = thread_distribution(this->GetSharedState().rng);
-
-    for (size_t i = 0; i < threads.size(); ++i) {
-      if (!eligible(i)) continue;
-      if (num == 0) return i;
-      --num;
-    }
-    return std::nullopt;
+    return PickWeightedThread();
   }
 
   std::optional<size_t> PickSchedule() override {
     weights.resize(this->threads.size(), 1);
-    pick_weights.clear();
+    pick_threads.clear();
     auto &threads = this->threads;
 
     for (size_t i = 0; i < threads.size(); ++i) {
+      if (weights[i] == 0) continue;
       int task_index = this->GetNextTaskInThread(i);
       if (task_index == threads[i].size() || !this->CanThreadContinue(i) ||
           threads[i][task_index]->IsBlocked()) {
         continue;
       }
-      pick_weights.push_back(weights[i]);
+      pick_threads.push_back(i);
     }
 
-    if (pick_weights.empty()) [[unlikely]] {
-      return std::nullopt;
-    }
-
-    auto thread_distribution =
-        std::discrete_distribution<>(pick_weights.begin(), pick_weights.end());
-    auto num = thread_distribution(this->GetSharedState().rng);
-    for (size_t i = 0; i < threads.size(); ++i) {
-      int task_index = this->GetNextTaskInThread(i);
-      if (task_index == threads[i].size() || !this->CanThreadContinue(i) ||
-          threads[i][task_index]->IsBlocked()) {
-        continue;
-      }
-      if (num == 0) {
-        return i;
-      }
-      num--;
-    }
-    return std::nullopt;
+    return PickWeightedThread();
   }
 
  private:
   std::vector<int> weights;
-  std::vector<int> pick_weights;
+  std::vector<size_t> pick_threads;
+
+  std::optional<size_t> PickWeightedThread() {
+    if (pick_threads.empty()) return std::nullopt;
+    if (pick_threads.size() == 1) return pick_threads.front();
+
+    std::uint64_t total = 0;
+    for (size_t thread : pick_threads) total += weights[thread];
+    auto ticket = std::uniform_int_distribution<std::uint64_t>(0, total - 1)(
+        this->GetSharedState().rng);
+    for (size_t thread : pick_threads) {
+      const auto weight = static_cast<std::uint64_t>(weights[thread]);
+      if (ticket < weight) return thread;
+      ticket -= weight;
+    }
+    return std::nullopt;
+  }
+
 };
 
 }  // namespace ltest

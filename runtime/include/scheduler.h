@@ -128,6 +128,15 @@ struct Strategy {
   // not good)
   virtual const std::vector<StableVector<Task>>& GetTasks() const = 0;
 
+  size_t GetFirstUnfinishedTaskIndex(size_t thread_id) {
+    const auto& threads = GetTasks();
+    unfinished_task_indices.resize(threads.size());
+    auto& index = unfinished_task_indices[thread_id];
+    const auto& tasks = threads[thread_id];
+    while (index < tasks.size() && tasks[index]->IsReturned()) ++index;
+    return index;
+  }
+
   void SetAllowNewTasks(bool v) { allow_new_tasks_ = v; }
   bool AllowNewTasks() const { return allow_new_tasks_; }
 
@@ -174,6 +183,8 @@ struct Strategy {
   // when generated round is explored this vector stores indexes of tasks
   // that will be invoked next in each thread
   std::vector<int> round_schedule;
+  // Only completed prefixes are cached; live task readiness can change.
+  std::vector<size_t> unfinished_task_indices;
   ltest::wmm::ExecutionGraph& wmm_graph =
       ltest::wmm::ExecutionGraph::GetInstance();
   bool allow_new_tasks_ = true;
@@ -214,6 +225,7 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
       threads.emplace_back();
     }
 
+    logical_thread_count = threads_count;
     current_max_thread_id = threads_count ? threads_count - 1 : 0;
     verifier_hooks::OnRoundStart(sched_checker, threads_count);
     SetAllowNewTasks(attempt_session->request.kind == AttemptKind::Generate);
@@ -246,6 +258,7 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
     // TODO: Preserve generated argument values and logical dependencies for
     // child-local reconstruction instead of rerunning the argument generator.
     thread.emplace_back(BuildTask(op->builder, op->thread, op->id));
+    RegisterTask(thread.back(), op->thread);
     return &thread.back();
   }
 
@@ -281,22 +294,9 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
   }
 
   std::optional<std::tuple<Task&, int>> GetTask(int task_id) override {
-    // TODO: can this be optimized?
-    int thread_id = 0;
-    for (auto& thread : threads) {
-      size_t tasks = thread.size();
-
-      for (size_t i = 0; i < tasks; ++i) {
-        Task& task = thread[i];
-        if (task->GetId() == task_id) {
-          std::tuple<Task&, int> result = {task, thread_id};
-          return result;
-        }
-      }
-
-      thread_id++;
-    }
-    return std::nullopt;
+    auto it = tasks_by_id.find(task_id);
+    if (it == tasks_by_id.end()) return std::nullopt;
+    return std::tuple<Task&, int>{*it->second.first, it->second.second};
   }
 
   const std::vector<StableVector<Task>>& GetTasks() const override {
@@ -330,6 +330,7 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
 
     // custom round threads count might differ from the generated rounds
     this->threads.resize(custom_threads_count);
+    logical_thread_count = custom_threads_count;
     this->round_schedule.resize(custom_threads_count, -1);
     ResetWmmGraph(custom_threads_count);
     this->ConstructTarget();
@@ -342,6 +343,7 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
       for (size_t i = 0; i < builders.size(); ++i) {
         auto task = BuildTask(builder_index++, current_thread, new_task_id++);
         thread_tasks.emplace_back(task);
+        RegisterTask(thread_tasks.back(), current_thread);
       }
       this->threads[current_thread] = std::move(thread_tasks);
     }
@@ -354,6 +356,10 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
 
   void OnVerifierTaskFinish(Task& task, size_t thread_id) override {
     sched_checker.OnFinished(task, thread_id);
+    if constexpr (std::is_same_v<Verifier, OnlyOneTaskPerThreadVerifier>) {
+      assert(logical_thread_count != 0);
+      --logical_thread_count;
+    }
   }
 
   bool VerifyTaskStart(Task& task, size_t thread_id,
@@ -409,6 +415,7 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
                                     task->GetId());
 
       threads[thread_index].emplace_back(std::move(task));
+      RegisterTask(threads[thread_index].back(), thread_index);
     }
 
     return TaskWithMetaData{threads[thread_index].back(), thread_index};
@@ -457,8 +464,15 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
     return task_index;
   }
 
+  void RegisterTask(Task& task, size_t thread) {
+    const auto [it, inserted] = tasks_by_id.emplace(
+        task->GetId(), std::pair{&task, static_cast<int>(thread)});
+    assert(inserted && "duplicate task id");
+  }
+
   void UpdateSimulatorState(size_t thread_id) override {
-    this->UpdateOSState(thread_id);
+    if (this->UpdateOSState(thread_id))
+      RegisterTask(threads.back().back(), threads.size() - 1);
     round_schedule.resize(threads.size(), -1);
   }
 
@@ -475,6 +489,7 @@ struct BaseStrategyWithThreads : public Strategy, OSSimulator {
   }
 
   int new_task_id = 0;
+  std::unordered_map<int, std::pair<Task*, int>> tasks_by_id;
   std::vector<const TaskBuilder*> replay_builders;
   Verifier sched_checker{};
   std::unique_ptr<TargetObj> state;
@@ -506,6 +521,14 @@ static bool HasPendingReplayTasks(Strategy& strategy,
   return false;
 }
 
+static inline bool HasUnfinishedTasks(Strategy& strategy) {
+  const auto& threads = strategy.GetTasks();
+  for (size_t tid = 0; tid < threads.size(); ++tid)
+    if (strategy.GetFirstUnfinishedTaskIndex(tid) < threads[tid].size())
+      return true;
+  return false;
+}
+
 static inline std::pair<bool, bool> GetUnfinishedAndRunnable(
     Strategy& strategy) {
   bool has_unfinished = false;
@@ -514,7 +537,8 @@ static inline std::pair<bool, bool> GetUnfinishedAndRunnable(
   const auto& threads = strategy.GetTasks();
   for (int tid = 0; tid < static_cast<int>(threads.size()); ++tid) {
     const auto& thr = threads[tid];
-    for (int i = 0; i < static_cast<int>(thr.size()); ++i) {
+    for (size_t i = strategy.GetFirstUnfinishedTaskIndex(tid); i < thr.size();
+         ++i) {
       const auto& t = thr[i];
       if (t->IsReturned()) continue;
 
@@ -713,8 +737,7 @@ struct StrategyScheduler : public Scheduler {
       if (generate && started.size() >= max_tasks)
         strategy.SetAllowNewTasks(false);
       if (!fixed) {
-        const bool unfinished = GetUnfinishedAndRunnable(strategy).first;
-        if (!strategy.AllowNewTasks() && !unfinished &&
+        if (!strategy.AllowNewTasks() && !HasUnfinishedTasks(strategy) &&
             (!replay || !HasPendingReplayTasks(strategy, request)))
           break;
       }
@@ -730,7 +753,7 @@ struct StrategyScheduler : public Scheduler {
           if (unfinished && !runnable && WaitForPendingIo()) continue;
           deadlock_detected = unfinished && !runnable;
         } else if (*f == DEADLOCK)
-          deadlock_detected = GetUnfinishedAndRunnable(strategy).first;
+          deadlock_detected = HasUnfinishedTasks(strategy);
         break;
       }
       auto [next_task, thread_id] = std::get<TaskWithMetaData>(t);
@@ -854,8 +877,8 @@ struct DualStrategyScheduler : public DualScheduler {
       if (!replay && started.size() >= max_tasks)
         strategy.SetAllowNewTasks(false);
       if (!fixed) {
-        const bool unfinished = GetUnfinishedAndRunnable(strategy).first;
-        if ((replay || !strategy.AllowNewTasks()) && !unfinished &&
+        if ((replay || !strategy.AllowNewTasks()) &&
+            !HasUnfinishedTasks(strategy) &&
             (!replay || !HasPendingReplayTasks(strategy, request)))
           break;
       }
@@ -871,7 +894,7 @@ struct DualStrategyScheduler : public DualScheduler {
           if (unfinished && !runnable && WaitForPendingIo()) continue;
           deadlock_detected = unfinished && !runnable;
         } else if (*f == DEADLOCK)
-          deadlock_detected = GetUnfinishedAndRunnable(strategy).first;
+          deadlock_detected = HasUnfinishedTasks(strategy);
         break;
       }
       auto [task, thread_id] = std::get<TaskWithMetaData>(t);

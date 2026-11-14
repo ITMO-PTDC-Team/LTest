@@ -10,6 +10,7 @@ set (SOURCE_FILES
         fork_round.cpp
         attempt.cpp
         thread_tls.cpp
+        fiber_stack.cpp
         io.cpp
         epoll.cpp
         context/donor_tls.cpp

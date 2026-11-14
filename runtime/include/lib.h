@@ -13,12 +13,14 @@
 
 #include "block_manager.h"
 #include "coro_ctx_guard.h"
+#include "fiber_stack.h"
 #include "io_wait.h"
 #include "value_wrapper.h"
 
 #define panic() assert(false)
 
 extern "C" void CoroYield();
+extern "C" void CoroYieldIfConcurrent();
 extern "C" void CoroutineStatusChange(char* coroutine, bool start);
 
 namespace ltest {
@@ -31,12 +33,15 @@ extern bool ltest_initialized;
 extern std::shared_ptr<CoroBase> this_coro;
 extern int this_thread_id;
 
+// Includes blocked threads and slots that can start another operation.
+extern size_t logical_thread_count;
+
 // Scheduler context
 extern boost::context::fiber sched_ctx;
 
 // Use the same guarded stack for target tasks and logical-TLS callbacks.
 void SetFiberStackSize(size_t bytes);
-boost::context::protected_fixedsize_stack MakeFiberStack();
+FiberStackAllocator MakeFiberStack(std::size_t thread);
 
 struct TestFailure : public std::exception {
   explicit TestFailure(std::string message) : msg(std::move(message)) {}
@@ -129,6 +134,7 @@ struct CoroBase : public std::enable_shared_from_this<CoroBase> {
 
  protected:
   CoroBase() = default;
+  virtual void InitializeContext(std::size_t) {}
 
   friend void ::CoroYield();
 
@@ -169,16 +175,21 @@ struct Coro final : public CoroBase {
     c->args_to_strings = std::move(args_to_strings);
     c->this_ptr = this_ptr;
 
+    return c;
+  }
+
+ private:
+  void InitializeContext(std::size_t thread) override {
     // Do not capture shared_ptr<Coro> in the fiber lambda.
     // Otherwise we create a reference cycle:
     //   Coro -> ctx -> lambda -> shared_ptr<Coro> -> Coro
     //
     // The task lifetime is already managed externally by shared_ptr<Task>.
     // The fiber only needs non-owning access to the object while it is alive.
-    Coro* self = c.get();
+    Coro* self = this;
 
-    c->ctx = boost::context::fiber(
-        std::allocator_arg, MakeFiberStack(),
+    ctx = boost::context::fiber(
+        std::allocator_arg, MakeFiberStack(thread),
         [self](boost::context::fiber&& ctx) {
           sched_ctx = std::move(ctx);
           {
@@ -199,10 +210,9 @@ struct Coro final : public CoroBase {
           self->returned = true;
           return std::move(sched_ctx);
         });
-
-    return c;
   }
 
+ public:
   std::vector<std::string> GetStrArgs() const override {
     assert(args_to_strings != nullptr);
     return args_to_strings(args);

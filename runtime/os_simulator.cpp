@@ -32,10 +32,11 @@ bool OSSimulator::CanThreadContinue(std::size_t thread) {
   return true;
 }
 
-void OSSimulator::UpdateOSState(size_t thread) {
+bool OSSimulator::UpdateOSState(size_t thread) {
   if (!thread_info.has_value()) {
-    return;
+    return false;
   }
+  const bool created = std::holds_alternative<CreatedThreadInfo>(*thread_info);
   std::visit(Overloads{[this, thread](CreatedThreadInfo& info) {
                          const int id =
                              -static_cast<int>(current_max_thread_id);
@@ -50,6 +51,7 @@ void OSSimulator::UpdateOSState(size_t thread) {
                              },
                              nullptr, std::make_shared<std::tuple<>>(),
                              &PrintThreadArgs, info.name, id));
+                         ++logical_thread_count;
 
                          report.events.emplace_back(
                              id, DualHistoryEventKind::OrdinaryInvoke);
@@ -59,6 +61,7 @@ void OSSimulator::UpdateOSState(size_t thread) {
                        }},
              *thread_info);
   thread_info.reset();
+  return created;
 }
 
 }  // namespace ltest

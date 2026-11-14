@@ -3,8 +3,9 @@
 #include <pthread.h>
 
 #include <atomic>
+#include <boost/context/stack_context.hpp>
 
-#include "debugger.h"
+#include "../include/debugger.h"
 
 namespace ltest {
 
@@ -18,7 +19,10 @@ class DonorTls {
   [[nodiscard]] void* ThreadPointer() const;
   DebugThread& DebugInfo() { return debug_; }
   void RequestCleanup();
+  bool CleanupRequested() const { return cleanup_requested_; }
   bool ResumeCleanup();
+  boost::context::stack_context AcquireStack(std::size_t bytes);
+  bool ReleaseStack(const boost::context::stack_context& stack) noexcept;
   static bool YieldCleanup();
   static bool IsCleaningUp() { return zombie_ != nullptr; }
 
@@ -33,6 +37,8 @@ class DonorTls {
   pthread_t handle_{};
   void* pointer_ = nullptr;
   bool cleanup_requested_ = false;
+  boost::context::stack_context stack_{};
+  bool stack_in_use_ = false;
   DebugThread debug_;
 };
 

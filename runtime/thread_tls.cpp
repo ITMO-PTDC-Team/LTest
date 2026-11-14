@@ -51,7 +51,7 @@ void RunWithLogicalThreadTls(std::size_t thread,
   auto& tls = GetLogicalThreadTls(thread);
   void* pointer = tls.ThreadPointer();
   std::exception_ptr failure;
-  boost::context::fiber call(std::allocator_arg, MakeFiberStack(),
+  boost::context::fiber call(std::allocator_arg, MakeFiberStack(thread),
                              [&](boost::context::fiber&& scheduler) {
                                const int previous = this_thread_id;
                                this_thread_id = thread;

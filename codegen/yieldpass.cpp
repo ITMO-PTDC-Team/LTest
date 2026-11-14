@@ -51,7 +51,8 @@ struct YieldInserter {
   YieldInserter(Module &M, const std::set<const Instruction *> &skipped_accesses)
       : M(M), skipped_accesses(skipped_accesses) {
     CoroYieldF = M.getOrInsertFunction(
-        "CoroYield", FunctionType::get(Type::getVoidTy(M.getContext()), {}));
+        "CoroYieldIfConcurrent",
+        FunctionType::get(Type::getVoidTy(M.getContext()), {}));
   }
 
   void Run(const FunIndex &index) {
@@ -193,7 +194,8 @@ struct YieldInserter {
     if (auto call = dyn_cast<CallInst>(inst)) {
       if (auto fun = call->getCalledFunction()) {
         if (fun->hasName() &&
-            fun->getName() == CoroYieldF.getCallee()->getName()) {
+            (fun->getName() == "CoroYield" ||
+             fun->getName() == CoroYieldF.getCallee()->getName())) {
           return true;
         }
       }

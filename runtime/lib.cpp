@@ -19,6 +19,7 @@ namespace ltest {
 // See comments in the lib.h.
 Task this_coro{};
 int this_thread_id = -1;
+size_t logical_thread_count = 0;
 
 boost::context::fiber sched_ctx;
 bool ltest_initialized = false;
@@ -30,8 +31,10 @@ std::atomic<std::uint64_t> g_dual_event_seqno{0};
 
 void SetFiberStackSize(size_t bytes) { fiber_stack_size = bytes; }
 
-boost::context::protected_fixedsize_stack MakeFiberStack() {
-  return boost::context::protected_fixedsize_stack(fiber_stack_size);
+std::size_t GetFiberStackSize() { return fiber_stack_size; }
+
+FiberStackAllocator MakeFiberStack(std::size_t thread) {
+  return {GetLogicalThreadTls(thread), fiber_stack_size};
 }
 
 std::vector<TaskBuilder> task_builders{};
@@ -77,6 +80,9 @@ void CoroBase::Resume(size_t resumed_thread_id) {
   this_thread_id = resumed_thread_id;
   assert(!returned);
   auto& tls = GetLogicalThreadTls(resumed_thread_id);
+  if (!ctx && !tls.CleanupRequested()) {
+    InitializeContext(resumed_thread_id);
+  }
   if (ctx) {
     DebugFiberScope deb(tls.DebugInfo(), ctx, name);
     ctx.set_tls_base(tls.ThreadPointer());
@@ -141,6 +147,10 @@ extern "C" void CoroYield() {
 }
 
 extern "C" void CoroutineStatusChange(char*, bool) { CoroYield(); }
+
+extern "C" void CoroYieldIfConcurrent() {
+  if (ltest::logical_thread_count != 1) CoroYield();
+}
 
 namespace ltest {
 

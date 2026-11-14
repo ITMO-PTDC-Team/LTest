@@ -62,6 +62,7 @@ struct TLAStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         }
         tasks.emplace_back(this->BuildTask(frame.constr_id, frame.thread_id,
                                            this->new_task_id++));
+        this->RegisterTask(tasks.back(), frame.thread_id);
         this->OnVerifierTaskStart(tasks.back(), frame.thread_id);
       }
       assert(frame.task_index < tasks.size() &&
@@ -107,6 +108,7 @@ struct TLAStrategy : public BaseStrategyWithThreads<TargetObj, Verifier> {
         }
         const size_t task_index = tasks.size();
         tasks.emplace_back(this->BuildTask(constr_id, i, this->new_task_id++));
+        this->RegisterTask(tasks.back(), i);
         this->OnVerifierTaskStart(tasks.back(), i);
         AppendFrame({i, constr_id, task_index, true});
         start_constr_id = 0;

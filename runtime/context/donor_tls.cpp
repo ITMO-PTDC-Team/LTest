@@ -2,14 +2,20 @@
 
 #include <libsyscall_intercept_hook_point.h>
 #include <linux/futex.h>
+#include <sys/mman.h>
 #include <sys/syscall.h>
 
+#include <boost/context/protected_fixedsize_stack.hpp>
+#include <boost/context/stack_traits.hpp>
 #include <cassert>
 #include <cerrno>
+#include <limits>
+#include <new>
 #include <stdexcept>
 #include <system_error>
 
 #include "../include/coro_ctx_guard.h"
+#include "../include/fiber_stack.h"
 #include "../include/thread_tls.h"
 
 namespace ltest {
@@ -49,13 +55,63 @@ DonorTls::DonorTls(std::size_t logical_id) {
   debug_.logical_id = logical_id;
   if (!debug_executor_tid)
     debug_executor_tid = syscall_no_intercept(SYS_gettid);
-  int error = pthread_create(&handle_, nullptr, Start, this);
-  if (error)
-    throw std::system_error(error, std::generic_category(),
-                            "creating TLS donor pthread");
+
+  auto check = [](int error, const char* operation) {
+    if (error)
+      throw std::system_error(error, std::generic_category(), operation);
+  };
+  pthread_attr_t attributes;
+  check(pthread_attr_init(&attributes), "initializing TLS donor attributes");
+  boost::context::stack_context mapping;
+  try {
+    std::size_t native_size;
+    check(pthread_attr_getstacksize(&attributes, &native_size),
+          "reading TLS donor stack size");
+    const auto page = boost::context::stack_traits::page_size();
+    native_size = detail::FiberStackMappingSize(native_size) - page;
+    stack_.size = detail::FiberStackMappingSize(GetFiberStackSize());
+    const auto maximum = std::numeric_limits<std::size_t>::max();
+    if (stack_.size > maximum - page ||
+        native_size > maximum - stack_.size - page)
+      throw std::bad_alloc();
+    mapping = boost::context::protected_fixedsize_stack(stack_.size + native_size)
+                  .allocate();
+    stack_.sp = static_cast<char*>(mapping.sp) - native_size - page;
+    // Separate downward-growing stacks: target execution below, native
+    // parking and TLS cleanup above. pthread_attr_setstack supplies no guard.
+    if (mprotect(stack_.sp, page, PROT_NONE))
+      throw std::system_error(errno, std::generic_category(),
+                              "guarding TLS donor stacks");
+    check(pthread_attr_setstack(
+              &attributes, static_cast<char*>(stack_.sp) + page, native_size),
+          "setting TLS donor stack");
+    check(pthread_create(&handle_, &attributes, Start, this),
+          "creating TLS donor pthread");
+  } catch (...) {
+    pthread_attr_destroy(&attributes);
+    if (mapping.sp)
+      boost::context::protected_fixedsize_stack().deallocate(mapping);
+    throw;
+  }
+  pthread_attr_destroy(&attributes);
   WaitWhile(Starting);
   debug_.next = debug_threads;
   debug_threads = &debug_;
+}
+
+boost::context::stack_context DonorTls::AcquireStack(std::size_t bytes) {
+  if (stack_in_use_ || stack_.size != detail::FiberStackMappingSize(bytes))
+    return {};
+  stack_in_use_ = true;
+  return stack_;
+}
+
+bool DonorTls::ReleaseStack(
+    const boost::context::stack_context& stack) noexcept {
+  if (stack.sp != stack_.sp) return false;
+  assert(stack_in_use_ && stack.size == stack_.size);
+  stack_in_use_ = false;
+  return true;
 }
 
 void* DonorTls::ThreadPointer() const {

@@ -1,5 +1,10 @@
 #include <set>
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/CaptureTracking.h"
+#include "llvm/Analysis/MemoryLocation.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
@@ -43,7 +48,8 @@ bool HasAttribute(const FunIndex &index, const StringRef name,
 }
 
 struct YieldInserter {
-  YieldInserter(Module &M) : M(M) {
+  YieldInserter(Module &M, const std::set<const Instruction *> &skipped_accesses)
+      : M(M), skipped_accesses(skipped_accesses) {
     CoroYieldF = M.getOrInsertFunction(
         "CoroYield", FunctionType::get(Type::getVoidTy(M.getContext()), {}));
   }
@@ -99,6 +105,9 @@ struct YieldInserter {
   }
 
   bool NeedInterrupt(Instruction *insn, const FunIndex &index) {
+    if (skipped_accesses.contains(insn)) {
+      return false;
+    }
     if (isa<LoadInst>(insn) || isa<StoreInst>(insn) ||
         isa<AtomicRMWInst>(insn) || isa<AtomicCmpXchgInst>(insn) ||
         IsAtomicWrapperCall(insn) /*||
@@ -196,6 +205,7 @@ struct YieldInserter {
   FunctionCallee CoroYieldF;
   std::set<StringRef> visited{};
   std::set<StringRef> atomic{};
+  const std::set<const Instruction *> &skipped_accesses;
 };
 
 namespace {
@@ -204,7 +214,38 @@ struct YieldInsertPass final : public PassInfoMixin<YieldInsertPass> {
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM) {
     auto fun_index = CreateFunIndex(M);
 
-    YieldInserter gen{M};
+    // Classify before adding calls, while the analyses still describe the IR.
+    auto &FAM = AM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
+    std::set<const Instruction *> skipped_accesses;
+    for (auto &F : M) {
+      if (F.isDeclaration()) {
+        continue;
+      }
+      auto &AA = FAM.getResult<AAManager>(F);
+      SmallDenseMap<const Value *, bool, 8> captured;
+      for (auto &B : F) {
+        for (auto &I : B) {
+          auto *load = dyn_cast<LoadInst>(&I);
+          auto *store = dyn_cast<StoreInst>(&I);
+          if ((!load && !store) || (load && !load->isSimple()) ||
+              (store && !store->isSimple())) {
+            continue;
+          }
+          auto *pointer = load ? load->getPointerOperand()
+                               : store->getPointerOperand();
+          auto *object = getUnderlyingObject(pointer);
+          // A noalias argument alone does not establish thread-private storage.
+          if ((isa<AllocaInst>(object) &&
+               isNonEscapingLocalObject(object, &captured)) ||
+              (load && AA.pointsToConstantMemory(MemoryLocation::get(load),
+                                                false))) {
+            skipped_accesses.insert(&I);
+          }
+        }
+      }
+    }
+
+    YieldInserter gen{M, skipped_accesses};
     gen.Run(fun_index);
     return PreservedAnalyses::none();
   };

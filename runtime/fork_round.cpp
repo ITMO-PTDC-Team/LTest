@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <span>
 #include <stdexcept>
 #include <type_traits>
 
@@ -63,7 +64,7 @@ struct Writer {
 };
 
 struct Reader {
-  const std::vector<std::uint8_t>& bytes;
+  std::span<const std::uint8_t> bytes;
   size_t position = 0;
 
   void Check(size_t size) const {
@@ -133,7 +134,7 @@ std::vector<std::uint8_t> EncodeReport(const AttemptReport& q) {
   return std::move(w.bytes);
 }
 
-AttemptReport DecodeReport(const std::vector<std::uint8_t>& bytes) {
+AttemptReport DecodeReport(std::span<const std::uint8_t> bytes) {
   Reader r{bytes};
   AttemptReport q;
   r.Fields(q.operations, q.ordering, q.events);
@@ -149,7 +150,7 @@ void WriteReport(Buffer& buffer, const AttemptReport& report) {
 
 AttemptReport ReadReport(const Buffer& buffer) {
   auto* begin = static_cast<std::uint8_t*>(buffer.mapping);
-  return DecodeReport({begin, begin + buffer.capacity});
+  return DecodeReport({begin, buffer.capacity});
 }
 
 AttemptReport Fail(const std::string& message) {

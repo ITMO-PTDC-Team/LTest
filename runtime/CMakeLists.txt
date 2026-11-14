@@ -39,5 +39,6 @@ find_package(Threads REQUIRED)
 target_link_libraries(runtime PRIVATE
     ${CMAKE_DL_LIBS} Threads::Threads syscall_intercept)
 target_include_directories(runtime PRIVATE include)
-target_link_options(runtime PRIVATE ${CMAKE_ASAN_FLAGS})
+# Resolve symbols before forking, rather than repeating lazy binding per worker.
+target_link_options(runtime PUBLIC "LINKER:-z,now" PRIVATE ${CMAKE_ASAN_FLAGS})
 target_compile_options(runtime PRIVATE ${CMAKE_ASAN_FLAGS})

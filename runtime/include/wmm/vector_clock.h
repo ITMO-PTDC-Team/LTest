@@ -27,10 +27,9 @@ struct VectorClock {
   }
 
   bool IsSubsetOf(const VectorClock& other) const {
-    assert(IsSameLength(other));
-
-    for (int i = 0; i < times.size(); ++i) {
-      if (times[i] > other.times[i]) {
+    // Components for threads that did not exist yet are implicitly zero.
+    for (size_t i = 0; i < times.size(); ++i) {
+      if (times[i] > (i < other.times.size() ? other.times[i] : 0)) {
         return false;
       }
     }
@@ -39,23 +38,24 @@ struct VectorClock {
   }
 
   void UniteWith(const VectorClock& other) {
-    assert(IsSameLength(other));
+    if (times.size() < other.times.size()) {
+      times.resize(other.times.size(), 0);
+    }
 
-    for (int i = 0; i < times.size(); ++i) {
+    for (size_t i = 0; i < other.times.size(); ++i) {
       times[i] = std::max(times[i], other.times[i]);
     }
   }
 
   void Increment(int threadId) {
-    assert(threadId >= 0 && threadId < times.size());
+    assert(threadId >= 0);
+    if (static_cast<size_t>(threadId) >= times.size()) {
+      times.resize(static_cast<size_t>(threadId) + 1, 0);
+    }
     times[threadId]++;
   }
 
  private:
-  bool IsSameLength(const VectorClock& other) const {
-    return times.size() == other.times.size();
-  }
-
   std::vector<int> times;
 };
 }  // namespace ltest::wmm

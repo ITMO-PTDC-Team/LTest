@@ -2,6 +2,8 @@
 
 #include <pthread.h>
 
+#include "wmm/wmm.h"
+
 namespace ltest {
 
 std::optional<std::variant<CreatedThreadInfo, JoinThreadInfo>> thread_info;
@@ -20,6 +22,10 @@ bool OSSimulator::CanThreadContinue(std::size_t thread) {
   if (it != join_pairs.end()) {
     auto task = threads[it->second.first].back();
     if (task->IsReturned()) {
+      if (wmm::wmm_enabled) {
+        wmm::ExecutionGraph::GetInstance().OnThreadJoined(
+            thread, it->second.first);
+      }
       auto retvalue = (it->second).second;
       join_pairs.erase(it);
       if (retvalue != nullptr) {
@@ -44,6 +50,10 @@ void OSSimulator::UpdateOSState(size_t thread) {
                              id, 0, threads.size(), report.ordering.size(),
                              threads[thread].back()->GetId());
                          threads.emplace_back();
+                         if (wmm::wmm_enabled) {
+                           wmm::ExecutionGraph::GetInstance().OnThreadCreated(
+                               thread, threads.size() - 1);
+                         }
                          threads.back().emplace_back(Coro<void*>::New(
                              [info](void* v) -> ValueWrapper {
                                pthread_exit(info.function(v));

@@ -25,6 +25,33 @@ class Graph {
     InitThreads(nThreads);
   }
 
+  void OnThreadCreated(int parentThreadId, int childThreadId) {
+    assert(!inSnapshotMode);
+    assert(parentThreadId >= 0 && parentThreadId < nThreads);
+    assert(childThreadId == nThreads);
+
+    ++nThreads;
+    eventsPerThread.emplace_back();
+    auto event = new DummyEvent(events.size(), nThreads, childThreadId);
+    event->clock = events[eventsPerThread[parentThreadId].back()]->clock;
+    event->clock.Increment(childThreadId);
+    events.push_back(event);
+    eventsPerThread[childThreadId].push_back(event->id);
+  }
+
+  void OnThreadJoined(int threadId, int joinedThreadId) {
+    assert(!inSnapshotMode);
+    assert(threadId >= 0 && threadId < nThreads);
+    assert(joinedThreadId >= 0 && joinedThreadId < nThreads);
+    assert(threadId != joinedThreadId);
+
+    auto joinedEvent = events[eventsPerThread[joinedThreadId].back()];
+    // Record synchronization in a new event; earlier clocks stay unchanged.
+    auto event = new DummyEvent(events.size(), nThreads, threadId);
+    CreatePoEdgeToEvent(event);
+    event->clock.UniteWith(joinedEvent->clock);
+  }
+
   // TODO: add `ExecutionPolicy` or other way of specifying how to create edges
   // (Random, BoundedModelChecker, etc.)
   template <class T>

@@ -34,6 +34,17 @@ class ExecutionGraph {
     graph.Print(log());
   }
 
+  void OnThreadCreated(int parentThreadId, int childThreadId) {
+    SchedCtxGuard guard;
+    graph.OnThreadCreated(parentThreadId, childThreadId);
+    nThreads = childThreadId + 1;
+  }
+
+  void OnThreadJoined(int threadId, int joinedThreadId) {
+    SchedCtxGuard guard;
+    graph.OnThreadJoined(threadId, joinedThreadId);
+  }
+
   // When new location is constructed, it registers itself in the wmm-graph
   // in order to generate corresponding initialization event.
   template <class T>
